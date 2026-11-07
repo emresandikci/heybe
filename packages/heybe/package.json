@@ -16,7 +16,8 @@
     "bench": "bun bench/run.ts"
   },
   "devDependencies": {
-    "@heybe/configs": "workspace:*"
+    "@heybe/configs": "workspace:*",
+    "autocannon": "catalog:"
   },
   "dependencies": {
     "@heybe/query": "workspace:*"

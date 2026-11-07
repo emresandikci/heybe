@@ -6,5 +6,5 @@
     "moduleResolution": "bundler",
     "types": ["bun"]
   },
-  "include": ["src", "contract"]
+  "include": ["src", "contract", "bench"]
 }
