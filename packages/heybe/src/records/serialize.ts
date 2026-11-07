@@ -28,8 +28,11 @@ export function serializeRecord(
   out.collectionId = collection.id;
   out.collectionName = collection.name;
 
-  const sorted = sortKeys(out);
-  return fields?.trim() ? pick(sorted, parseFields(fields)) : sorted;
+  return pickFields(sortKeys(out), fields);
+}
+
+export function pickFields(data: Json, fields?: string | null): Json {
+  return fields?.trim() ? pick(data, parseFields(fields)) : data;
 }
 
 const sortKeys = (obj: Json): Json =>

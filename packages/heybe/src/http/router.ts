@@ -136,6 +136,7 @@ async function readBody(
 ): Promise<Record<string, unknown>> {
   const type = req.headers.get("content-type") ?? "";
   const bytes = await readLimited(req, limit);
+  if (bytes.length === 0) return {};
   try {
     if (type.startsWith("application/json")) {
       const data = JSON.parse(new TextDecoder().decode(bytes));

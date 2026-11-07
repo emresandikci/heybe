@@ -20,6 +20,19 @@ function sentenize(text: string): string {
   return /[.?!]$/.test(out) ? out : `${out}.`;
 }
 
+function sentenizeData(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(sentenizeData);
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    out[key] =
+      key === "message" && typeof item === "string"
+        ? sentenize(item)
+        : sentenizeData(item);
+  }
+  return out;
+}
+
 export class ApiError extends Error {
   readonly data: Record<string, unknown>;
 
@@ -33,7 +46,7 @@ export class ApiError extends Error {
         message || DEFAULT_MESSAGES[status] || STATUS_TEXT[status] || "",
       ),
     );
-    this.data = data;
+    this.data = sentenizeData(data) as Record<string, unknown>;
   }
 }
 

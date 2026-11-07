@@ -198,3 +198,109 @@ export function superusersScaffold(): Collection {
   c.authToken = tokenConfig(86400);
   return c;
 }
+
+const OWNER_RULE =
+  "@request.auth.id != '' && recordRef = @request.auth.id && collectionRef = @request.auth.collectionId";
+
+function systemBase(
+  name: string,
+  fields: Field[],
+  indexes: string[],
+  rules: Partial<Collection> = {},
+): Collection {
+  return {
+    ...scaffold("base", name),
+    system: true,
+    fields: [idField(), ...fields, ...autodateFields(true)],
+    indexes,
+    listRule: OWNER_RULE,
+    viewRule: OWNER_RULE,
+    ...rules,
+  };
+}
+
+const ref = (name: string, options: Record<string, unknown> = {}) =>
+  field("text", name, { system: true, required: true, ...options });
+
+export function usersScaffold(): Collection {
+  const c = scaffold("auth", "users", "_pb_users_auth_");
+  c.listRule = "id = @request.auth.id";
+  c.viewRule = "id = @request.auth.id";
+  c.createRule = "";
+  c.updateRule = "id = @request.auth.id";
+  c.deleteRule = "id = @request.auth.id";
+  c.fields = [
+    idField(),
+    ...authSystemFields(),
+    field("text", "name", { max: 255 }),
+    field("file", "avatar", {
+      maxSelect: 1,
+      mimeTypes: [
+        "image/jpeg",
+        "image/png",
+        "image/svg+xml",
+        "image/gif",
+        "image/webp",
+      ],
+    }),
+    ...autodateFields(false),
+  ];
+  const oauth2 = c.oauth2 as { mappedFields: Record<string, string> };
+  oauth2.mappedFields.name = "name";
+  oauth2.mappedFields.avatarURL = "avatar";
+  return c;
+}
+
+// Same collections and order as a fresh PocketBase data directory.
+export function bootstrapCollections(): Collection[] {
+  return [
+    systemBase(
+      "_mfas",
+      [ref("collectionRef"), ref("recordRef"), ref("method")],
+      [
+        "CREATE INDEX `idx_mfas_collectionRef_recordRef` ON `_mfas` (collectionRef,recordRef)",
+      ],
+    ),
+    systemBase(
+      "_otps",
+      [
+        ref("collectionRef"),
+        ref("recordRef"),
+        field("password", "password", {
+          system: true,
+          hidden: true,
+          required: true,
+          cost: 8,
+        }),
+        field("text", "sentTo", { system: true, hidden: true }),
+      ],
+      [
+        "CREATE INDEX `idx_otps_collectionRef_recordRef` ON `_otps` (collectionRef, recordRef)",
+      ],
+    ),
+    systemBase(
+      "_externalAuths",
+      [
+        ref("collectionRef"),
+        ref("recordRef"),
+        ref("provider"),
+        ref("providerId"),
+      ],
+      [
+        "CREATE UNIQUE INDEX `idx_externalAuths_record_provider` ON `_externalAuths` (collectionRef, recordRef, provider)",
+        "CREATE UNIQUE INDEX `idx_externalAuths_collection_provider` ON `_externalAuths` (collectionRef, provider, providerId)",
+      ],
+      { deleteRule: OWNER_RULE },
+    ),
+    systemBase(
+      "_authOrigins",
+      [ref("collectionRef"), ref("recordRef"), ref("fingerprint")],
+      [
+        "CREATE UNIQUE INDEX `idx_authOrigins_unique_pairs` ON `_authOrigins` (collectionRef, recordRef, fingerprint)",
+      ],
+      { deleteRule: OWNER_RULE },
+    ),
+    superusersScaffold(),
+    usersScaffold(),
+  ];
+}

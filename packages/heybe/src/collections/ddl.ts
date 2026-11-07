@@ -11,6 +11,7 @@ export const quote = (name: string) => "`" + name.replaceAll("`", "``") + "`";
 
 export interface ParsedIndex {
   unique: boolean;
+  optional: boolean;
   name: string;
   table: string;
   columns: string[];
@@ -20,7 +21,7 @@ export interface ParsedIndex {
 
 const IDENT = '(?:`[^`]+`|"[^"]+"|\\[[^\\]]+\\]|\\w+)';
 const HEAD = new RegExp(
-  `^\\s*CREATE\\s+(UNIQUE\\s+)?INDEX\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:${IDENT}\\.)?(${IDENT})\\s+ON\\s+(${IDENT})\\s*\\(`,
+  `^\\s*CREATE\\s+(UNIQUE\\s+)?INDEX\\s+(IF\\s+NOT\\s+EXISTS\\s+)?(?:${IDENT}\\.)?(${IDENT})\\s+ON\\s+(${IDENT})\\s*\\(`,
   "i",
 );
 const WHERE = /^\s*WHERE\s+([\s\S]+?)\s*;?\s*$/i;
@@ -55,17 +56,63 @@ export function parseIndex(sql: string): ParsedIndex | null {
 
   return {
     unique: !!head[1],
-    name: unquote(head[2]!),
-    table: unquote(head[3]!),
+    optional: !!head[2],
+    name: unquote(head[3]!),
+    table: unquote(head[4]!),
     columns: columns.map((c) => unquote(c!)),
     columnsSql,
     where,
   };
 }
 
+const COLUMN = /^([\s\S]+?)(?:\s+collate\s+(\w+))?(?:\s+(asc|desc))?\s*$/i;
+const TRIM = /^[`"'[\]\s]+|[`"'[\]\s]+$/g;
+
+function splitColumns(sql: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quoted = "";
+  let start = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i]!;
+    if (quoted) {
+      if (ch === quoted) quoted = "";
+    } else if (ch === "`" || ch === '"' || ch === "'") quoted = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) {
+      parts.push(sql.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(sql.slice(start));
+  return parts;
+}
+
+// Same formatting as PB dbutils.Index.Build.
 export function buildIndex(index: ParsedIndex): string {
+  const columns = splitColumns(index.columnsSql)
+    .map((raw) => COLUMN.exec(raw))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({
+      name: m[1]!.replace(TRIM, ""),
+      collate: m[2] ?? "",
+      sort: (m[3] ?? "").toUpperCase(),
+    }))
+    .filter((c) => c.name !== "");
+  const multi = columns.length > 1;
+  const body = columns
+    .map((c) => {
+      const name = /[( ]/.test(c.name) ? c.name : quote(c.name);
+      return (
+        name +
+        (c.collate ? ` COLLATE ${c.collate}` : "") +
+        (c.sort ? ` ${c.sort}` : "")
+      );
+    })
+    .join(",\n  ");
   const where = index.where ? ` WHERE ${index.where}` : "";
-  return `CREATE ${index.unique ? "UNIQUE " : ""}INDEX ${quote(index.name)} ON ${quote(index.table)} (${index.columnsSql})${where}`;
+  return `CREATE ${index.unique ? "UNIQUE " : ""}INDEX ${index.optional ? "IF NOT EXISTS " : ""}${quote(index.name)} ON ${quote(index.table)} (${multi ? "\n  " : ""}${body}${multi ? "\n" : ""})${where}`;
 }
 
 export function findSingleColumnUniqueIndex(
@@ -93,11 +140,41 @@ function columnDef(field: Field): string {
   return `${name} ${type} DEFAULT ${type === "TEXT" ? "''" : "0"} NOT NULL`;
 }
 
-function createIndexes(db: Db, c: Collection) {
-  for (const sql of c.indexes) {
-    const parsed = parseIndex(sql);
-    if (parsed) db.run(buildIndex({ ...parsed, table: c.name }));
+export class IndexErrors extends Error {
+  constructor(readonly errors: Record<string, unknown>) {
+    super("Failed to create indexes.");
   }
+}
+
+const SQLITE_PREFIX: Record<number, string> = {
+  1: "SQL logic error",
+  5: "database is locked",
+  19: "constraint failed",
+};
+
+// Formats a bun:sqlite error like the Go driver PB uses: "<primary code text>: <message> (<extended code>)".
+export function sqliteMessage(e: unknown): string {
+  const { message, errno } = e as { message: string; errno?: number };
+  if (typeof errno !== "number") return message;
+  const prefix = SQLITE_PREFIX[errno & 0xff] ?? SQLITE_PREFIX[1];
+  return `${prefix}: ${message} (${errno})`;
+}
+
+function createIndexes(db: Db, c: Collection) {
+  const errors: Record<string, unknown> = {};
+  c.indexes.forEach((sql, i) => {
+    const parsed = parseIndex(sql);
+    const invalid = (message: string) => {
+      errors[i] = { code: "validation_invalid_index_expression", message };
+    };
+    if (!parsed) return invalid("Invalid CREATE INDEX expression.");
+    try {
+      db.run(buildIndex({ ...parsed, table: c.name }));
+    } catch (e) {
+      invalid(`Failed to create index ${parsed.name} - ${sqliteMessage(e)}.`);
+    }
+  });
+  if (Object.keys(errors).length > 0) throw new IndexErrors(errors);
 }
 
 function dropIndexes(db: Db, c: Collection) {

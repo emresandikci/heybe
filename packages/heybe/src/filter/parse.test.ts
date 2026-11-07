@@ -181,6 +181,19 @@ describe("parseFilter", () => {
   });
 });
 
+describe("parseFilter syntax gate", () => {
+  test.each([
+    ["a = +1", "unexpected character '+'"],
+    [
+      "f(g(h(i(j(a))))) = 1",
+      'invalid identifier argument "g" in function "f": invalid identifier argument "h" in function "g": invalid identifier argument "i" in function "h": max nested function arguments reached (max: 3)',
+    ],
+    ["a = 1\r&& b = 2", "unexpected character '\\r'"],
+  ])("rejects %j like PB", (input, message) => {
+    expect(() => parseFilter(input)).toThrow(new FilterError(message));
+  });
+});
+
 describe("parseSort", () => {
   test("prefixes and specials", () => {
     expect(parseSort("-created,title,@random")).toEqual([

@@ -92,6 +92,7 @@ async function runOk(cmd: string[]): Promise<void> {
 async function startOne(
   name: Target["name"],
   command: string[],
+  extraFlags: (dir: string) => string[] = () => [],
 ): Promise<{ target: Target; stop(): Promise<void> }> {
   const dir = await mkdtemp(join(tmpdir(), `heybe-contract-${name}-`));
   const port = await freePort();
@@ -104,9 +105,18 @@ async function startOne(
     SUPERUSER_PASSWORD,
     "--dir",
     dir,
+    ...extraFlags(dir),
   ]);
   const proc = Bun.spawn(
-    [...command, "serve", "--http", `127.0.0.1:${port}`, "--dir", dir],
+    [
+      ...command,
+      "serve",
+      "--http",
+      `127.0.0.1:${port}`,
+      "--dir",
+      dir,
+      ...extraFlags(dir),
+    ],
     { stdout: "ignore", stderr: "ignore" },
   );
   const stop = async () => {
@@ -145,7 +155,12 @@ async function startOne(
 
 export async function startTargets(): Promise<Started> {
   const pbBin = await pocketbaseBinary();
-  const pb = await startOne("pocketbase", [pbBin]);
+  const pb = await startOne("pocketbase", [pbBin], (dir) => [
+    "--migrationsDir",
+    join(dir, "pb_migrations"),
+    "--hooksDir",
+    join(dir, "pb_hooks"),
+  ]);
   let hb: Awaited<ReturnType<typeof startOne>>;
   try {
     hb = await startOne("heybe", ["bun", CLI]);

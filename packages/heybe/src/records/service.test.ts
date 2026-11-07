@@ -287,6 +287,7 @@ describe("update and delete", () => {
 
 describe("auth records", () => {
   beforeEach(() => {
+    app.collections.delete("users");
     app.collections.save({
       name: "users",
       type: "auth",

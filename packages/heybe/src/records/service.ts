@@ -24,6 +24,7 @@ export interface RecordService<T> {
   create(data: Partial<T>): Promise<T>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
+  truncate(): void;
   findRaw(id: string): Record<string, unknown>;
   query(opts: {
     filter?: Expr | null;
@@ -191,6 +192,17 @@ export class RecordServiceImpl<T> implements RecordService<T> {
   async delete(id: string): Promise<void> {
     const c = this.writable();
     this.deps.db.tx(() => this.remove(c, this.load(c, id)));
+  }
+
+  truncate(): void {
+    const c = this.writable();
+    const { db } = this.deps;
+    db.tx(() => {
+      for (const { id } of db.query<{ id: string }>(
+        `SELECT id FROM ${quote(c.name)}`,
+      ))
+        this.remove(c, this.load(c, id));
+    });
   }
 
   query(opts: Parameters<RecordService<T>["query"]>[0]): ListResult<T> {

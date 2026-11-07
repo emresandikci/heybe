@@ -174,11 +174,33 @@ function buildFilter(expr: Expr, r: Resolver, now: () => Date): string {
 
 function buildExpr(expr: Expr, r: Resolver, now: () => Date): string {
   if (expr.kind === "cmp") {
-    const left = operand(expr.left, r, now);
-    const right = operand(expr.right, r, now);
+    const left = side("left", expr.left, r, now);
+    const right = side("right", expr.right, r, now);
     return compare(r, left, expr.op, right);
   }
   return `(${expr.items.map((item) => buildExpr(item, r, now)).join(expr.kind === "and" ? " AND " : " OR ")})`;
+}
+
+function side(
+  which: "left" | "right",
+  o: Operand,
+  r: Resolver,
+  now: () => Date,
+): Resolved {
+  try {
+    return operand(o, r, now);
+  } catch (e) {
+    if (!(e instanceof FilterError)) throw e;
+    const literal =
+      o.kind === "value"
+        ? String(o.value)
+        : o.kind === "field"
+          ? o.path
+          : o.name;
+    throw new FilterError(
+      `invalid ${which} operand ${JSON.stringify(literal)} - ${e.message}`,
+    );
+  }
 }
 
 const bound = (r: Resolver, value: unknown, integer = false): Resolved => {
@@ -202,7 +224,7 @@ function operand(o: Operand, r: Resolver, now: () => Date): Resolved {
     case "macro":
       return bound(r, macroValue(o.name, now), true);
     case "call":
-      return call(o, r, now);
+      return call(o, (a) => operand(a, r, now));
     case "field":
       return field(o.path, r, now);
   }
@@ -241,13 +263,11 @@ function tokenType(o: Operand): TokenType {
   return typeof o.value === "number" ? "number" : "identifier";
 }
 
-function call(
+export function call(
   o: Extract<Operand, { kind: "call" }>,
-  r: Resolver,
-  now: () => Date,
+  resolve: (a: Operand) => Resolved,
 ): Resolved {
   const { args } = o;
-  const resolve = (a: Operand) => operand(a, r, now);
 
   if (o.name === "geoDistance") {
     if (args.length !== 4)
@@ -461,7 +481,7 @@ function equal(
   return `COALESCE(${left.id}, '') ${op} COALESCE(${right.id}, '')`;
 }
 
-function wrapLike(value: unknown): string {
+export function wrapLike(value: unknown): string {
   const s = value === null || value === undefined ? "" : String(value);
   if (containsUnescaped(s, "%")) return s;
   return `%${escapeUnescaped(s, ["\\", "%", "_"])}%`;

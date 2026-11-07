@@ -1,3 +1,4 @@
+import { filterSyntaxError } from "./fexpr";
 import type { Expr, Op, Operand } from "@heybe/query";
 
 export class FilterError extends Error {}
@@ -29,7 +30,7 @@ const OPS: Op[] = [
 ];
 
 const NUMBER = /^[+-]?\d+(\.\d+)?(?![\w.:@])/;
-const WORD = /^[A-Za-z_@][\w.:@]*/;
+const WORD = /^[A-Za-z_@#][\w.:@]*/;
 const FIELD = new RegExp(`${WORD.source}$`);
 
 function readString(input: string, start: number): [string, number] {
@@ -168,9 +169,10 @@ class Parser {
     if (this.accept("(")) {
       const args: Operand[] = [];
       this.nested(() => {
-        if (this.accept(")")) return;
-        do args.push(this.parseOperand());
-        while (this.accept(","));
+        do {
+          if (this.accept(")")) return;
+          args.push(this.parseOperand());
+        } while (this.accept(","));
         this.expect(")");
       });
       return { kind: "call", name: word, args };
@@ -203,6 +205,9 @@ class Parser {
 }
 
 export function parseFilter(input: string): Expr | null {
+  const syntaxError = filterSyntaxError(input);
+  if (syntaxError !== null && input.trim() !== "")
+    throw new FilterError(syntaxError);
   const tokens = tokenize(input);
   return tokens.length === 0 ? null : new Parser(tokens).parse();
 }

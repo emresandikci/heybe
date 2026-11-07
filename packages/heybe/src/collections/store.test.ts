@@ -67,6 +67,18 @@ describe("bootstrap", () => {
     ]);
   });
 
+  test("creates the same system collections and users as a fresh PocketBase", () => {
+    expect(store.all().map((c) => c.name)).toEqual([
+      "_mfas",
+      "_otps",
+      "_externalAuths",
+      "_authOrigins",
+      "_superusers",
+      "users",
+    ]);
+    expect(store.find("users")?.id).toBe("_pb_users_auth_");
+  });
+
   test("is idempotent", () => {
     new CollectionStore(db, now);
     expect(store.all().filter((c) => c.name === "_superusers")).toHaveLength(1);
@@ -161,7 +173,7 @@ describe("save", () => {
   });
 
   test("auth collection gets the system fields and unique indexes", () => {
-    const c = store.save({ name: "users", type: "auth" });
+    const c = store.save({ name: "members", type: "auth" });
     expect(c.fields.filter((f) => f.system).map((f) => f.name)).toEqual([
       "id",
       "password",
@@ -171,10 +183,10 @@ describe("save", () => {
       "verified",
     ]);
     expect(c.indexes).toEqual([
-      `CREATE UNIQUE INDEX \`idx_tokenKey_${c.id}\` ON \`users\` (\`tokenKey\`)`,
-      `CREATE UNIQUE INDEX \`idx_email_${c.id}\` ON \`users\` (\`email\`) WHERE \`email\` != ''`,
+      `CREATE UNIQUE INDEX \`idx_tokenKey_${c.id}\` ON \`members\` (\`tokenKey\`)`,
+      `CREATE UNIQUE INDEX \`idx_email_${c.id}\` ON \`members\` (\`email\`) WHERE \`email\` != ''`,
     ]);
-    expect(columns("users")).toContain("tokenKey");
+    expect(columns("members")).toContain("tokenKey");
     expect((c.passwordAuth as any).identityFields).toEqual(["email"]);
     expect(c.authRule).toBe("");
   });
@@ -264,7 +276,9 @@ describe("delete and truncate", () => {
   });
 
   test("delete on a system collection throws", () => {
-    expect(() => store.delete("_superusers")).toThrow(ValidationError);
+    expect(() => store.delete("_superusers")).toThrow(
+      "[_superusers] system collections cannot be deleted",
+    );
     expect(store.find("_superusers")).not.toBeNull();
   });
 
@@ -274,5 +288,73 @@ describe("delete and truncate", () => {
     store.truncate("posts");
     expect(db.query("SELECT * FROM posts")).toEqual([]);
     expect(store.find("posts")).not.toBeNull();
+  });
+});
+
+describe("validation parity with PocketBase", () => {
+  test("a rule is parsed and resolved against the collection fields", () => {
+    const rule = (listRule: string) =>
+      validationData(() =>
+        store.save({ name: "posts", fields: [text("title")] as any, listRule }),
+      ).listRule?.message;
+    expect(rule("title =")).toBe(
+      "Invalid rule. Raw error: invalid or incomplete filter expression.",
+    );
+    expect(rule("nope = 1")).toBe(
+      'Invalid rule. Raw error: invalid left operand "nope" - unknown field "nope".',
+    );
+    expect(() =>
+      store.save({
+        name: "ok",
+        fields: [text("title")] as any,
+        listRule: "title != ''",
+      }),
+    ).not.toThrow();
+  });
+
+  test("create with an existing id is a validation error, not an update", () => {
+    store.save({ name: "posts", id: "customid1234567" });
+    const data = validationData(() =>
+      store.save({ name: "other", id: "customid1234567" }, true),
+    );
+    expect(data.id.code).toBe("validation_invalid_or_existing_id");
+  });
+
+  test("the superusers collection keeps password auth on and OAuth2 off", () => {
+    const su = store.find("_superusers")!;
+    store.save({
+      ...su,
+      passwordAuth: { enabled: false, identityFields: ["email"] },
+      oauth2: { ...(su.oauth2 as object), enabled: false, providers: [] },
+    } as any);
+    expect((store.find("_superusers")!.passwordAuth as any).enabled).toBe(true);
+  });
+
+  test("an autogenerate pattern that breaks the field limits is rejected", () => {
+    const data = validationData(() =>
+      store.save({
+        name: "posts",
+        fields: [
+          {
+            name: "code",
+            type: "text",
+            max: 5,
+            autogeneratePattern: "[a-z]{10}",
+          },
+        ] as any,
+      }),
+    );
+    expect(data.fields[1].autogeneratePattern.code).toBe(
+      "validation_invalid_autogenerate_pattern_value",
+    );
+  });
+
+  test("a system field with the wrong type is replaced", () => {
+    const c = store.save({
+      name: "people",
+      type: "auth",
+      fields: [text("email")] as any,
+    });
+    expect(c.fields.find((f) => f.name === "email")?.type).toBe("email");
   });
 });

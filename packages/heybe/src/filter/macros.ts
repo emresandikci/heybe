@@ -46,5 +46,5 @@ export function macroValue(name: string, now: () => Date): string | number {
     case "@yearEnd":
       return at(y, 11, 31, 23, 59, 59, 999);
   }
-  throw new FilterError(`unknown macro "${name}"`);
+  throw new FilterError(`failed to resolve field "${name}"`);
 }

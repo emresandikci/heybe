@@ -1,7 +1,16 @@
 import type { Db } from "../db";
+import { QueryCompiler, type RequestInfo } from "../filter/compile";
+import { filterSyntaxError } from "../filter/fexpr";
 import { FilterError, parseFilter } from "../filter/parse";
-import { ValidationError, formatDate } from "../util";
+import { ValidationError, formatDate, randomSecret } from "../util";
 import {
+  AUTH_KEYS,
+  AUTH_SHAPE,
+  type RuleCheck,
+  validateAuthOptions,
+} from "./auth-options";
+import {
+  IndexErrors,
   buildIndex,
   dropTable,
   findSingleColumnUniqueIndex,
@@ -9,12 +18,35 @@ import {
   quote,
   syncTable,
 } from "./ddl";
-import { type Collection, type Field, collectionId, fieldId } from "./model";
+import {
+  type Errors,
+  type FieldErr,
+  type Rule,
+  addError,
+  err,
+  invalidFormat,
+  rawErrors,
+  required,
+} from "./errors";
+import { decodeCollection } from "./codec";
+import type { CollectionsQuery } from "./search";
+import {
+  addFields,
+  validateFieldSettings,
+  withDefaults,
+  zero,
+} from "./field-settings";
+import {
+  type Collection,
+  type CollectionType,
+  type Field,
+  collectionId,
+} from "./model";
 import {
   authSystemFields,
+  bootstrapCollections,
   idField,
   scaffold,
-  superusersScaffold,
 } from "./scaffold";
 
 interface Row {
@@ -27,20 +59,18 @@ interface Row {
   updated: string;
 }
 
-type Path = (string | number)[];
-type Errors = Record<string, unknown>;
+const EMPTY_REQUEST: RequestInfo = {
+  auth: null,
+  authCollection: null,
+  body: {},
+  query: {},
+  headers: {},
+  method: "",
+  context: "",
+};
 
 const NAME_PATTERN = /^\w+$/;
 const ID_PATTERN = /^[^@#$&|.,'"\\/\s]+$/;
-const RESERVED_FIELD_NAMES = [
-  "null",
-  "true",
-  "false",
-  "_rowid_",
-  "collectionId",
-  "collectionName",
-  "expand",
-];
 const RESERVED_AUTH_NAMES = ["passwordConfirm", "oldPassword"];
 const RULES = [
   "listRule",
@@ -49,31 +79,16 @@ const RULES = [
   "updateRule",
   "deleteRule",
 ] as const;
-const AUTH_RULES = ["authRule", "manageRule"] as const;
 
-const required = ["validation_required", "Cannot be blank."] as const;
-const invalidFormat = [
-  "validation_match_invalid",
-  "Must be in a valid format.",
-] as const;
-const hasVia = [
+const hasVia: Rule = [
   "validation_found_via",
   'The value cannot contain "_via_".',
-] as const;
-
-function addError(
-  errors: Errors,
-  path: Path,
-  [code, message]: readonly [string, string],
-  params?: object,
-) {
-  let node = errors;
-  for (const key of path.slice(0, -1)) node = (node[key] ??= {}) as Errors;
-  node[path.at(-1)!] = params ? { code, message, params } : { code, message };
-}
+];
 
 function toRow(c: Collection): Row {
   const { id, name, type, system, created, updated, ...rest } = c;
+  if (type !== "auth") for (const key of AUTH_KEYS) delete rest[key];
+  if (type !== "view") delete rest.viewQuery;
   return {
     id,
     name,
@@ -97,55 +112,17 @@ function fromRow(row: Row): Collection {
   };
 }
 
-function checkFieldName(name: unknown): readonly [string, string] | null {
-  if (typeof name !== "string" || name === "") return required;
-  if (name.length > 100)
-    return [
-      "validation_length_out_of_range",
-      "The length must be between 1 and 100.",
-    ];
-  if (!NAME_PATTERN.test(name)) return invalidFormat;
-  if (RESERVED_FIELD_NAMES.includes(name))
-    return ["validation_not_in_invalid", "Must not be in list."];
-  if (name.toLowerCase().includes("_via_")) return hasVia;
-  return null;
-}
-
-function checkRule(rule: unknown): readonly [string, string] | null {
-  if (typeof rule !== "string" || rule === "") return null;
-  try {
-    parseFilter(rule);
-    return null;
-  } catch (e) {
-    if (!(e instanceof FilterError)) throw e;
-    return ["validation_invalid_rule", `Invalid rule. Raw error: ${e.message}`];
-  }
-}
-
-function withFieldIds(fields: Field[]): Field[] {
-  const used = new Set(fields.map((f) => f.id).filter(Boolean));
-  return fields.map((f) => {
-    const base: Field = {
-      ...f,
-      system: f.system ?? false,
-      hidden: f.hidden ?? false,
-      presentable: f.presentable ?? false,
-    };
-    if (base.id) return base;
-    const root = fieldId(f.type, f.name);
-    let id = root;
-    for (let i = 2; used.has(id); i++) id = root + i;
-    used.add(id);
-    return { ...base, id };
-  });
-}
+const SYSTEM_RULE_CHANGE: Rule = [
+  "validation_collection_system_rule_change",
+  "System collection API rule cannot be changed.",
+];
 
 function ensureSystemFields(c: Collection) {
   if (c.type === "view") return;
   const fields = [...c.fields];
   const at = (name: string) => fields.findIndex((f) => f.name === name);
 
-  const idAt = at("id");
+  const idAt = fields.findIndex((f) => f.name === "id" && f.type === "text");
   if (idAt < 0) fields.unshift(idField());
   else {
     const pattern = fields[idAt]!.pattern || idField().pattern;
@@ -163,6 +140,8 @@ function ensureSystemFields(c: Collection) {
     for (const sys of authSystemFields()) {
       const i = at(sys.name);
       if (i < 0) fields.push(sys);
+      else if (fields[i]!.type !== sys.type)
+        fields[i] = { ...sys, id: fields[i]!.id };
       else {
         const enforce =
           sys.name === "password" || sys.name === "tokenKey"
@@ -193,6 +172,12 @@ function ensureSystemFields(c: Collection) {
   c.fields = fields;
 }
 
+export interface SaveInput extends Partial<Collection> {
+  name: string;
+}
+
+type Prepared = { old: Collection | null; next: Collection };
+
 export class CollectionStore {
   constructor(
     private readonly db: Db,
@@ -202,15 +187,35 @@ export class CollectionStore {
       "CREATE TABLE IF NOT EXISTS _collections (id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, type TEXT NOT NULL, system INTEGER NOT NULL, data TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL)",
     );
     db.run(
+      "CREATE INDEX IF NOT EXISTS idx__collections_type ON _collections (type)",
+    );
+    db.run(
       "CREATE TABLE IF NOT EXISTS _params (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     );
-    if (!this.find("_superusers")) this.save(superusersScaffold());
+    if (!this.find("_superusers"))
+      for (const c of bootstrapCollections()) this.save(c);
   }
 
   all(): Collection[] {
     return this.db
       .query<Row>("SELECT * FROM _collections ORDER BY rowid")
       .map(fromRow);
+  }
+
+  search(q: CollectionsQuery, limit: number, offset: number): Collection[] {
+    return this.db
+      .query<Row>(
+        `SELECT * FROM _collections WHERE ${q.where}${q.orderBy ? ` ORDER BY ${q.orderBy}` : ""} LIMIT ${limit} OFFSET ${offset}`,
+        q.params,
+      )
+      .map(fromRow);
+  }
+
+  count(q: CollectionsQuery): number {
+    return this.db.get<{ n: number }>(
+      `SELECT count(*) AS n FROM _collections WHERE ${q.where}`,
+      q.params,
+    )!.n;
   }
 
   find(nameOrId: string): Collection | null {
@@ -221,70 +226,75 @@ export class CollectionStore {
     return row ? fromRow(row) : null;
   }
 
-  save(input: Partial<Collection> & { name: string }): Collection {
+  save(input: SaveInput, isNew = false): Collection {
     return this.db.tx(() => {
-      const old = input.id ? this.find(input.id) : null;
-      const defined = Object.fromEntries(
-        Object.entries(input).filter(([, v]) => v !== undefined),
-      );
-      const timestamp = formatDate(this.now());
+      const { old, next } = this.prepare(input, isNew);
+      this.validate(old, next);
+      this.persist(old, next);
+      return next;
+    });
+  }
 
-      let next: Collection;
-      if (old) {
-        next = {
-          ...old,
-          ...defined,
-          created: old.created,
-          updated: timestamp,
-        } as Collection;
-      } else {
-        const type = input.type ?? "base";
-        next = {
-          ...scaffold(
-            type,
-            input.name,
-            input.id ?? this.freeId(type, input.name),
-          ),
-          ...defined,
-        } as Collection;
-        next.created = next.updated = timestamp;
+  // PB ImportCollections: all collections are saved first and validated afterwards, in one transaction.
+  import(items: Record<string, unknown>[], deleteMissing: boolean): void {
+    if (items.length === 0) throw new Error("no collections to import");
+    this.db.tx(() => {
+      const inputs = items.map((data) => this.importInput(data, deleteMissing));
+      const prepared = inputs.map((input) => this.prepare(input));
+      const originals = new Map(
+        this.all().map((c) => [c.id, c] as [string, Collection]),
+      );
+
+      if (deleteMissing) {
+        const keep = new Set(prepared.map((p) => p.next.id));
+        for (const existing of this.all()) {
+          if (!keep.has(existing.id) && !existing.system) this.remove(existing);
+        }
       }
 
-      next.fields = withFieldIds((input.fields ?? next.fields) as Field[]);
-      next.indexes = next.indexes ?? [];
-      ensureSystemFields(next);
-      next.indexes = next.indexes.map((sql) => {
-        const parsed = parseIndex(sql);
-        return parsed ? buildIndex({ ...parsed, table: next.name }) : sql;
-      });
-
-      this.validate(old, next);
-
-      syncTable(this.db, old, next);
-      const row = toRow(next);
-      this.db.run(
-        "INSERT OR REPLACE INTO _collections (id, name, type, system, data, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [
-          row.id,
-          row.name,
-          row.type,
-          row.system,
-          row.data,
-          row.created,
-          row.updated,
-        ],
+      const ordered = [...prepared].sort(
+        (a, b) =>
+          Number(a.next.type === "view") - Number(b.next.type === "view"),
       );
-      return next;
+      for (const { old, next } of ordered) this.persist(old, next);
+
+      for (const { next } of ordered) {
+        const original = originals.get(next.id) ?? next;
+        try {
+          this.validate(original, next);
+        } catch (e) {
+          if (!(e instanceof ValidationError)) throw e;
+          throw new ValidationError("Failed to import collections.", {
+            collections: err([
+              "validation_collections_import_failure",
+              `Data validations failed for collection "${next.name}" (${next.id}):\n${JSON.stringify(rawErrors(e.data), null, 2)}`,
+            ]),
+          });
+        }
+      }
     });
   }
 
   delete(nameOrId: string): void {
     const c = this.require(nameOrId);
-    if (c.system) throw new ValidationError("Failed to delete collection.");
-    this.db.tx(() => {
-      dropTable(this.db, c);
-      this.db.run("DELETE FROM _collections WHERE id = ?", [c.id]);
-    });
+    if (c.system)
+      throw new Error(`[${c.name}] system collections cannot be deleted`);
+    const refs = this.references(c);
+    if (refs.length > 0)
+      throw new Error(
+        `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
+      );
+    this.db.tx(() => this.remove(c));
+  }
+
+  references(c: Collection): Collection[] {
+    return this.all().filter(
+      (other) =>
+        other.id !== c.id &&
+        other.fields.some(
+          (f) => f.type === "relation" && f.collectionId === c.id,
+        ),
+    );
   }
 
   truncate(nameOrId: string): void {
@@ -292,6 +302,137 @@ export class CollectionStore {
     if (c.type === "view")
       throw new ValidationError("Failed to truncate collection.");
     this.db.run(`DELETE FROM ${quote(c.name)}`);
+  }
+
+  private remove(c: Collection) {
+    dropTable(this.db, c);
+    this.db.run("DELETE FROM _collections WHERE id = ?", [c.id]);
+  }
+
+  private importInput(
+    data: Record<string, unknown>,
+    deleteMissing: boolean,
+  ): SaveInput {
+    const identifier = String(data.id || data.name || "");
+    const existing = identifier ? this.find(identifier) : null;
+    if (!existing) {
+      const blank = scaffold(
+        typeof data.type === "string" ? (data.type as CollectionType) : "base",
+        typeof data.name === "string" ? data.name : "",
+        typeof data.id === "string" ? data.id : undefined,
+      );
+      const decoded = decodeCollection(blank, data);
+      if (typeof data.id !== "string" || data.id === "")
+        delete (decoded as Partial<Collection>).id;
+      return decoded;
+    }
+
+    const body =
+      data.fields == null && deleteMissing ? { ...data, fields: [] } : data;
+    const decoded = decodeCollection(existing, body);
+    for (const f of existing.fields) {
+      if (!f.system && deleteMissing) continue;
+      if (decoded.fields.some((m) => m.id === f.id)) continue;
+      const found = decoded.fields.find((m) => m.name === f.name);
+      if (found && found.type === f.type) found.id = f.id;
+      decoded.fields = addFields(decoded.fields, [f]);
+    }
+    return decoded;
+  }
+
+  private prepare(input: SaveInput, isNew = false): Prepared {
+    const old = input.id && !isNew ? this.find(input.id) : null;
+    const defined = Object.fromEntries(
+      Object.entries(input).filter(([, v]) => v !== undefined),
+    );
+    const timestamp = formatDate(this.now());
+
+    let next: Collection;
+    if (old) {
+      next = {
+        ...old,
+        ...defined,
+        created: old.created,
+        updated: timestamp,
+      } as Collection;
+    } else {
+      const type = input.type ?? "base";
+      next = {
+        ...scaffold(
+          type,
+          input.name,
+          input.id ?? this.freeId(type, input.name),
+        ),
+        ...defined,
+      } as Collection;
+      next.created = next.updated = timestamp;
+    }
+
+    next.fields = withDefaults(
+      (input.fields ?? next.fields) as Partial<Field>[],
+    );
+    next.indexes = next.indexes ?? [];
+    ensureSystemFields(next);
+    next.indexes = next.indexes.map((sql) => {
+      const parsed = parseIndex(sql);
+      if (!parsed || parsed.table === next.name) return sql;
+      return buildIndex({ ...parsed, table: next.name });
+    });
+    if (next.type === "auth") {
+      next = { ...zero(AUTH_SHAPE), ...next };
+      if (old && String(old.authRule ?? "") !== String(next.authRule ?? ""))
+        (next.authToken as { secret: string }).secret = randomSecret(50);
+      this.unsetMissingMappedFields(next);
+    }
+    return { old, next };
+  }
+
+  private unsetMissingMappedFields(c: Collection) {
+    const mapped = (c.oauth2 as { mappedFields: Record<string, string> })
+      .mappedFields;
+    for (const [key, name] of Object.entries(mapped)) {
+      if (name !== "" && !c.fields.some((f) => f.name === name))
+        mapped[key] = "";
+    }
+  }
+
+  // PB forces these on the superusers collection after validation, so it can't be locked out or sign in with OAuth2.
+  private enforceSuperusers(c: Collection) {
+    if (c.name !== "_superusers") return;
+    const { oauth2, passwordAuth, otp, mfa } = c as unknown as Record<
+      string,
+      Record<string, unknown>
+    >;
+    oauth2!.enabled = false;
+    oauth2!.providers = [];
+    passwordAuth!.enabled = true;
+    if (otp!.enabled === true) mfa!.enabled = true;
+  }
+
+  private persist(old: Collection | null, next: Collection) {
+    this.enforceSuperusers(next);
+    try {
+      syncTable(this.db, old, next);
+    } catch (e) {
+      if (!(e instanceof IndexErrors)) throw e;
+      throw new ValidationError(
+        `Failed to ${old ? "update" : "create"} collection.`,
+        { indexes: e.errors },
+      );
+    }
+    const row = toRow(next);
+    this.db.run(
+      "INSERT OR REPLACE INTO _collections (id, name, type, system, data, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        row.id,
+        row.name,
+        row.type,
+        row.system,
+        row.data,
+        row.created,
+        row.updated,
+      ],
+    );
   }
 
   private require(nameOrId: string): Collection {
@@ -304,7 +445,7 @@ export class CollectionStore {
     const root = collectionId(type, name);
     let id = root;
     for (
-      let i = 1;
+      let i = 2;
       this.db.get("SELECT 1 FROM _collections WHERE id = ?", [id]);
       i++
     )
@@ -315,49 +456,47 @@ export class CollectionStore {
   private validate(old: Collection | null, next: Collection) {
     const errors: Errors = {};
     const isNew = !old;
+    const fail = (key: string, rule: Rule) => addError(errors, [key], rule);
 
     if (isNew) {
       if (next.id.length > 100 || !ID_PATTERN.test(next.id))
-        addError(errors, ["id"], invalidFormat);
+        fail("id", invalidFormat);
       else if (
         this.db.get("SELECT 1 FROM _collections WHERE id = ?", [next.id])
-      ) {
-        addError(
-          errors,
-          ["id"],
-          ["validation_not_unique", "Value must be unique."],
-        );
-      }
+      )
+        fail("id", [
+          "validation_invalid_or_existing_id",
+          "The model id is invalid or already exists.",
+        ]);
     }
     if (old && next.system !== old.system) {
-      addError(
-        errors,
-        ["system"],
-        [
-          "validation_collection_system_flag_change",
-          "System collection state cannot be changed.",
-        ],
-      );
+      fail("system", [
+        "validation_collection_system_flag_change",
+        "System collection state cannot be changed.",
+      ]);
     }
     if (!["base", "auth", "view"].includes(next.type)) {
-      addError(
-        errors,
-        ["type"],
-        ["validation_in_invalid", "Must be a valid value."],
-      );
+      fail("type", ["validation_in_invalid", "Must be a valid value."]);
     } else if (old && next.type !== old.type) {
-      addError(
-        errors,
-        ["type"],
-        [
-          "validation_collection_type_change",
-          "Collection type cannot be changed.",
-        ],
-      );
+      fail("type", [
+        "validation_collection_type_change",
+        "Collection type cannot be changed.",
+      ]);
     }
 
     this.validateName(errors, old, next);
-    this.validateFields(errors, old, next);
+    this.validateFields(
+      errors,
+      old,
+      next.type === "view" ? { ...next, fields: [] } : next,
+    );
+    if (next.type === "view" && !next.viewQuery) fail("viewQuery", required);
+
+    const ruleCheck: RuleCheck = (value, oldValue) =>
+      this.checkRule(next, value) ??
+      (old?.system && (value ?? null) !== (oldValue ?? null)
+        ? err(SYSTEM_RULE_CHANGE)
+        : null);
 
     for (const key of RULES) {
       if (
@@ -366,38 +505,14 @@ export class CollectionStore {
         key !== "viewRule" &&
         next[key] !== null
       ) {
-        addError(errors, [key], ["validation_not_nil", "Must be blank."]);
+        fail(key, ["validation_nil", "Must be blank."]);
         continue;
       }
-      const err = checkRule(next[key]);
-      if (err) addError(errors, [key], err);
-      else if (old?.system && next[key] !== old[key]) {
-        addError(
-          errors,
-          [key],
-          [
-            "validation_collection_system_rule_change",
-            "System collection API rule cannot be changed.",
-          ],
-        );
-      }
+      const e = ruleCheck(next[key], old?.[key]);
+      if (e) errors[key] = e;
     }
-    if (next.type === "auth") {
-      for (const key of AUTH_RULES) {
-        const err = checkRule(next[key]);
-        if (err) addError(errors, [key], err);
-        else if (old?.system && next[key] !== old[key]) {
-          addError(
-            errors,
-            [key],
-            [
-              "validation_collection_system_rule_change",
-              "System collection API rule cannot be changed.",
-            ],
-          );
-        }
-      }
-    }
+    if (next.type === "auth")
+      Object.assign(errors, validateAuthOptions(next, old, ruleCheck));
 
     this.validateIndexes(errors, old, next);
 
@@ -407,6 +522,32 @@ export class CollectionStore {
         errors,
       );
     }
+  }
+
+  private checkRule(c: Collection, rule: unknown): FieldErr | null {
+    if (typeof rule !== "string" || rule === "") return null;
+    let message = filterSyntaxError(rule);
+    if (message === null) {
+      try {
+        const compiler = new QueryCompiler({
+          collection: c,
+          store: this,
+          request: EMPTY_REQUEST,
+          now: this.now,
+        });
+        compiler.allowHidden = true;
+        compiler.filter(parseFilter(rule));
+      } catch (e) {
+        if (!(e instanceof FilterError)) throw e;
+        message = e.message;
+      }
+    }
+    if (message === null) return null;
+    const sentence = /[.?!]$/.test(message) ? message : `${message}.`;
+    return err([
+      "validation_invalid_rule",
+      `Invalid rule. Raw error: ${sentence}`,
+    ]);
   }
 
   private validateName(
@@ -425,6 +566,7 @@ export class CollectionStore {
           "validation_length_out_of_range",
           "The length must be between 1 and 255.",
         ],
+        { min: 1, max: 255 },
       );
     }
     if (name.toLowerCase().includes("_via_"))
@@ -469,7 +611,7 @@ export class CollectionStore {
     if (
       isRename &&
       this.db.get(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? COLLATE NOCASE",
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 COLLATE NOCASE AND NOT EXISTS (SELECT 1 FROM _collections WHERE name = ?1 COLLATE NOCASE)",
         [name],
       )
     ) {
@@ -489,118 +631,160 @@ export class CollectionStore {
     old: Collection | null,
     next: Collection,
   ) {
-    const fields = next.fields;
-    const fieldsError = (err: readonly [string, string]) =>
-      addError(errors, ["fields"], err);
+    const steps: (() => unknown)[] = [
+      () => this.checkDuplicates(next.fields),
+      () => this.checkMinFields(next),
+    ];
+    if (next.type !== "view")
+      steps.push(
+        () => this.checkSystemFields(old, next.fields),
+        () => this.checkTypeChanges(old, next.fields),
+      );
+    if (next.type === "auth") steps.push(() => this.checkReserved(next.fields));
+    steps.push(() => this.checkSettings(old, next));
 
+    for (const step of steps) {
+      const e = step();
+      if (e) {
+        errors.fields = e;
+        return;
+      }
+    }
+  }
+
+  private checkDuplicates(fields: Field[]): Errors | null {
     const ids = new Set<string>();
     const names = new Set<string>();
     for (const [i, f] of fields.entries()) {
       if (ids.has(f.id)) {
-        return addError(
-          errors,
-          ["fields", i, "id"],
-          [
-            "validation_duplicated_field_id",
-            `Duplicated or invalid field id "${f.id}"`,
-          ],
-        );
+        return {
+          [i]: {
+            id: err([
+              "validation_duplicated_field_id",
+              `Duplicated or invalid field id "${f.id}"`,
+            ]),
+          },
+        };
       }
       const lower = String(f.name).toLowerCase();
       if (names.has(lower)) {
-        return addError(
-          errors,
-          ["fields", i, "name"],
-          [
-            "validation_duplicated_field_name",
-            `Duplicated or invalid field name ${f.name}`,
-          ],
-          { fieldName: f.name },
-        );
+        return {
+          [i]: {
+            name: err(
+              [
+                "validation_duplicated_field_name",
+                `Duplicated or invalid field name ${f.name}.`,
+              ],
+              { fieldName: f.name },
+            ),
+          },
+        };
       }
       ids.add(f.id);
       names.add(lower);
     }
+    return null;
+  }
 
-    if (next.type !== "view") {
-      const id = fields.find((f) => f.name === "id");
-      if (!id || id.type !== "text" || !id.primaryKey) {
-        return fieldsError([
-          "validation_missing_primary_key",
-          'Missing or invalid "id" PK field.',
+  private checkMinFields(next: Collection): unknown {
+    const fields = next.fields;
+    if (fields.length === 0) return err(required);
+    const id = fields.find((f) => f.name === "id");
+    if (!id || id.type !== "text" || !id.primaryKey) {
+      return err([
+        "validation_missing_primary_key",
+        'Missing or invalid "id" PK field.',
+      ]);
+    }
+    if (next.type !== "auth") return null;
+
+    const systemTypes = {
+      password: "password",
+      tokenKey: "text",
+      email: "email",
+      emailVisibility: "bool",
+      verified: "bool",
+    };
+    for (const [name, type] of Object.entries(systemTypes)) {
+      const f = fields.find((x) => x.name === name);
+      if (!f || f.type !== type) {
+        return err([
+          `validation_missing_${name}_field`,
+          `System "${name}" field is required.`,
+        ]);
+      }
+      const hidden = name === "password" || name === "tokenKey";
+      if (!f.system || (hidden && !f.hidden)) {
+        return {
+          [name]: hidden
+            ? err([
+                "validation_must_be_system_and_hidden",
+                'The field must be marked as "System" and "Hidden".',
+              ])
+            : err([
+                "validation_must_be_system",
+                'The field must be marked as "System".',
+              ]),
+        };
+      }
+    }
+    return null;
+  }
+
+  private checkSystemFields(old: Collection | null, fields: Field[]) {
+    if (!old) return null;
+    for (const oldField of old.fields.filter((f) => f.system)) {
+      const f = fields.find((x) => x.id === oldField.id);
+      if (!f || f.name !== oldField.name) {
+        return err([
+          "validation_system_field_change",
+          "System fields cannot be deleted or renamed.",
         ]);
       }
     }
-    if (next.type === "auth") {
-      const systemTypes = {
-        password: "password",
-        tokenKey: "text",
-        email: "email",
-        emailVisibility: "bool",
-        verified: "bool",
-      };
-      for (const [name, type] of Object.entries(systemTypes)) {
-        const f = fields.find((x) => x.name === name);
-        if (!f || f.type !== type) {
-          return fieldsError([
-            `validation_missing_${name}_field`,
-            `System "${name}" field is required.`,
-          ]);
-        }
-        if (
-          !f.system ||
-          ((name === "password" || name === "tokenKey") && !f.hidden)
-        ) {
-          return addError(
-            errors,
-            ["fields", fields.indexOf(f), "system"],
-            ["validation_must_be_system", "Must be a system field."],
-          );
-        }
-      }
-    }
+    return null;
+  }
 
-    if (old && next.type !== "view") {
-      for (const oldField of old.fields.filter((f) => f.system)) {
-        const f = fields.find((x) => x.id === oldField.id);
-        if (!f || f.name !== oldField.name) {
-          return fieldsError([
-            "validation_system_field_change",
-            "System fields cannot be deleted or renamed.",
-          ]);
-        }
-      }
-      for (const [i, f] of fields.entries()) {
-        const oldField = old.fields.find((x) => x.id === f.id);
-        if (oldField && oldField.type !== f.type) {
-          addError(
-            errors,
-            ["fields", i],
-            ["validation_field_type_change", "Field type cannot be changed."],
-          );
-        }
-      }
-    }
-
-    if (next.type === "auth") {
-      for (const [i, f] of fields.entries()) {
-        if (RESERVED_AUTH_NAMES.includes(f.name)) {
-          addError(
-            errors,
-            ["fields", i, "name"],
-            [
-              "validation_reserved_field_name",
-              "The field name is reserved and cannot be used.",
-            ],
-          );
-        }
-      }
-    }
-
+  private checkTypeChanges(old: Collection | null, fields: Field[]) {
+    if (!old) return null;
+    const out: Errors = {};
     for (const [i, f] of fields.entries()) {
-      const err = checkFieldName(f.name);
-      if (err) addError(errors, ["fields", i, "name"], err);
+      const oldField = old.fields.find((x) => x.id === f.id);
+      if (oldField && oldField.type !== f.type)
+        out[i] = err([
+          "validation_field_type_change",
+          "Field type cannot be changed.",
+        ]);
     }
+    return Object.keys(out).length > 0 ? out : null;
+  }
+
+  private checkReserved(fields: Field[]) {
+    const out: Errors = {};
+    for (const [i, f] of fields.entries()) {
+      if (RESERVED_AUTH_NAMES.includes(f.name)) {
+        out[i] = {
+          name: err([
+            "validation_reserved_field_name",
+            "The field name is reserved and cannot be used.",
+          ]),
+        };
+      }
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }
+
+  private checkSettings(old: Collection | null, next: Collection) {
+    const out: Errors = {};
+    for (const [i, f] of next.fields.entries()) {
+      const e = validateFieldSettings(f, {
+        collection: next,
+        find: (idOrName) => this.find(idOrName),
+        oldField: old?.fields.find((x) => x.id === f.id),
+      });
+      if (Object.keys(e).length > 0) out[i] = e;
+    }
+    return Object.keys(out).length > 0 ? out : null;
   }
 
   private validateIndexes(

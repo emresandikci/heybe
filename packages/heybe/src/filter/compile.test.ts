@@ -82,6 +82,7 @@ function insert(table: string, row: Record<string, unknown>) {
 beforeAll(() => {
   db = openDb(":memory:");
   store = new CollectionStore(db, now);
+  store.delete("users");
   const users = store.save({
     name: "users",
     type: "auth",
