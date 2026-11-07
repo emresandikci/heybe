@@ -36,6 +36,29 @@ describe("toFilter(toAst())", () => {
     expect(filter({ a: { gt: undefined }, b: {} })).toBe("");
   });
 
+  test("multiple conditions in a group child stay ANDed", () => {
+    expect(filter({ OR: [{ a: 1, b: 2 }, { c: 3 }] })).toBe(
+      "(a=1 && b=2) || c=3",
+    );
+    expect(filter({ OR: [{ v: { gt: 1, lt: 5 } }, { v: 10 }] })).toBe(
+      "(v>1 && v<5) || v=10",
+    );
+    expect(filter({ AND: [{ a: 1, b: 2 }, { c: 3 }] })).toBe(
+      "a=1 && b=2 && c=3",
+    );
+  });
+
+  test("non-primitive and non-finite values are skipped", () => {
+    expect(
+      filter({
+        x: { eq: ['a" || 1=1'] },
+        y: ["z"],
+        z: Infinity,
+        w: { gt: -Infinity, eq: () => 1 },
+      }),
+    ).toBe("");
+  });
+
   test("escapes quotes and backslashes", () => {
     expect(filter({ title: 'a"b\\c' })).toBe('title="a\\"b\\\\c"');
   });

@@ -56,11 +56,12 @@ const isPlain = (value: unknown): value is Plain =>
   !(value instanceof Date);
 
 const isSkipped = (value: unknown) =>
-  value === undefined ||
-  value === null ||
-  value === "" ||
-  (typeof value === "number" && Number.isNaN(value)) ||
-  (value instanceof Date && Number.isNaN(value.getTime()));
+  !(
+    (typeof value === "string" && value !== "") ||
+    (typeof value === "number" && Number.isFinite(value)) ||
+    typeof value === "boolean" ||
+    (value instanceof Date && !Number.isNaN(value.getTime()))
+  );
 
 const field = (path: string): Operand => ({ kind: "field", path });
 
@@ -114,7 +115,10 @@ function operatorExprs(path: string, ops: Plain, insensitive: boolean): Expr[] {
 function group(kind: "and" | "or", items: Expr[]): Expr | null {
   if (items.length === 0) return null;
   if (items.length === 1) return items[0]!;
-  return { kind, items };
+  return {
+    kind,
+    items: items.flatMap((item) => (item.kind === kind ? item.items : [item])),
+  };
 }
 
 function whereExprs(where: Plain, prefix: string): Expr[] {
@@ -123,9 +127,10 @@ function whereExprs(where: Plain, prefix: string): Expr[] {
   for (const [key, value] of Object.entries(where)) {
     if (key === "AND" || key === "OR") {
       if (!Array.isArray(value)) continue;
-      const items = value.flatMap((child) =>
-        whereExprs(child as Plain, prefix),
-      );
+      const items = value.flatMap((child) => {
+        const node = group("and", whereExprs(child as Plain, prefix));
+        return node ? [node] : [];
+      });
       const node = group(key === "AND" ? "and" : "or", items);
       if (node) exprs.push(node);
       continue;
