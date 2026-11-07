@@ -1,0 +1,15 @@
+{
+  "name": "@heybe/configs",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "author": "emresandikci",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emresandikci/heybe.git",
+    "directory": "packages/configs"
+  },
+  "exports": {
+    "./release-configs": "./src/release-config/index.cjs"
+  }
+}

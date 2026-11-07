@@ -1,0 +1,7 @@
+if [ "$SKIP_COMMIT_CHECK" = "true" ]; then
+  pnpm lint-staged
+  exit 0
+else
+  echo "Direct git commit disabled. Please use: pnpm commit"
+  exit 1
+fi

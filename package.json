@@ -1,0 +1,52 @@
+{
+  "name": "@heybe/root",
+  "version": "0.0.0",
+  "description": "Heybe monorepo",
+  "private": true,
+  "license": "MIT",
+  "author": "emresandikci",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emresandikci/heybe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/emresandikci/heybe/issues"
+  },
+  "homepage": "https://github.com/emresandikci/heybe#readme",
+  "packageManager": "pnpm@10.30.1",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "commit": "SKIP_COMMIT_CHECK=true git-cz",
+    "release": "pnpm -r --sequential release",
+    "prepare": "node .husky/install.mjs"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "lint-staged": {
+    "*": "prettier --write --ignore-unknown"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "@semantic-release/changelog": "catalog:",
+    "@semantic-release/commit-analyzer": "catalog:",
+    "@semantic-release/git": "catalog:",
+    "@semantic-release/npm": "catalog:",
+    "@semantic-release/release-notes-generator": "catalog:",
+    "commitizen": "catalog:",
+    "cz-conventional-changelog": "catalog:",
+    "husky": "catalog:",
+    "lint-staged": "catalog:",
+    "prettier": "catalog:",
+    "semantic-release": "catalog:",
+    "semantic-release-monorepo": "catalog:"
+  }
+}

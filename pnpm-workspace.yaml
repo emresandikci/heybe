@@ -1,0 +1,19 @@
+packages:
+  - apps/*
+  - packages/*
+
+catalog:
+  "@commitlint/cli": ^21.2.4
+  "@commitlint/config-conventional": ^21.2.4
+  "@semantic-release/changelog": ^7.0.0
+  "@semantic-release/commit-analyzer": ^13.0.1
+  "@semantic-release/git": ^11.0.1
+  "@semantic-release/npm": ^13.2.0
+  "@semantic-release/release-notes-generator": ^14.1.1
+  commitizen: ^4.3.2
+  cz-conventional-changelog: ^3.3.0
+  husky: ^9.1.7
+  lint-staged: ^17.6.0
+  prettier: ^3.9.10
+  semantic-release: ^25.0.9
+  semantic-release-monorepo: ^8.0.2
