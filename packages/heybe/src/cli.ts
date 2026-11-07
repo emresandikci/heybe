@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { createApp } from "./app";
+import { runInstaller } from "./http/routes/installer";
 import { serve } from "./http/server";
 
 interface Superuser {
@@ -36,6 +37,9 @@ function runServe(argv: string[]) {
   const app = createApp({ dir: values.dir });
   const server = serve(app, { host, port, origins });
   console.log(`Server started at ${server.url}`);
+  runInstaller(app, server.url).catch((err) =>
+    console.warn("Failed to initialize installer", err),
+  );
 
   const shutdown = async () => {
     await server.stop();

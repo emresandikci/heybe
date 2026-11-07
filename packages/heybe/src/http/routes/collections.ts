@@ -19,7 +19,7 @@ const DEFAULT_PER_PAGE = 30;
 const MAX_PER_PAGE = 1000;
 const INT64_MAX = 2n ** 63n - 1n;
 
-function requireSuperuser(e: RequestEvent): void {
+export function requireSuperuser(e: RequestEvent): void {
   if (!e.auth)
     throw new ApiError(
       401,

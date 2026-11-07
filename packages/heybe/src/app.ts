@@ -4,10 +4,12 @@ import type { CollectionName, Collections } from "@heybe/query";
 import { CollectionStore } from "./collections/store";
 import { type Db, openDb } from "./db";
 import { type RecordService, RecordServiceImpl } from "./records/service";
+import { Settings } from "./settings";
 
 export interface App {
   db: Db;
   collections: CollectionStore;
+  settings: Settings;
   now: () => Date;
   records<N extends CollectionName>(name: N): RecordService<Collections[N]>;
   records(name: string): RecordService<Record<string, unknown>>;
@@ -20,10 +22,12 @@ export function createApp(opts: { dir: string; now?: () => Date }): App {
   const db = openDb(memory ? ":memory:" : join(opts.dir, "data.db"));
   const now = opts.now ?? (() => new Date());
   const collections = new CollectionStore(db, now);
+  const settings = new Settings(db);
 
   return {
     db,
     collections,
+    settings,
     now,
     records: (name: string) =>
       new RecordServiceImpl({ db, store: collections, now }, name),

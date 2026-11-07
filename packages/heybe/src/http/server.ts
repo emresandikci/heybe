@@ -1,11 +1,18 @@
 import type { App } from "../app";
 import { ApiError, errorResponse } from "./errors";
-import { checkBodyLimit, cors, loadAuth, securityHeaders } from "./middlewares";
+import {
+  checkBodyLimit,
+  checkSuperuserIp,
+  cors,
+  loadAuth,
+  securityHeaders,
+} from "./middlewares";
 import { Router, createEvent } from "./router";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
 import { registerRecordRoutes } from "./routes/records";
+import { registerSettingsRoutes } from "./routes/settings";
 
 export function createRouter(): Router {
   const router = new Router();
@@ -13,6 +20,7 @@ export function createRouter(): Router {
   registerRecordAuthRoutes(router);
   registerCollectionRoutes(router);
   registerRecordRoutes(router);
+  registerSettingsRoutes(router);
   return router;
 }
 
@@ -37,6 +45,8 @@ export function serve(
       if (!found) throw new ApiError(404, "");
       const event = createEvent(app, req, found.params, found.bodyLimit);
       event.auth = loadAuth(app, req);
+      if (event.auth?.isSuperuser)
+        checkSuperuserIp(app, req, server.requestIP(req)?.address ?? "");
       res = await found.h(event);
     } catch (err) {
       res = errorResponse(err);

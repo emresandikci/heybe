@@ -14,6 +14,8 @@ function randomString(length: number, alphabet: string): string {
   return out;
 }
 
+export const INSTALLER_EMAIL = "__pbinstaller@example.com";
+
 export function newId(): string {
   return randomString(15, ID_ALPHABET);
 }

@@ -13,7 +13,7 @@ const URL_PATTERN = new RegExp(
   "iu",
 );
 
-const isUrl = (value: string) =>
+export const isUrl = (value: string) =>
   value.length < 2083 && !value.startsWith(".") && URL_PATTERN.test(value);
 
 function hostOf(value: string): string {

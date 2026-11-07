@@ -13,6 +13,7 @@ export function newAuthToken(
   app: App,
   collection: Collection,
   record: Record<string, unknown>,
+  opts: { duration?: number; refreshable?: boolean } = {},
 ): string {
   const config = collection.authToken as TokenConfig;
   return signJwt(
@@ -20,8 +21,10 @@ export function newAuthToken(
       type: "auth",
       id: record.id,
       collectionId: collection.id,
-      refreshable: true,
-      exp: Math.floor(app.now().getTime() / 1000) + config.duration,
+      refreshable: opts.refreshable ?? true,
+      exp:
+        Math.floor(app.now().getTime() / 1000) +
+        (opts.duration ?? config.duration),
     },
     `${record.tokenKey}${config.secret}`,
   );

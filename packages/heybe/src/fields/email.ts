@@ -16,6 +16,8 @@ const EMAIL = new RegExp(
   "u",
 );
 
+export const isEmail = (value: string) => EMAIL.test(value);
+
 export const email: FieldDef = {
   sqlType: sqlType("email"),
   normalize: toStr,

@@ -14,7 +14,12 @@ import type { FieldCtx } from "../fields";
 import { toStr, uniqueStrings } from "../fields/shared";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { parseSort } from "../filter/parse";
-import { NotFoundError, ValidationError, formatDate } from "../util";
+import {
+  INSTALLER_EMAIL,
+  NotFoundError,
+  ValidationError,
+  formatDate,
+} from "../util";
 import { randomByPattern } from "./pattern";
 import { serializeRecord } from "./serialize";
 
@@ -201,6 +206,10 @@ export class RecordServiceImpl<T> implements RecordService<T> {
         const cols = c.fields.map((f) => f.name);
         this.deps.db.run(insertSql(c, cols), dbValues(c, values));
       });
+      if (c.name === "_superusers" && values.email !== INSTALLER_EMAIL)
+        this.deps.db.run("DELETE FROM _superusers WHERE email = ?", [
+          INSTALLER_EMAIL,
+        ]);
       return { c, saved: values };
     });
     return this.output(c, saved);

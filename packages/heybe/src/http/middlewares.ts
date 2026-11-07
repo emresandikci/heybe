@@ -1,5 +1,7 @@
 import type { App } from "../app";
 import { authFromToken } from "../auth/tokens";
+import { isIP } from "node:net";
+import { isIpInList } from "../ip";
 import { ApiError } from "./errors";
 import type { AuthState } from "./router";
 
@@ -116,4 +118,26 @@ export function authTokenFromRequest(req: Request): string {
 export function loadAuth(app: App, req: Request): AuthState | null {
   const token = authTokenFromRequest(req);
   return token === "" ? null : authFromToken(app, token);
+}
+
+function realIp(app: App, req: Request, remote: string): string {
+  const { headers, useLeftmostIP } = app.settings.get().trustedProxy;
+  for (const name of headers) {
+    const ips = (req.headers.get(name) ?? "")
+      .split(",")
+      .map((ip) => ip.trim())
+      .filter((ip) => isIP(ip) !== 0);
+    const picked = useLeftmostIP ? ips[0] : ips.at(-1);
+    if (picked) return picked;
+  }
+  return remote;
+}
+
+export function checkSuperuserIp(app: App, req: Request, remote: string): void {
+  const { superuserIPs } = app.settings.get();
+  if (
+    superuserIPs.length > 0 &&
+    !isIpInList(superuserIPs, realIp(app, req, remote))
+  )
+    throw new ApiError(403, "");
 }
