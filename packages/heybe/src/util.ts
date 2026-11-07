@@ -36,3 +36,11 @@ export class ValidationError extends Error {
     super(message);
   }
 }
+
+export class NotFoundError extends Error {
+  readonly status = 404;
+
+  constructor(message = "The requested resource wasn't found.") {
+    super(message);
+  }
+}
