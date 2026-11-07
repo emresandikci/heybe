@@ -179,6 +179,8 @@ export interface SaveInput extends Partial<Collection> {
 type Prepared = { old: Collection | null; next: Collection };
 
 export class CollectionStore {
+  onChange?: () => void;
+
   constructor(
     private readonly db: Db,
     private readonly now: () => Date,
@@ -227,12 +229,14 @@ export class CollectionStore {
   }
 
   save(input: SaveInput, isNew = false): Collection {
-    return this.db.tx(() => {
+    const saved = this.db.tx(() => {
       const { old, next } = this.prepare(input, isNew);
       this.validate(old, next);
       this.persist(old, next);
       return next;
     });
+    this.onChange?.();
+    return saved;
   }
 
   // PB ImportCollections: all collections are saved first and validated afterwards, in one transaction.
@@ -273,6 +277,7 @@ export class CollectionStore {
         }
       }
     });
+    this.onChange?.();
   }
 
   delete(nameOrId: string): void {
@@ -285,6 +290,7 @@ export class CollectionStore {
         `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
       );
     this.db.tx(() => this.remove(c));
+    this.onChange?.();
   }
 
   references(c: Collection): Collection[] {

@@ -2,6 +2,9 @@ import { parseArgs } from "node:util";
 import { createApp } from "./app";
 import { runInstaller } from "./http/routes/installer";
 import { serve } from "./http/server";
+import { writeTypes, writeTypesSafely } from "./typegen";
+
+const DEFAULT_TYPES_FILE = "./heybe-env.d.ts";
 
 interface Superuser {
   id: string;
@@ -35,6 +38,10 @@ function runServe(argv: string[]) {
   const port = Number(values.http.slice(sep + 1));
   const origins = values.origins.flatMap((o) => o.split(","));
   const app = createApp({ dir: values.dir });
+  if (values.dev) {
+    app.collections.onChange = () => writeTypesSafely(app, DEFAULT_TYPES_FILE);
+    writeTypesSafely(app, DEFAULT_TYPES_FILE);
+  }
   const server = serve(app, { host, port, origins });
   console.log(`Server started at ${server.url}`);
   runInstaller(app, server.url).catch((err) =>
@@ -64,10 +71,27 @@ async function runSuperuser(argv: string[]) {
   await upsertSuperuser(values.dir, email, password);
 }
 
+function runTypegen(argv: string[]) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      dir: { type: "string", default: "./heybe_data" },
+      out: { type: "string", default: DEFAULT_TYPES_FILE },
+    },
+  });
+  const app = createApp({ dir: values.dir });
+  try {
+    writeTypes(app, values.out);
+  } finally {
+    app.close();
+  }
+}
+
 const [command, ...args] = process.argv.slice(2);
 if (command === "serve") runServe(args);
+else if (command === "typegen") runTypegen(args);
 else if (command === "superuser") await runSuperuser(args);
 else {
-  console.error("Usage: heybe <serve|superuser>");
+  console.error("Usage: heybe <serve|superuser|typegen>");
   process.exit(1);
 }
