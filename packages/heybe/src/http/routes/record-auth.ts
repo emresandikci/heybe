@@ -6,6 +6,7 @@ import { parseUnverifiedJwt } from "../../auth/jwt";
 import { quote, findSingleColumnUniqueIndex } from "../../collections/ddl";
 import type { Collection } from "../../collections/model";
 import { FilterError, parseFilter } from "../../filter/parse";
+import { buildRequestInfo } from "../../records/rules";
 import { serializeRecord } from "../../records/serialize";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
@@ -151,24 +152,13 @@ function canAuthenticate(
     if (err instanceof FilterError) return false;
     throw err;
   }
-  const headers: Record<string, string> = {};
-  for (const [k, v] of e.req.headers)
-    headers[k.toLowerCase().replaceAll("-", "_")] = v;
   try {
     const { items } = e.app.records(c.name).query({
       ruleFilter,
       filter: toAst({ id: record.id as string }),
       perPage: 1,
       skipTotal: true,
-      request: {
-        auth: e.auth?.record ?? null,
-        authCollection: e.auth?.collection.name ?? null,
-        body,
-        query: Object.fromEntries(e.query),
-        headers,
-        method: e.req.method,
-        context,
-      },
+      request: buildRequestInfo(e, body, context),
     });
     return items.length > 0;
   } catch (err) {

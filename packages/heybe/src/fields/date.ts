@@ -35,6 +35,9 @@ function goTime(date: Date): string {
   return `${day} ${time.slice(0, 8)}${fraction ? "." + fraction : ""} +0000 UTC`;
 }
 
+// Go time.Time JSON (RFC 3339 with trailing zero fractions removed)
+const goJson = (date: Date) => date.toISOString().replace(/\.?0+Z$/, "Z");
+
 export const date: FieldDef = {
   sqlType: sqlType("date"),
   normalize: normalizeDate,
@@ -49,6 +52,7 @@ export const date: FieldDef = {
         "validation_min_greater_equal_than_required",
         "Must be no less than {{.threshold}}.",
         { threshold: goTime(min) },
+        { threshold: goJson(min) },
       );
     }
     const max = parseDate(field.max);
@@ -57,6 +61,7 @@ export const date: FieldDef = {
         "validation_max_less_equal_than_required",
         "Must be no greater than {{.threshold}}.",
         { threshold: goTime(max) },
+        { threshold: goJson(max) },
       );
     }
     return null;

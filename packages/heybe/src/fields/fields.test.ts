@@ -132,6 +132,7 @@ describe("text", () => {
       expect(check("text", { ...open, pattern: ".*" }, "a b")).toEqual({
         code: "validation_forbidden_pk_character",
         message: "' ' is not a valid primary key character.",
+        params: { ch: " " },
       });
       expect(code("text", { ...open, pattern: ".*" }, "nul")).toBe(
         "validation_reserved_pk",

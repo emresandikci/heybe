@@ -187,16 +187,17 @@ function normalize(target: Target["name"], value: unknown, key = ""): unknown {
     if (!ids.has(v)) ids.set(v, `<id:${ids.size + 1}>`);
     return ids.get(v);
   };
-  if (Array.isArray(value)) return value.map((v) => normalize(target, v));
+  if (Array.isArray(value)) return value.map((v) => normalize(target, v, key));
   if (value !== null && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([k, v]) => [k, normalize(target, v, k)]),
     );
   }
   if (typeof value === "string") {
-    if (key === "id") return placeholder(value);
+    if (key === "id" && value !== "") return placeholder(value);
     if (Object.hasOwn(PLACEHOLDER_KEYS, key)) return PLACEHOLDER_KEYS[key];
-    if (/^[a-z0-9]{15}$/.test(value)) return placeholder(value);
+    // other strings only when already seen as an id (relation values), so a wrong value is not hidden
+    if (value !== "" && ids.has(value)) return placeholder(value);
   }
   return value;
 }

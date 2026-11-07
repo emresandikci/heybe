@@ -5,12 +5,14 @@ import { Router, createEvent } from "./router";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
+import { registerRecordRoutes } from "./routes/records";
 
 export function createRouter(): Router {
   const router = new Router();
   registerHealthRoutes(router);
   registerRecordAuthRoutes(router);
   registerCollectionRoutes(router);
+  registerRecordRoutes(router);
   return router;
 }
 

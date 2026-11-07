@@ -35,6 +35,7 @@ export interface RecordService<T> {
     request?: RequestInfo | null;
     ruleFilter?: Expr | null;
     fields?: string;
+    manageRule?: Expr | null;
   }): ListResult<T>;
 }
 
@@ -119,6 +120,39 @@ function assign(c: Collection, values: Values, data: Values): void {
   }
 }
 
+// The record values after loading `data` into `base` (a new record when null), without validation.
+export function draftValues(
+  c: Collection,
+  base: Values | null,
+  data: Values,
+): Values {
+  const values = { ...(base ?? zeroValues(c)) };
+  assign(c, values, data);
+  return values;
+}
+
+// Port of PB Record.ReplaceModifiers: modifier keys ("views+") become the resolved field value.
+// Password values stay as submitted, so the plain text still reaches the record service.
+export function replaceModifiers(
+  c: Collection,
+  base: Values | null,
+  data: Values,
+): Values {
+  const values = draftValues(c, base, data);
+  const out = { ...data };
+  for (const key of Object.keys(data)) {
+    const f = c.fields.find((f) => modifier(f, key));
+    if (!f || f.type === "password") continue;
+    delete out[key];
+    out[f.name] = values[f.name];
+  }
+  return out;
+}
+
+export function dbValues(c: Collection, values: Values): unknown[] {
+  return c.fields.map((f) => fields[f.type].toDb(values[f.name]));
+}
+
 function autogenerate(c: Collection, values: Values): void {
   for (const f of c.fields) {
     const pattern = f.type === "text" ? f.autogeneratePattern : "";
@@ -165,7 +199,7 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       this.checkAuthId(c, values, CREATE_FAILED);
       this.write(c, values, CREATE_FAILED, () => {
         const cols = c.fields.map((f) => f.name);
-        this.deps.db.run(insertSql(c, cols), this.dbValues(c, values));
+        this.deps.db.run(insertSql(c, cols), dbValues(c, values));
       });
       return { c, saved: values };
     });
@@ -245,16 +279,39 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       totalPages = Math.ceil(totalItems / perPage);
     }
 
+    const managed = this.managedIds(c, rows, request, opts.manageRule);
     const items = rows.map((row) => {
       const values = decode(c, row);
       return serializeRecord(c, values, {
         isSuperuser,
         isOwner:
-          request?.authCollection === c.name && request.auth?.id === values.id,
+          (request?.auth?.id === values.id && c.type === "auth") ||
+          managed.has(values.id as string),
         fields: opts.fields,
       });
     });
     return { page, perPage, totalItems, totalPages, items: items as T[] };
+  }
+
+  // ids of auth records the requester manages (PB autoResolveRecordsFlags)
+  private managedIds(
+    c: Collection,
+    rows: Values[],
+    request: RequestInfo | null,
+    manageRule: Expr | null | undefined,
+  ): Set<string> {
+    if (!manageRule || !request?.auth || c.type !== "auth" || rows.length === 0)
+      return new Set();
+    const { db, store, now } = this.deps;
+    const built = new QueryCompiler({ collection: c, store, request, now })
+      .filter(manageRule)
+      .build();
+    const table = quote(c.name);
+    const ids = db.query<{ id: string }>(
+      `SELECT DISTINCT ${table}.id FROM ${table} ${built.joins.join(" ")} WHERE (${built.sql}) AND ${table}.id IN (SELECT value FROM json_each(?${built.params.length + 1}))`,
+      [...built.params, JSON.stringify(rows.map((r) => r.id))],
+    );
+    return new Set(ids.map((r) => r.id));
   }
 
   findRaw(id: string): Values {
@@ -290,15 +347,11 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     }) as T;
   }
 
-  private dbValues(c: Collection, values: Values): unknown[] {
-    return c.fields.map((f) => fields[f.type].toDb(values[f.name]));
-  }
-
   private updateRow(c: Collection, values: Values): void {
     const cols = c.fields.filter((f) => f.name !== "id");
     this.deps.db.run(
       `UPDATE ${quote(c.name)} SET ${cols.map((f) => `${quote(f.name)} = ?`).join(", ")} WHERE id = ?`,
-      [...this.dbValues({ ...c, fields: cols }, values), values.id],
+      [...dbValues({ ...c, fields: cols }, values), values.id],
     );
   }
 

@@ -169,7 +169,11 @@ describe("update and delete", () => {
     expect(e.message).toBe("Failed to update record.");
     expect(e.data).toEqual({
       title: { code: "validation_required", message: "Cannot be blank." },
-      tags: { code: "validation_invalid_value", message: "Invalid value zzz." },
+      tags: {
+        code: "validation_invalid_value",
+        message: "Invalid value zzz.",
+        params: { value: "zzz" },
+      },
     });
   });
 

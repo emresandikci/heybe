@@ -4,6 +4,7 @@ import type { Collection, Field } from "../collections/model";
 export interface FieldError {
   code: string;
   message: string;
+  params?: Record<string, unknown>;
 }
 
 export interface FieldCtx {
@@ -34,15 +35,19 @@ const sentenize = (message: string) => {
 const display = (value: unknown) =>
   Array.isArray(value) ? `[${value.join(" ")}]` : String(value);
 
+// `jsonParams` are the params as PB serializes them, when that differs from the message text.
 export function fail(
   code: string,
   message: string,
   params: Record<string, unknown> = {},
+  jsonParams = params,
 ): FieldError {
   const filled = message.replace(/\{\{\.(\w+)\}\}/g, (_, key: string) =>
     display(params[key]),
   );
-  return { code, message: sentenize(filled) };
+  return Object.keys(jsonParams).length > 0
+    ? { code, message: sentenize(filled), params: jsonParams }
+    : { code, message: sentenize(filled) };
 }
 
 export const strings = (value: unknown): string[] =>
