@@ -1,4 +1,7 @@
+import type { App } from "../app";
+import { authFromToken } from "../auth/tokens";
 import { ApiError } from "./errors";
+import type { AuthState } from "./router";
 
 export const DEFAULT_MAX_BODY_SIZE = 32 << 20;
 
@@ -101,4 +104,16 @@ export async function readLimited(
     offset += chunk.length;
   }
   return out;
+}
+
+export function authTokenFromRequest(req: Request): string {
+  const header = req.headers.get("authorization") ?? "";
+  if (header.length > 7 && header.slice(0, 7).toLowerCase() === "bearer ")
+    return header.slice(7);
+  return header;
+}
+
+export function loadAuth(app: App, req: Request): AuthState | null {
+  const token = authTokenFromRequest(req);
+  return token === "" ? null : authFromToken(app, token);
 }

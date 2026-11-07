@@ -120,7 +120,27 @@ async function startOne(
     await stop();
     throw err;
   }
-  return { target: { name, url, superToken: "" }, stop };
+  let superToken = "";
+  try {
+    const res = await fetch(
+      `${url}/api/collections/_superusers/auth-with-password`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          identity: SUPERUSER_EMAIL,
+          password: SUPERUSER_PASSWORD,
+        }),
+      },
+    );
+    if (!res.ok)
+      throw new Error(`${name} superuser login failed: ${res.status}`);
+    superToken = ((await res.json()) as { token: string }).token;
+  } catch (err) {
+    await stop();
+    throw err;
+  }
+  return { target: { name, url, superToken }, stop };
 }
 
 export async function startTargets(): Promise<Started> {

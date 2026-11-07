@@ -1,12 +1,14 @@
 import type { App } from "../app";
 import { ApiError, errorResponse } from "./errors";
-import { checkBodyLimit, cors, securityHeaders } from "./middlewares";
+import { checkBodyLimit, cors, loadAuth, securityHeaders } from "./middlewares";
 import { Router, createEvent } from "./router";
 import { registerHealthRoutes } from "./routes/health";
+import { registerRecordAuthRoutes } from "./routes/record-auth";
 
 export function createRouter(): Router {
   const router = new Router();
   registerHealthRoutes(router);
+  registerRecordAuthRoutes(router);
   return router;
 }
 
@@ -29,7 +31,9 @@ export function serve(
       const found = router.match(req.method, path);
       checkBodyLimit(req, found?.bodyLimit);
       if (!found) throw new ApiError(404, "");
-      res = await found.h(createEvent(app, req, found.params, found.bodyLimit));
+      const event = createEvent(app, req, found.params, found.bodyLimit);
+      event.auth = loadAuth(app, req);
+      res = await found.h(event);
     } catch (err) {
       res = errorResponse(err);
     }

@@ -24,6 +24,7 @@ export interface RecordService<T> {
   create(data: Partial<T>): Promise<T>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
+  findRaw(id: string): Record<string, unknown>;
   query(opts: {
     filter?: Expr | null;
     sort?: string;
@@ -159,6 +160,7 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       autogenerate(c, values);
       this.check(c, values, null, CREATE_FAILED, prepared);
       this.stamp(c, values, "onCreate");
+      if (c.name === "_superusers") values.verified = true;
       this.checkAuthId(c, values, CREATE_FAILED);
       this.write(c, values, CREATE_FAILED, () => {
         const cols = c.fields.map((f) => f.name);
@@ -178,6 +180,7 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       assign(c, values, data as Values);
       this.check(c, values, original, UPDATE_FAILED, prepared);
       this.stamp(c, values, "onUpdate");
+      if (c.name === "_superusers") values.verified = true;
       if (c.type === "auth") this.refreshTokenKey(c, values, original);
       this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
       return { c, saved: values };
