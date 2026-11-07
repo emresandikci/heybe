@@ -3,6 +3,7 @@ packages:
   - packages/*
 
 catalog:
+  "@types/bun": ^1.4.4
   "@commitlint/cli": ^21.2.4
   "@commitlint/config-conventional": ^21.2.4
   "@semantic-release/changelog": ^7.0.0
@@ -17,3 +18,5 @@ catalog:
   prettier: ^3.9.10
   semantic-release: ^25.0.9
   semantic-release-monorepo: ^8.0.2
+  autocannon: ^9.0.0
+  typescript: ^7.0.2

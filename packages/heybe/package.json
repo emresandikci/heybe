@@ -1,0 +1,24 @@
+{
+  "name": "heybe",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "author": "emresandikci",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emresandikci/heybe.git",
+    "directory": "packages/heybe"
+  },
+  "scripts": {
+    "release": "semantic-release -e semantic-release-monorepo",
+    "test": "bun test src --pass-with-no-tests",
+    "test:contract": "bun test contract",
+    "bench": "bun bench/run.ts"
+  },
+  "devDependencies": {
+    "@heybe/configs": "workspace:*"
+  },
+  "dependencies": {
+    "@heybe/query": "workspace:*"
+  }
+}

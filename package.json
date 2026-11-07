@@ -23,7 +23,10 @@
     "format": "prettier --write .",
     "commit": "SKIP_COMMIT_CHECK=true git-cz",
     "release": "pnpm -r --sequential release",
-    "prepare": "node .husky/install.mjs"
+    "prepare": "node .husky/install.mjs",
+    "test:contract": "pnpm --filter heybe test:contract",
+    "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/heybe exec tsc -p .",
+    "bench": "pnpm --filter heybe bench"
   },
   "config": {
     "commitizen": {
@@ -41,12 +44,14 @@
     "@semantic-release/git": "catalog:",
     "@semantic-release/npm": "catalog:",
     "@semantic-release/release-notes-generator": "catalog:",
+    "@types/bun": "catalog:",
     "commitizen": "catalog:",
     "cz-conventional-changelog": "catalog:",
     "husky": "catalog:",
     "lint-staged": "catalog:",
     "prettier": "catalog:",
     "semantic-release": "catalog:",
-    "semantic-release-monorepo": "catalog:"
+    "semantic-release-monorepo": "catalog:",
+    "typescript": "catalog:"
   }
 }

@@ -1,0 +1,19 @@
+{
+  "name": "@heybe/query",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "author": "emresandikci",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emresandikci/heybe.git",
+    "directory": "packages/query"
+  },
+  "scripts": {
+    "release": "semantic-release -e semantic-release-monorepo",
+    "test": "bun test src"
+  },
+  "devDependencies": {
+    "@heybe/configs": "workspace:*"
+  }
+}
