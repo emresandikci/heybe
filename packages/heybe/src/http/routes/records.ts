@@ -426,20 +426,29 @@ export interface BatchResult {
   status: number;
 }
 
+// The create route's checks and write on a prepared record (batch and OAuth2 sign-up).
+export function createPreparedChecked(
+  app: App,
+  c: Collection,
+  info: RequestInfo,
+  p: PreparedWrite,
+): Values {
+  const { data, access } = createChecks(app, c, info);
+  try {
+    validateAuthForm(c, data, null, access, CREATE_FAILED, null);
+    return app.records(c.name).createPrepared(p, data);
+  } catch (err) {
+    saveFailed(CREATE_FAILED, err);
+  }
+}
+
 export function batchCreate(
   app: App,
   c: Collection,
   info: RequestInfo,
   p: PreparedWrite,
 ): BatchResult {
-  const { data, access } = createChecks(app, c, info);
-  let saved: Values;
-  try {
-    validateAuthForm(c, data, null, access, CREATE_FAILED, null);
-    saved = app.records(c.name).createPrepared(p, data);
-  } catch (err) {
-    saveFailed(CREATE_FAILED, err);
-  }
+  const saved = createPreparedChecked(app, c, info, p);
   return { body: serialize(app, c, info, saved.id as string), status: 200 };
 }
 

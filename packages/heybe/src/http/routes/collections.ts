@@ -1,4 +1,5 @@
 import type { App } from "../../app";
+import { providers } from "../../auth/oauth2/providers";
 import { decodeCollection, serializeCollection } from "../../collections/codec";
 import { sqliteMessage } from "../../collections/ddl";
 import { DecodeError, withDefaults } from "../../collections/field-settings";
@@ -210,6 +211,17 @@ async function truncate(e: RequestEvent): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
+// PB collectionListOAuth2Providers: sorted by order, then by name.
+function oauth2Providers(e: RequestEvent): Response {
+  const list = Object.values(providers).sort(
+    (a, b) => a.order - b.order || (a.name < b.name ? -1 : 1),
+  );
+  return e.json(
+    200,
+    list.map(({ name, displayName, logo }) => ({ name, displayName, logo })),
+  );
+}
+
 function scaffolds(e: RequestEvent): Response {
   const out: Record<string, unknown> = {};
   for (const type of ["base", "auth", "view"] as const) {
@@ -330,6 +342,11 @@ export function registerCollectionRoutes(router: Router): void {
   );
   router.add("PUT", "/api/collections/import", guarded(importCollections));
   router.add("GET", "/api/collections/meta/scaffolds", guarded(scaffolds));
+  router.add(
+    "GET",
+    "/api/collections/meta/oauth2-providers",
+    guarded(oauth2Providers),
+  );
   router.add(
     "POST",
     "/api/collections/meta/dry-run-view",

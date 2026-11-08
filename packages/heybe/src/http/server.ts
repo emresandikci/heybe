@@ -15,6 +15,7 @@ import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
 import { registerRecordAuthFlowRoutes } from "./routes/record-auth-flows";
+import { registerRecordAuthOAuth2Routes } from "./routes/record-auth-oauth2";
 import { registerRecordRoutes } from "./routes/records";
 import { registerSettingsRoutes } from "./routes/settings";
 
@@ -37,6 +38,7 @@ export function createRouter(): Router {
   registerHealthRoutes(router);
   registerRecordAuthRoutes(router);
   registerRecordAuthFlowRoutes(router);
+  registerRecordAuthOAuth2Routes(router);
   registerCollectionRoutes(router);
   registerRecordRoutes(router);
   registerFileRoutes(router);

@@ -19,6 +19,7 @@ const PLACEHOLDERS: Record<string, [RegExp, string]> = {
   created: [DATE, "<created>"],
   updated: [DATE, "<updated>"],
   tokenKey: [/./, "<tokenKey>"],
+  expiry: [DATE, "<expiry>"],
 };
 
 export interface Target {

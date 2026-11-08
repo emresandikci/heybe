@@ -2,6 +2,7 @@ import { toAst } from "@heybe/query";
 import type { App } from "../../app";
 import { authTokenFromRequest } from "../middlewares";
 import { type MfaMethod, checkMfa } from "../../auth/mfa";
+import { authMethodsProviders } from "../../auth/oauth2/flow";
 import { newAuthToken } from "../../auth/tokens";
 import { parseUnverifiedJwt } from "../../auth/jwt";
 import { quote, findSingleColumnUniqueIndex } from "../../collections/ddl";
@@ -186,6 +187,8 @@ export async function authResponse(
   body: Values,
   context: string,
   method: MfaMethod,
+  // fields added to the 200 body (OAuth2 `meta`)
+  extra: Values = {},
 ): Promise<Response> {
   if (!canAuthenticate(e, c, record, body, context))
     throw new ApiError(
@@ -211,7 +214,7 @@ export async function authResponse(
     (e.query.get("expand") ?? "").split(","),
     info,
   );
-  return e.json(200, { record: expanded, token });
+  return e.json(200, { ...extra, record: expanded, token });
 }
 
 export function registerRecordAuthRoutes(router: Router): void {
@@ -224,18 +227,20 @@ export function registerRecordAuthRoutes(router: Router): void {
       password.enabled && password.identityFields.includes("email");
     const usernamePassword =
       password.enabled && password.identityFields.includes("username");
+    const oauth2 = (c.oauth2 as { enabled: boolean }).enabled;
+    const providers = oauth2 ? authMethodsProviders(c) : [];
     return e.json(200, {
       password: {
         identityFields: password.enabled ? password.identityFields : [],
         enabled: password.enabled,
       },
-      oauth2: { providers: [], enabled: false },
+      oauth2: { providers, enabled: oauth2 },
       mfa: { enabled: mfa.enabled, duration: mfa.enabled ? mfa.duration : 0 },
       otp: {
         enabled: otp.enabled,
         duration: otp.enabled ? otp.duration : 0,
       },
-      authProviders: [],
+      authProviders: providers.map((p) => ({ ...p, logo: "" })),
       usernamePassword,
       emailPassword,
     });

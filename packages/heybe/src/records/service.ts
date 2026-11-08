@@ -328,7 +328,10 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       this.check(c, values, original, UPDATE_FAILED);
       this.stamp(c, values, "onUpdate");
       if (c.name === "_superusers") values.verified = true;
-      if (c.type === "auth") this.refreshTokenKey(c, values, original);
+      if (c.type === "auth") {
+        this.dropLinksOnVerify(c, values, original);
+        this.refreshTokenKey(c, values, original);
+      }
       this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
       return { c, saved: values, original };
     });
@@ -607,6 +610,21 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     }
   }
 
+  // PB deletes the OAuth2 links of a record that becomes verified and refreshes its tokenKey, so
+  // links made to a pre-created unverified account stop working.
+  private dropLinksOnVerify(c: Collection, values: Values, original: Values) {
+    if (original.verified === true || values.verified !== true) return;
+    const { changes } = this.deps.db.run(
+      "DELETE FROM _externalAuths WHERE collectionRef = ? AND recordRef = ?",
+      [c.id, values.id as string],
+    );
+    const pattern = c.fields.find(
+      (f) => f.name === "tokenKey",
+    )?.autogeneratePattern;
+    if (changes > 0 && typeof pattern === "string" && pattern !== "")
+      values.tokenKey = randomByPattern(pattern);
+  }
+
   private refreshTokenKey(
     c: Collection,
     values: Values,
@@ -667,6 +685,11 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     const { db, store } = this.deps;
     db.run(`DELETE FROM ${quote(c.name)} WHERE id = ?`, [values.id]);
     removed.push(`${c.id}/${values.id}`);
+    if (c.type === "auth")
+      db.run(
+        "DELETE FROM _externalAuths WHERE collectionRef = ? AND recordRef = ?",
+        [c.id, values.id],
+      );
 
     const refs = store
       .all()

@@ -1,3 +1,4 @@
+import { providers as knownProviders } from "../auth/oauth2/providers";
 import { findSingleColumnUniqueIndex } from "./ddl";
 import {
   type Errors,
@@ -11,41 +12,6 @@ import {
 } from "./errors";
 import type { Shape } from "./field-settings";
 import type { Collection } from "./model";
-
-const OAUTH2_PROVIDERS = [
-  "apple",
-  "bitbucket",
-  "box",
-  "discord",
-  "facebook",
-  "gitea",
-  "gitee",
-  "github",
-  "gitlab",
-  "google",
-  "instagram2",
-  "kakao",
-  "lark",
-  "linear",
-  "livechat",
-  "mailcow",
-  "microsoft",
-  "monday",
-  "notion",
-  "oidc",
-  "oidc2",
-  "oidc3",
-  "patreon",
-  "planningcenter",
-  "spotify",
-  "strava",
-  "trakt",
-  "twitch",
-  "twitter",
-  "vk",
-  "wakatime",
-  "yandex",
-];
 
 const TOKEN: Shape = { secret: "string", duration: "int" };
 const TEMPLATE: Shape = { subject: "string", body: "string" };
@@ -195,7 +161,7 @@ export function validateAuthOptions(
         const at = (key: string) => ["oauth2", "providers", String(i), key];
         const name = names[i]!;
         if (name === "") set(at("name"), err(required));
-        else if (!OAUTH2_PROVIDERS.includes(name))
+        else if (!Object.hasOwn(knownProviders, name))
           set(
             at("name"),
             err(
