@@ -20,6 +20,7 @@
     "autocannon": "catalog:"
   },
   "dependencies": {
-    "@heybe/query": "workspace:*"
+    "@heybe/query": "workspace:*",
+    "file-type": "^22.3.0"
   }
 }
