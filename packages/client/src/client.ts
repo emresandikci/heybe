@@ -6,6 +6,8 @@ import {
 } from "./auth-store.js";
 import { defaultEnv, type Env, type Fetch } from "./env.js";
 import { createAuth, type AuthClient } from "./auth.js";
+import { createBatch, type Batch } from "./batch.js";
+import { createFiles, type Files } from "./files.js";
 import { createRealtime, type Realtime } from "./realtime.js";
 import { createRecords, type RecordsClient } from "./records.js";
 import { createAutoRefresh } from "./refresh.js";
@@ -24,6 +26,7 @@ export interface HeybeClient {
   readonly lang: string;
   readonly authStore: AuthStore;
   readonly realtime: Realtime;
+  readonly files: Files;
   autoCancel: boolean;
   buildURL(path: string): string;
   send<T>(path: string, opts?: SendOptions): Promise<T>;
@@ -33,6 +36,7 @@ export interface HeybeClient {
   records(name: string): RecordsClient<Record<string, unknown>>;
   auth<N extends CollectionName>(name: N): AuthClient<Collections[N]>;
   auth(name: string): AuthClient<Record<string, unknown>>;
+  batch(): Batch;
 }
 
 export function createClient(
@@ -88,6 +92,11 @@ export function createClientWith(
     buildURL: (path) => buildURL(url, path),
     ...sender,
     realtime: realtime(),
+    files: createFiles({
+      send: sender.send,
+      buildURL: (path) => buildURL(url, path),
+    }),
+    batch: () => createBatch(client),
     records: (name: string) => createRecords(client, name),
     auth: (name: string) =>
       createAuth(client, name, {

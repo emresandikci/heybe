@@ -16,3 +16,5 @@ export type {
 } from "./auth.js";
 export type { OAuth2Config } from "./oauth2.js";
 export type { Realtime, TopicOptions } from "./realtime.js";
+export type { Batch, BatchRecords, BatchResult } from "./batch.js";
+export type { Files } from "./files.js";

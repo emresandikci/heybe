@@ -112,3 +112,33 @@ heybe.realtime.onDisconnect = (activeTopics) => {};
 ```
 
 Realtime reads the SSE stream with `fetch`, so it works in browsers, Bun and Node without `EventSource`. The first subscription opens the connection and the last unsubscribe closes it. A lost connection reconnects after 200, 300, 500, 1000, 1200, 1500, then every 2000 ms, and every topic is subscribed again. When the auth store's token changes (a new login or `clear()`), an open connection reconnects so events follow the new auth.
+
+## Files and batch
+
+```ts
+const post = await heybe.records("posts").create({
+  title: "hello",
+  images: [new File([bytes], "a.png")],
+});
+// append to existing files: keep the stored names, add new files
+await heybe.records("posts").update(post.id, {
+  images: [...post.images, new File([bytes], "b.png")],
+});
+
+heybe.files.url(post, post.images[0], { thumb: "100x100", download: true });
+const token = await heybe.files.token(); // for protected files
+heybe.files.url(post, post.images[0], { token });
+
+const batch = heybe.batch();
+batch
+  .records("posts")
+  .create({ title: "a", cover: new File([bytes], "c.png") });
+batch
+  .records("posts")
+  .update("RECORD_ID", { title: "b" }, { expand: { author: true } });
+batch.records("posts").upsert({ id: "RECORD_ID", title: "c" });
+batch.records("posts").delete("RECORD_ID");
+const results = await batch.send(); // [{ status, body }, ...]
+```
+
+`files.url` returns `""` when the filename, the record id or both collection fields are missing. A batch is sent as one multipart request to `POST /api/batch`, so batch must be enabled in the settings. In a batch, a mixed array of stored names and new files keeps the names in the body and sends the files under `key+`.

@@ -28,7 +28,7 @@ type FileInput = File | Blob | (File | Blob)[];
 
 export type WriteData<T> = { [K in keyof T]?: T[K] | FileInput } & {
   [modifier: `${string}+` | `+${string}` | `${string}-`]:
-    string | string[] | FileInput;
+    string | (string | File | Blob)[] | FileInput;
 };
 
 type NoExtraKeys<A, Allowed> = {
