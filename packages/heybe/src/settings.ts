@@ -526,6 +526,10 @@ export class Settings {
     return structuredClone(this.cached);
   }
 
+  reload(): void {
+    this.cached = null;
+  }
+
   private load(): SettingsData {
     const row = this.db.get<{ value: string }>(
       "SELECT value FROM _params WHERE key = 'settings'",

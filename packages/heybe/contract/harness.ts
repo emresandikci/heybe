@@ -159,17 +159,22 @@ async function startOne(
   return { target: { name, url, superToken, dir }, stop };
 }
 
-export async function startTargets(): Promise<Started> {
+export async function startTargets(
+  opts: { heybeEntry?: string; pbHooksDir?: string } = {},
+): Promise<Started> {
   const pbBin = await pocketbaseBinary();
   const pb = await startOne("pocketbase", [pbBin], (dir) => [
     "--migrationsDir",
     join(dir, "pb_migrations"),
     "--hooksDir",
-    join(dir, "pb_hooks"),
+    opts.pbHooksDir ?? join(dir, "pb_hooks"),
   ]);
   let hb: Awaited<ReturnType<typeof startOne>>;
   try {
-    hb = await startOne("heybe", ["bun", CLI]);
+    hb = await startOne("heybe", ["bun", opts.heybeEntry ?? CLI], (dir) => [
+      "--migrationsDir",
+      join(dir, "heybe_migrations"),
+    ]);
   } catch (err) {
     await pb.stop();
     throw err;
