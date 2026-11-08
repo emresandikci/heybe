@@ -38,6 +38,13 @@ export type {
   RouteAction,
   RouteHandle,
 } from "./http/router";
+export { importCollections } from "./collections/import";
+export {
+  addFieldAt,
+  mergeCollection,
+  newCollection,
+  removeFieldById,
+} from "./migrations/automigrate";
 export { Migration, migrate } from "./migrations/migration";
 export type { MigrationDef } from "./migrations/migration";
 export { RecordModel } from "./records/model";

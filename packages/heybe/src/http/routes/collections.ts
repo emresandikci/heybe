@@ -2,6 +2,7 @@ import type { App } from "../../app";
 import { providers } from "../../auth/oauth2/providers";
 import { decodeCollection, serializeCollection } from "../../collections/codec";
 import { sqliteMessage } from "../../collections/ddl";
+import { importCollections } from "../../collections/import";
 import { DecodeError, withDefaults } from "../../collections/field-settings";
 import { type Collection, type CollectionType } from "../../collections/model";
 import { compileCollectionsQuery } from "../../collections/search";
@@ -194,6 +195,8 @@ async function respondSaved(
 ): Promise<void> {
   // the spread leaves out the event's toJSON
   const saved = await save(e.app, { ...collection }, action);
+  // like PB, hooks after next() see the saved collection
+  Object.assign(collection, saved);
   e.json(200, serializeCollection(saved));
 }
 
@@ -319,7 +322,7 @@ function scaffolds(e: RequestEvent): Response {
   return jsonResponse(200, picked(e, out));
 }
 
-async function importCollections(e: RequestEvent): Promise<void> {
+async function importRequest(e: RequestEvent): Promise<void> {
   const loadError = "An error occurred while loading the submitted data.";
   const body = await readBody(e, loadError);
   const { collections, deleteMissing = false } = body;
@@ -363,7 +366,7 @@ async function runImport(
   deleteMissing: boolean,
 ): Promise<void> {
   try {
-    await e.app.collections.import(data, deleteMissing);
+    await importCollections(e.app, data, deleteMissing);
   } catch (err) {
     if (err instanceof ValidationError)
       throw new ApiError(400, "Failed to import collections.", err.data);
@@ -426,7 +429,7 @@ export function registerCollectionRoutes(router: Router): void {
     "/api/collections/{collection}/truncate",
     guarded(truncate),
   );
-  router.route("PUT", "/api/collections/import", guarded(importCollections));
+  router.route("PUT", "/api/collections/import", guarded(importRequest));
   router.route("GET", "/api/collections/meta/scaffolds", guarded(scaffolds));
   router.route(
     "GET",

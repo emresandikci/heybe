@@ -8,6 +8,12 @@ export interface Io {
 
 const TABLE = "_migrations";
 
+export function createMigrationsTable(app: App): void {
+  app.db.run(
+    `CREATE TABLE IF NOT EXISTS ${TABLE} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)`,
+  );
+}
+
 async function wrapped(message: string, fn: () => unknown): Promise<void> {
   try {
     await fn();
@@ -132,11 +138,7 @@ export class MigrationsRunner {
 
   private async init(): Promise<void> {
     if (this.inited) return;
-    await this.app.db.write(() =>
-      this.app.db.run(
-        `CREATE TABLE IF NOT EXISTS ${TABLE} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)`,
-      ),
-    );
+    await this.app.db.write(() => createMigrationsTable(this.app));
     this.inited = true;
   }
 

@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type { App } from "../app";
+import { snapshotTemplate } from "../migrations/automigrate";
 import { migrationsList } from "../migrations/loader";
 import { type Io, MigrationsRunner } from "../migrations/runner";
 import { GLOBAL_OPTIONS, parseCommandArgs } from "./args";
@@ -51,7 +52,12 @@ function snakecase(s: string): string {
     .toLowerCase();
 }
 
-async function create(app: App, args: string[], io: Io): Promise<void> {
+async function create(
+  app: App,
+  args: string[],
+  io: Io,
+  template = BLANK_TEMPLATE,
+): Promise<void> {
   if (args.length < 1) throw new Error("missing migration file name");
   const file = join(
     app.migrationsDir,
@@ -65,7 +71,7 @@ async function create(app: App, args: string[], io: Io): Promise<void> {
     io.out("The command has been cancelled");
     return;
   }
-  writeFileSync(file, BLANK_TEMPLATE);
+  writeFileSync(file, template);
   io.out(`Successfully created file ${JSON.stringify(file)}`);
 }
 
@@ -88,6 +94,19 @@ export async function migrateCommand(
     );
   mkdirSync(app.migrationsDir, { recursive: true });
   if (positionals[0] === "create") return create(app, positionals.slice(1), io);
+  if (positionals[0] === "collections") {
+    const collections = app.collections
+      .all()
+      .sort((a, b) =>
+        a.created < b.created ? -1 : a.created > b.created ? 1 : 0,
+      );
+    return create(
+      app,
+      ["collections_snapshot"],
+      io,
+      snapshotTemplate(collections),
+    );
+  }
   await new MigrationsRunner(app, await migrationsList(app)).run(
     positionals,
     io,

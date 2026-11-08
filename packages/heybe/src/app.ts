@@ -29,6 +29,7 @@ import {
   type MigrationDef,
   migrationDef,
 } from "./migrations/migration";
+import { bindAutomigrate } from "./migrations/automigrate";
 import { registerRealtimeHooks } from "./realtime/broadcast";
 import type { Router } from "./http/router";
 import { createRouter } from "./http/server";
@@ -218,6 +219,7 @@ export function createApp(opts: AppOptions = {}): App {
         app.close();
         return 1;
       }
+      if (app.automigrate) bindAutomigrate(app);
       let code = 0;
       try {
         await app.bootstrap();

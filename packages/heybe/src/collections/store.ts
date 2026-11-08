@@ -603,7 +603,7 @@ export class CollectionStore {
     next.fields = fields;
   }
 
-  private require(nameOrId: string): Collection {
+  require(nameOrId: string): Collection {
     const c = this.find(nameOrId);
     if (!c) throw new ValidationError("Collection not found.");
     return c;
