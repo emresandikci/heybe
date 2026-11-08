@@ -50,6 +50,11 @@ function parts(token: string): { head: Claims; claims: Claims } | null {
   }
 }
 
+// the claims without any check, like PB reads them from ParseUnverifiedJWT while ignoring its error
+export function decodeJwtClaims(token: string): Claims | null {
+  return parts(token)?.claims ?? null;
+}
+
 export function parseUnverifiedJwt(
   token: string,
   now: () => Date,

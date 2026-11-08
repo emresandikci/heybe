@@ -14,6 +14,8 @@ export interface CapturedMail {
 export interface SmtpCapture {
   port: number;
   messages(): CapturedMail[];
+  // resolves with the first captured mail to `address`, already received or still to come
+  waitFor(address: string): Promise<CapturedMail>;
   clear(): void;
   stop(): Promise<void>;
 }
@@ -112,7 +114,10 @@ function parseMail(
   };
 }
 
-function handleConnection(socket: Socket, store: CapturedMail[]): void {
+function handleConnection(
+  socket: Socket,
+  onMail: (m: CapturedMail) => void,
+): void {
   let buffer = "";
   let from = "";
   let recipients: string[] = [];
@@ -181,7 +186,7 @@ function handleConnection(socket: Socket, store: CapturedMail[]): void {
         const body = buffer.slice(0, end + 2);
         buffer = buffer.slice(end + 5);
         const raw = body.replace(/^\.\./gm, ".");
-        store.push(parseMail(from, recipients, raw));
+        onMail(parseMail(from, recipients, raw));
         receiving = false;
         reply("250 OK queued");
         continue;
@@ -198,11 +203,17 @@ function handleConnection(socket: Socket, store: CapturedMail[]): void {
 
 export function startSmtpCapture(): Promise<SmtpCapture> {
   const store: CapturedMail[] = [];
+  const waiters: { address: string; resolve(m: CapturedMail): void }[] = [];
   const sockets = new Set<Socket>();
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
-    handleConnection(socket, store);
+    handleConnection(socket, (m) => {
+      store.push(m);
+      for (const w of waiters.splice(0))
+        if (m.recipients.includes(w.address)) w.resolve(m);
+        else waiters.push(w);
+    });
   });
   return new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -213,6 +224,11 @@ export function startSmtpCapture(): Promise<SmtpCapture> {
       resolve({
         port: address.port,
         messages: () => [...store],
+        waitFor: (address) => {
+          const found = store.find((m) => m.recipients.includes(address));
+          if (found) return Promise.resolve(found);
+          return new Promise((resolve) => waiters.push({ address, resolve }));
+        },
         clear: () => {
           store.length = 0;
         },

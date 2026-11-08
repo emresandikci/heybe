@@ -14,6 +14,7 @@ import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
+import { registerRecordAuthFlowRoutes } from "./routes/record-auth-flows";
 import { registerRecordRoutes } from "./routes/records";
 import { registerSettingsRoutes } from "./routes/settings";
 
@@ -35,6 +36,7 @@ export function createRouter(): Router {
   const router = new Router();
   registerHealthRoutes(router);
   registerRecordAuthRoutes(router);
+  registerRecordAuthFlowRoutes(router);
   registerCollectionRoutes(router);
   registerRecordRoutes(router);
   registerFileRoutes(router);

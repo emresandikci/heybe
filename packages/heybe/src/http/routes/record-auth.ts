@@ -22,7 +22,7 @@ interface PasswordAuth {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function findAuthCollection(e: RequestEvent): Collection {
+export function findAuthCollection(e: RequestEvent): Collection {
   const c = e.app.collections.find(e.params.collection!);
   if (!c) throw new ApiError(404, "Missing or invalid collection context.");
   if (c.type !== "auth")
@@ -119,7 +119,7 @@ function findRecord(
   return null;
 }
 
-async function verifyPassword(
+export async function verifyPassword(
   record: Values,
   password: string,
 ): Promise<boolean> {

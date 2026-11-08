@@ -37,6 +37,9 @@ export const password: FieldDef = {
   },
   validate(value, field) {
     if (!(value instanceof PasswordValue)) return unsupportedType();
+    // PB's bcrypt hashing fails above 72 bytes and that error is reported first
+    if (Buffer.byteLength(value.plain) > 72)
+      return fail("validation_invalid_value", "Invalid value");
     if (field.required === true && value.hash === "" && value.plain === "")
       return required();
     if (value.plain === "") return null;

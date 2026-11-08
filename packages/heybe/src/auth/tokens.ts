@@ -47,10 +47,12 @@ export function newFileToken(
   );
 }
 
+// PB FindAuthRecordByToken: the secret is the record tokenKey plus the type's collection secret, so a
+// tokenKey rotation (password or email change) invalidates every token of the record.
 export function authFromToken(
   app: App,
   token: string,
-  type: "auth" | "file" = "auth",
+  type: TokenType = "auth",
 ): AuthState | null {
   const claims = parseUnverifiedJwt(token, app.now);
   if (!claims || claims.type !== type) return null;
@@ -67,9 +69,7 @@ export function authFromToken(
     if (err instanceof NotFoundError) return null;
     throw err;
   }
-  const config = (
-    type === "auth" ? collection.authToken : collection.fileToken
-  ) as TokenConfig;
+  const config = collection[TOKEN_CONFIG[type]] as TokenConfig;
   const secret = `${record.tokenKey}${config.secret}`;
   if (!verifyJwt(token, secret, app.now)) return null;
   return {
@@ -81,7 +81,11 @@ export function authFromToken(
 
 type MailTokenKind = "verification" | "passwordReset" | "emailChange";
 
-const MAIL_TOKEN_CONFIG = {
+export type TokenType = "auth" | "file" | MailTokenKind;
+
+const TOKEN_CONFIG = {
+  auth: "authToken",
+  file: "fileToken",
   verification: "verificationToken",
   passwordReset: "passwordResetToken",
   emailChange: "emailChangeToken",
@@ -94,7 +98,7 @@ export function newMailToken(
   record: Record<string, unknown>,
   newEmail?: string,
 ): string {
-  const config = collection[MAIL_TOKEN_CONFIG[kind]] as TokenConfig;
+  const config = collection[TOKEN_CONFIG[kind]] as TokenConfig;
   return signJwt(
     {
       type: kind,
