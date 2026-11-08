@@ -770,7 +770,6 @@ export async function authWithOAuth2(
     providerId: user.id,
   });
 
-  let committed = false;
   let saved: Values;
   try {
     if (record === null) {
@@ -854,12 +853,10 @@ export async function authWithOAuth2(
         return records.findRaw(id);
       });
     }
-    committed = true;
   } catch (err) {
     throw authFailed(err);
   } finally {
-    for (const [service, prepared] of pending)
-      await service.settle(prepared, committed);
+    for (const [service, prepared] of pending) await service.settle(prepared);
   }
   return {
     record: saved,

@@ -7,6 +7,7 @@ import {
   toExpand,
   toSort,
 } from "@heybe/query";
+import type { App } from "../app";
 import { quote } from "../collections/ddl";
 import type { Collection, Field } from "../collections/model";
 import type { CollectionStore } from "../collections/store";
@@ -18,13 +19,11 @@ import { type PrepareCtx, toStr, uniqueStrings } from "../fields/shared";
 import { type Filesystem, fileKey } from "../files/storage";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { parseSort } from "../filter/parse";
-import {
-  INSTALLER_EMAIL,
-  NotFoundError,
-  ValidationError,
-  formatDate,
-} from "../util";
+import type { RecordEvent } from "../hooks/events";
+import { deleteModel, saveModel } from "../hooks/system";
+import { NotFoundError, ValidationError, formatDate } from "../util";
 import { expandRecords } from "./expand";
+import { RecordModel } from "./model";
 import { decode, managedIds } from "./read";
 import { randomByPattern } from "./pattern";
 import { serializeRecord } from "./serialize";
@@ -47,8 +46,6 @@ export interface PreparedWrite {
   // per field: submitted values (Files, plain passwords) and what they became (uploads, hashes)
   resolved: Map<string, Map<unknown, unknown>>;
   saved?: { saved: Values; original: Values | null };
-  // storage dirs of deleted records
-  removed: string[];
 }
 
 export interface QueryOpts {
@@ -206,11 +203,44 @@ function insertSql(c: Collection, cols: string[]): string {
   return `INSERT INTO ${quote(c.name)} (${cols.map(quote).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
 }
 
+// the prepare context of each record being saved, for values a hook sets that still need preparing
+const preparing = new WeakMap<RecordModel, PreparedWrite>();
+
+const valuesOf = (record: RecordModel): Values =>
+  Object.fromEntries(
+    record.collection.fields.map((f) => [f.name, record.get(f.name)]),
+  );
+
+function setValues(record: RecordModel, values: Values): void {
+  for (const f of record.collection.fields)
+    record.setRaw(f.name, values[f.name]);
+}
+
+// plain keys before their modifiers ("tags" before "tags+")
+const byKeyLength = (data: Values): Values =>
+  Object.fromEntries(
+    Object.entries(data).sort(([a], [b]) => a.length - b.length),
+  );
+
+const needsPrepare = (f: Field, value: unknown): boolean =>
+  f.type === "password"
+    ? value instanceof PasswordValue && value.plain !== "" && value.hash === ""
+    : f.type === "file" && fileItems(value).some((v) => v instanceof File);
+
 export class RecordServiceImpl<T> {
+  private readonly deps: Deps;
+
   constructor(
-    private readonly deps: Deps,
+    private readonly app: App,
     private readonly name: string,
-  ) {}
+  ) {
+    this.deps = {
+      db: app.db,
+      store: app.collections,
+      files: app.files,
+      now: app.now,
+    };
+  }
 
   async findMany(args: FindManyArgs<T> = {}): Promise<ListResult<T>> {
     const result = this.query({
@@ -266,7 +296,6 @@ export class RecordServiceImpl<T> {
     const p: PreparedWrite = {
       ctx: this.prepareCtx(c, id ?? this.newId(c, input)),
       resolved: new Map(),
-      removed: [],
     };
     try {
       for (const key of Object.keys(input)) {
@@ -279,37 +308,20 @@ export class RecordServiceImpl<T> {
         pair(pairs, input[key], out);
       }
     } catch (e) {
-      await this.settle(p, false);
+      await this.settle(p);
       throw e;
     }
     return p;
   }
 
   async createPrepared(p: PreparedWrite, data: Partial<T>): Promise<T> {
+    const c = this.writable();
     const input = this.resolve(p, data as Values);
     delete input["id:autogenerate"];
     input.id = p.ctx.recordId;
-    const { c, saved } = await this.deps.db.write(() => {
-      const c = this.writable();
-      const values = zeroValues(c);
-      assign(c, values, input);
-      autogenerate(c, values);
-      this.check(c, values, null, CREATE_FAILED);
-      this.stamp(c, values, "onCreate");
-      if (c.name === "_superusers") values.verified = true;
-      this.checkAuthId(c, values, CREATE_FAILED);
-      this.write(c, values, CREATE_FAILED, () => {
-        const cols = c.fields.map((f) => f.name);
-        this.deps.db.run(insertSql(c, cols), dbValues(c, values));
-      });
-      if (c.name === "_superusers" && values.email !== INSTALLER_EMAIL)
-        this.deps.db.run("DELETE FROM _superusers WHERE email = ?", [
-          INSTALLER_EMAIL,
-        ]);
-      return { c, saved: values };
-    });
-    p.saved = { saved, original: null };
-    return this.output(c, saved);
+    const record = new RecordModel(c, byKeyLength(input));
+    await this.save(p, record, true);
+    return this.output(c, valuesOf(record));
   }
 
   // `tokenKey`: the one a token was checked against; the write fails when it changed since
@@ -319,51 +331,171 @@ export class RecordServiceImpl<T> {
     data: Partial<T>,
     opts: { tokenKey?: string } = {},
   ): Promise<T> {
-    const input = this.resolve(p, data as Values);
-    const { c, saved, original } = await this.deps.db.write(() => {
-      const c = this.writable();
-      const original = this.load(c, id);
-      if (opts.tokenKey !== undefined && original.tokenKey !== opts.tokenKey)
-        throw new StaleTokenError();
-      const values = { ...original };
-      assign(c, values, input);
-      this.check(c, values, original, UPDATE_FAILED);
-      this.stamp(c, values, "onUpdate");
-      if (c.name === "_superusers") values.verified = true;
-      if (c.type === "auth") {
-        this.dropLinksOnVerify(c, values, original);
-        this.refreshTokenKey(c, values, original);
-      }
-      this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
-      return { c, saved: values, original };
-    });
-    p.saved = { saved, original };
-    return this.output(c, saved);
-  }
-
-  async deletePrepared(p: PreparedWrite, id: string): Promise<void> {
-    await this.deps.db.write(() => {
-      const c = this.writable();
-      this.remove(c, this.load(c, id), p.removed);
-    });
-  }
-
-  async truncate(): Promise<void> {
     const c = this.writable();
+    const input = this.resolve(p, data as Values);
+    const record = new RecordModel(c, this.load(c, id), false);
+    record.load(byKeyLength(input));
+    await this.save(p, record, true, opts.tokenKey);
+    return this.output(c, valuesOf(record));
+  }
+
+  async deletePrepared(_p: PreparedWrite, id: string): Promise<void> {
+    const c = this.writable();
+    await this.deleteRecord(new RecordModel(c, this.load(c, id), false));
+  }
+
+  // PB TruncateCollection: every record goes through the hooked delete, in one transaction
+  async truncate(): Promise<void> {
+    this.writable();
+    await this.deps.db.write(() => this.deleteWhere("1 = 1", []));
+  }
+
+  // Deletes the matching records one by one through the hooked delete. Call it inside a write.
+  async deleteWhere(where: string, params: unknown[]): Promise<void> {
+    const c = this.collection();
     const { db } = this.deps;
-    const removed: string[] = [];
+    const ids = db.query<{ id: string }>(
+      `SELECT id FROM ${quote(c.name)} WHERE ${where}`,
+      params,
+    );
+    for (const { id } of ids) {
+      const raw = db.get<Values>(
+        `SELECT * FROM ${quote(c.name)} WHERE id = ?`,
+        [id],
+      );
+      if (raw)
+        await this.deleteRecord(new RecordModel(c, decode(c, raw), false));
+    }
+  }
+
+  // The hooked save (PB app.Save): the hook chain runs where it is called, only the SQL takes a
+  // brief write.
+  private async save(
+    p: PreparedWrite,
+    record: RecordModel,
+    validate: boolean,
+    tokenKey?: string,
+  ): Promise<void> {
+    preparing.set(record, p);
+    await saveModel(this.app, record, record.isNew(), validate, () =>
+      this.execute(p, record, tokenKey),
+    );
+  }
+
+  // `p.saved` is set once this write commits, so files are settled by the row's fate and not by
+  // later hook errors (PB finalizes files before the user after-success handlers)
+  private async execute(
+    p: PreparedWrite,
+    record: RecordModel,
+    tokenKey?: string,
+  ): Promise<void> {
+    const c = record.collection;
+    const { db } = this.deps;
+    const original = record.isNew() ? null : valuesOf(record.original());
     await db.write(() => {
-      for (const { id } of db.query<{ id: string }>(
-        `SELECT id FROM ${quote(c.name)}`,
-      )) {
-        const raw = db.get<Values>(
-          `SELECT * FROM ${quote(c.name)} WHERE id = ?`,
-          [id],
+      const values = valuesOf(record);
+      if (record.isNew()) {
+        db.run(
+          insertSql(
+            c,
+            c.fields.map((f) => f.name),
+          ),
+          dbValues(c, values),
         );
-        if (raw) this.remove(c, decode(c, raw), removed);
+      } else {
+        if (
+          tokenKey !== undefined &&
+          this.load(c, record.id).tokenKey !== tokenKey
+        )
+          throw new StaleTokenError();
+        this.updateRow(c, values);
       }
+      db.onComplete((err) => {
+        if (err === null) p.saved = { saved: values, original };
+      });
     });
-    await this.deleteDirs(removed);
+    record.markAsNotNew();
+  }
+
+  private deleteRecord(record: RecordModel): Promise<void> {
+    const c = record.collection;
+    const { db } = this.deps;
+    return deleteModel(this.app, record, () =>
+      db.write(() => {
+        db.run(`DELETE FROM ${quote(c.name)} WHERE id = ?`, [record.id]);
+        db.onComplete((err) =>
+          err === null ? this.deleteDirs([`${c.id}/${record.id}`]) : undefined,
+        );
+      }),
+    );
+  }
+
+  // values a hook set that still need preparing (a plain password, a File)
+  private async latePrepare(record: RecordModel): Promise<void> {
+    const p = preparing.get(record);
+    if (!p) return;
+    for (const f of record.collection.fields) {
+      const value = record.get(f.name);
+      if (needsPrepare(f, value))
+        record.setRaw(f.name, await fields[f.type].prepare!(value, f, p.ctx));
+    }
+  }
+
+  // PB TextField interceptor on create
+  autogenerateHook(e: RecordEvent): Promise<void> {
+    const values = valuesOf(e.record);
+    autogenerate(e.record.collection, values);
+    setValues(e.record, values);
+    return e.next();
+  }
+
+  // PB onRecordValidate (priority 99)
+  async validateHook(e: RecordEvent): Promise<void> {
+    const { record } = e;
+    const c = record.collection;
+    await this.latePrepare(record);
+    const values = valuesOf(record);
+    if (record.isNew()) autogenerate(c, values);
+    this.check(
+      c,
+      values,
+      record.isNew() ? null : valuesOf(record.original()),
+      record.isNew() ? CREATE_FAILED : UPDATE_FAILED,
+    );
+    setValues(record, values);
+    await e.next();
+  }
+
+  // PB onRecordSaveExecute (priority 99) with the autodate interceptor
+  async saveExecuteHook(e: RecordEvent): Promise<void> {
+    const { record } = e;
+    const c = record.collection;
+    const message = record.isNew() ? CREATE_FAILED : UPDATE_FAILED;
+    await this.latePrepare(record);
+    const values = valuesOf(record);
+    this.stamp(c, values, record.isNew() ? "onCreate" : "onUpdate");
+    if (c.type === "auth") {
+      if (!record.isNew())
+        this.refreshTokenKey(c, values, valuesOf(record.original()));
+      this.checkAuthId(c, values, message);
+    }
+    setValues(record, values);
+    try {
+      await e.next();
+    } catch (err) {
+      throw this.uniqueError(c, err, message);
+    }
+  }
+
+  // PB onRecordDeleteExecute (priority 99): the delete and its relation cascade in one transaction
+  async deleteExecuteHook(e: RecordEvent): Promise<void> {
+    const refs = this.references(e.record.collection);
+    await e.app.db.write(async () => {
+      await e.next();
+      for (const { other, f } of refs)
+        for (const id of this.referencing(other, f, e.record))
+          await this.unlink(other, f, id, e.record.id);
+    });
   }
 
   query(opts: QueryOpts): ListResult<T> {
@@ -500,26 +632,22 @@ export class RecordServiceImpl<T> {
     p: PreparedWrite,
     write: () => Promise<R>,
   ): Promise<R> {
-    let result: R;
-    try {
-      result = await write();
-    } catch (e) {
-      await this.settle(p, false);
-      throw e;
-    }
     // inside an outer write the files are settled once it commits or rolls back
     let settled: Promise<void> | undefined;
-    this.deps.db.onComplete((err) => (settled = this.settle(p, err === null)));
-    await settled;
-    return result;
+    try {
+      return await write();
+    } finally {
+      this.deps.db.onComplete(() => (settled = this.settle(p)));
+      await settled;
+    }
   }
 
-  // Files written while preparing are deleted when the write is not committed. After the commit,
-  // uploads the record does not keep, files the update dropped (with their thumbs) and the dirs of
-  // deleted records are deleted.
-  async settle(p: PreparedWrite, committed: boolean): Promise<void> {
+  // Call it after the outermost write ended. Files written while preparing are deleted unless the
+  // record write committed. After the commit, uploads the record does not keep and files the
+  // update dropped (with their thumbs) are deleted.
+  async settle(p: PreparedWrite): Promise<void> {
     const { collection, recordId, files, written } = p.ctx;
-    const { saved, original } = (committed && p.saved) || {
+    const { saved, original } = p.saved ?? {
       saved: {},
       original: null,
     };
@@ -541,7 +669,6 @@ export class RecordServiceImpl<T> {
         files.deletePrefix(fileKey(id, recordId, `thumbs_${name}`)),
       );
     }
-    if (committed) await this.deleteDirs(p.removed);
   }
 
   private async deleteDirs(dirs: string[]): Promise<void> {
@@ -620,21 +747,6 @@ export class RecordServiceImpl<T> {
     }
   }
 
-  // PB deletes the OAuth2 links of a record that becomes verified and refreshes its tokenKey, so
-  // links made to a pre-created unverified account stop working.
-  private dropLinksOnVerify(c: Collection, values: Values, original: Values) {
-    if (original.verified === true || values.verified !== true) return;
-    const { changes } = this.deps.db.run(
-      "DELETE FROM _externalAuths WHERE collectionRef = ? AND recordRef = ?",
-      [c.id, values.id as string],
-    );
-    const pattern = c.fields.find(
-      (f) => f.name === "tokenKey",
-    )?.autogeneratePattern;
-    if (changes > 0 && typeof pattern === "string" && pattern !== "")
-      values.tokenKey = randomByPattern(pattern);
-  }
-
   private refreshTokenKey(
     c: Collection,
     values: Values,
@@ -650,59 +762,27 @@ export class RecordServiceImpl<T> {
       (hash(values) !== hash(original) || values.email !== original.email)
     )
       values.tokenKey = randomByPattern(pattern);
-    if (hash(values) !== hash(original))
-      for (const table of ["_mfas", "_authOrigins"])
-        this.deps.db.run(
-          `DELETE FROM ${table} WHERE collectionRef = ? AND recordRef = ?`,
-          [c.id, values.id as string],
-        );
-    // like PB, any tokenKey change (also an explicit one) drops the record's pending OTPs
-    if (values.tokenKey !== original.tokenKey)
-      this.deps.db.run(
-        "DELETE FROM _otps WHERE collectionRef = ? AND recordRef = ?",
-        [c.id, values.id as string],
-      );
   }
 
-  private write(
-    c: Collection,
-    values: Values,
-    message: string,
-    run: () => void,
-  ): void {
-    try {
-      run();
-    } catch (e) {
-      const text = e instanceof Error ? e.message.toLowerCase() : "";
-      if (!text.includes("unique constraint failed")) throw e;
-      const failed = text.replaceAll(",", " ") + " ";
-      const errors: Errors = {};
-      for (const f of c.fields) {
-        if (
-          failed.includes(` ${c.name.toLowerCase()}.${f.name.toLowerCase()} `)
-        )
-          errors[f.name] = {
-            code: "validation_not_unique",
-            message: "Value must be unique.",
-          };
-      }
-      if (Object.keys(errors).length === 0) throw e;
-      throw new ValidationError(message, errors);
+  // PB NormalizeUniqueIndexError
+  private uniqueError(c: Collection, e: unknown, message: string): unknown {
+    const text = e instanceof Error ? e.message.toLowerCase() : "";
+    if (!text.includes("unique constraint failed")) return e;
+    const failed = text.replaceAll(",", " ") + " ";
+    const errors: Errors = {};
+    for (const f of c.fields) {
+      if (failed.includes(` ${c.name.toLowerCase()}.${f.name.toLowerCase()} `))
+        errors[f.name] = {
+          code: "validation_not_unique",
+          message: "Value must be unique.",
+        };
     }
+    if (Object.keys(errors).length === 0) return e;
+    return new ValidationError(message, errors);
   }
 
-  // `removed` collects the storage dirs of every deleted record, cascades included
-  private remove(c: Collection, values: Values, removed: string[]): void {
-    const { db, store } = this.deps;
-    db.run(`DELETE FROM ${quote(c.name)} WHERE id = ?`, [values.id]);
-    removed.push(`${c.id}/${values.id}`);
-    if (c.type === "auth")
-      db.run(
-        "DELETE FROM _externalAuths WHERE collectionRef = ? AND recordRef = ?",
-        [c.id, values.id],
-      );
-
-    const refs = store
+  private references(c: Collection): { other: Collection; f: Field }[] {
+    return this.deps.store
       .all()
       .filter((other) => other.type !== "view")
       .sort((a, b) => (a.name < b.name ? -1 : 1))
@@ -711,52 +791,54 @@ export class RecordServiceImpl<T> {
           .filter((f) => f.type === "relation" && f.collectionId === c.id)
           .map((f) => ({ other, f })),
       );
-
-    for (const { other, f } of refs) {
-      const col = `${quote(other.name)}.${quote(f.name)}`;
-      const multiple = Number(f.maxSelect) > 1;
-      const match = multiple
-        ? `EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(${col}) THEN ${col} ELSE json_array(${col}) END) WHERE value = ?1)`
-        : `${col} = ?1`;
-      const self =
-        other.id === c.id ? ` AND ${quote(other.name)}.id != ?1` : "";
-      const ids = db
-        .query<{ id: string }>(
-          `SELECT ${quote(other.name)}.id FROM ${quote(other.name)} WHERE ${match}${self}`,
-          [values.id],
-        )
-        .map((r) => r.id);
-      for (const id of ids)
-        this.unlink(other, f, id, String(values.id), removed);
-    }
   }
 
-  private unlink(
+  private referencing(other: Collection, f: Field, record: RecordModel) {
+    const col = `${quote(other.name)}.${quote(f.name)}`;
+    const match =
+      Number(f.maxSelect) > 1
+        ? `EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(${col}) THEN ${col} ELSE json_array(${col}) END) WHERE value = ?1)`
+        : `${col} = ?1`;
+    const self =
+      other.id === record.collection.id
+        ? ` AND ${quote(other.name)}.id != ?1`
+        : "";
+    return this.deps.db
+      .query<{ id: string }>(
+        `SELECT ${quote(other.name)}.id FROM ${quote(other.name)} WHERE ${match}${self}`,
+        [record.id],
+      )
+      .map((r) => r.id);
+  }
+
+  // PB deleteRefRecords: deletes the reference (cascadeDelete) or saves it without the id, unvalidated
+  private async unlink(
     other: Collection,
     f: Field,
     id: string,
     removedId: string,
-    removed: string[],
-  ): void {
+  ): Promise<void> {
     const row = this.deps.db.get<Values>(
       `SELECT * FROM ${quote(other.name)} WHERE id = ?`,
       [id],
     );
     if (!row) return;
-    const refValues = decode(other, row);
-    const ids = uniqueStrings(refValues[f.name]).filter((v) => v !== removedId);
+    const ref = new RecordModel(other, decode(other, row), false);
+    const ids = uniqueStrings(ref.get(f.name)).filter((v) => v !== removedId);
+    const service = new RecordServiceImpl(this.app, other.name);
 
-    if (f.cascadeDelete === true && ids.length === 0) {
-      this.remove(other, refValues, removed);
-      return;
-    }
+    if (f.cascadeDelete === true && ids.length === 0)
+      return service.deleteRecord(ref);
     if (f.required === true && ids.length === 0)
       throw new ValidationError(
         `the record cannot be deleted because it is part of a required reference in record ${id} (${other.name} collection)`,
       );
 
-    refValues[f.name] = fields.relation.normalize(ids, f);
-    this.stamp(other, refValues, "onUpdate");
-    this.updateRow(other, refValues);
+    ref.set(f.name, ids);
+    const p: PreparedWrite = {
+      ctx: service.prepareCtx(other, id),
+      resolved: new Map(),
+    };
+    await service.commit(p, () => service.save(p, ref, false));
   }
 }

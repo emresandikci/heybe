@@ -2,6 +2,7 @@ import type { Collection } from "../collections/model";
 import { ValidationError } from "../util";
 import { tokenize as tokenizeRaw } from "../tokenizer";
 import { excerpt } from "./excerpt";
+import { PasswordValue } from "../fields/password";
 
 export interface SerializeOpts {
   isSuperuser: boolean;
@@ -11,6 +12,10 @@ export interface SerializeOpts {
 
 type Json = Record<string, unknown>;
 
+// PB exports a password field (non-auth collections only) as its plain value
+export const plain = (value: unknown): string =>
+  value instanceof PasswordValue ? value.plain : "";
+
 export function serializeRecord(
   collection: Collection,
   row: Json,
@@ -18,9 +23,10 @@ export function serializeRecord(
 ): Json {
   const out: Json = {};
   for (const field of collection.fields) {
-    if (field.type === "password") continue;
+    if (field.type === "password" && collection.type === "auth") continue;
     if (field.hidden && !isSuperuser) continue;
-    out[field.name] = row[field.name];
+    out[field.name] =
+      field.type === "password" ? plain(row[field.name]) : row[field.name];
   }
 
   if (collection.type === "auth") {

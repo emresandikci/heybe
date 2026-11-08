@@ -1,4 +1,6 @@
+import type { App } from "../app";
 import type { Db } from "../db";
+import { deleteModel, saveModel } from "../hooks/system";
 import type { Filesystem } from "../files/storage";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { filterSyntaxError } from "../filter/fexpr";
@@ -181,6 +183,22 @@ function ensureSystemFields(c: Collection) {
   c.fields = fields;
 }
 
+function rowInsert(c: Collection): [string, unknown[]] {
+  const row = toRow(c);
+  return [
+    "INSERT OR REPLACE INTO _collections (id, name, type, system, data, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [
+      row.id,
+      row.name,
+      row.type,
+      row.system,
+      row.data,
+      row.created,
+      row.updated,
+    ],
+  ];
+}
+
 export interface SaveInput extends Partial<Collection> {
   name: string;
 }
@@ -189,6 +207,11 @@ type Prepared = { old: Collection | null; next: Collection };
 
 export class CollectionStore {
   onChange?: () => void;
+  // set by createApp: saves and deletes then run the model and collection hooks
+  app?: App;
+  // ids of the collections being created, and of those deleted without integrity checks
+  private readonly creating = new Set<string>();
+  private readonly unchecked = new Set<string>();
 
   constructor(
     private readonly db: Db,
@@ -205,7 +228,15 @@ export class CollectionStore {
       "CREATE TABLE IF NOT EXISTS _params (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     );
     if (!this.find("_superusers"))
-      for (const c of bootstrapCollections()) this.saveNow(c);
+      db.tx(() => {
+        for (const c of bootstrapCollections()) {
+          const { old, next } = this.prepare(c);
+          this.validate(old, next);
+          this.enforceSuperusers(next);
+          this.syncTable(old, next);
+          db.run(...rowInsert(next));
+        }
+      });
   }
 
   all(): Collection[] {
@@ -238,22 +269,49 @@ export class CollectionStore {
     return row ? fromRow(row) : null;
   }
 
-  save(input: SaveInput, isNew = false): Promise<Collection> {
-    return this.db.write(() => {
-      this.changed();
-      return this.saveNow(input, isNew);
-    });
+  async save(input: SaveInput, isNew = false): Promise<Collection> {
+    const { old, next } = this.prepare(input, isNew);
+    await this.saveHooked(next, old === null, true);
+    return next;
   }
 
-  private saveNow(input: SaveInput, isNew = false): Collection {
-    const saved = this.db.tx(() => {
-      const { old, next } = this.prepare(input, isNew);
-      this.validate(old, next);
-      this.persist(old, next);
-      return next;
+  // PB app.Save / app.SaveNoValidate
+  private async saveHooked(c: Collection, isNew: boolean, validate: boolean) {
+    if (isNew) this.creating.add(c.id);
+    const write = () => this.persistRow(c);
+    try {
+      if (this.app) await saveModel(this.app, c, isNew, validate, write);
+      else {
+        if (validate) this.validateSave(c);
+        await this.executeSave(c, write);
+      }
+    } finally {
+      this.creating.delete(c.id);
+    }
+  }
+
+  // the stored version of a collection being saved
+  private stored(c: Collection): Collection | null {
+    return this.creating.has(c.id) ? null : this.find(c.id);
+  }
+
+  // PB onCollectionValidate
+  validateSave(c: Collection): void {
+    this.validate(this.stored(c), c);
+  }
+
+  // PB onCollectionSaveExecute: the view or table sync around `write` in one transaction, then the
+  // dependent views
+  async executeSave(c: Collection, write: () => Promise<void>): Promise<void> {
+    await this.db.write(async () => {
+      const old = this.stored(c);
+      this.changed();
+      this.enforceSuperusers(c);
+      if (c.type === "view") this.persistView(old, c);
+      await write();
+      this.syncTable(old, c);
     });
-    this.resaveViewsLogged([saved.id], saved.name);
-    return saved;
+    await this.resaveViewsLogged([c.id], c.name);
   }
 
   // after the commit: onChange, then the storage dirs of deleted collections
@@ -266,9 +324,9 @@ export class CollectionStore {
   }
 
   // PB only logs these, so the user can fix the view queries afterwards
-  private resaveViewsLogged(excludeIds: string[], name: string) {
+  private async resaveViewsLogged(excludeIds: string[], name: string) {
     try {
-      this.resaveViews(excludeIds);
+      await this.resaveViews(excludeIds);
     } catch (e) {
       console.warn(
         `heybe: dependent view collection(s) may need to be updated after ${name} collection change:`,
@@ -277,8 +335,9 @@ export class CollectionStore {
     }
   }
 
-  // Port of PB resaveViewsWithChangedFields.
-  private resaveViews(excludeIds: string[]) {
+  // Port of PB resaveViewsWithChangedFields: changed views are saved through the hooks, in one
+  // transaction that rolls back when any of them fails.
+  private resaveViews(excludeIds: string[]): Promise<void> {
     const comparable = (fields: Field[]) =>
       JSON.stringify(
         fields.map((f) =>
@@ -289,14 +348,14 @@ export class CollectionStore {
           ),
         ),
       ).toLowerCase();
-    this.db.tx(() => {
+    return this.db.write(async () => {
       const failures: string[] = [];
       for (const view of this.all()) {
         if (view.type !== "view" || excludeIds.includes(view.id)) continue;
         try {
           const fields = inferViewFields(this.db, this, String(view.viewQuery));
           if (comparable(fields) !== comparable(view.fields))
-            this.saveNow(view);
+            await this.save(view);
         } catch (e) {
           failures.push(`[${view.name}] ${(e as Error).message}`);
         }
@@ -305,30 +364,14 @@ export class CollectionStore {
     });
   }
 
-  // PB ImportCollections: all collections are saved first and validated afterwards, in one transaction.
-  // Deleted collections' storage dirs go after the outermost commit.
+  // PB ImportCollections: in one transaction the missing collections are deleted and the imported
+  // ones saved through the hooks (integrity checks and validation off), then all are validated.
   async import(
     items: Record<string, unknown>[],
     deleteMissing: boolean,
   ): Promise<void> {
     if (items.length === 0) throw new Error("no collections to import");
-    const removed: string[] = [];
-    await this.db.write(() => {
-      this.changed(removed);
-      this.importTx(items, deleteMissing, removed);
-      this.resaveViewsLogged(
-        items.map((i) => String(i.id ?? "")),
-        "imported",
-      );
-    });
-  }
-
-  private importTx(
-    items: Record<string, unknown>[],
-    deleteMissing: boolean,
-    removed: string[],
-  ) {
-    this.db.tx(() => {
+    await this.db.write(async () => {
       const inputs = items.map((data) => this.importInput(data, deleteMissing));
       const prepared = inputs.map((input) => this.prepare(input));
       const originals = new Map(
@@ -337,19 +380,17 @@ export class CollectionStore {
 
       if (deleteMissing) {
         const keep = new Set(prepared.map((p) => p.next.id));
-        for (const existing of this.all()) {
-          if (!keep.has(existing.id) && !existing.system) {
-            this.remove(existing);
-            removed.push(existing.id);
-          }
-        }
+        for (const existing of this.all())
+          if (!keep.has(existing.id) && !existing.system)
+            await this.deleteHooked(existing, false);
       }
 
       const ordered = [...prepared].sort(
         (a, b) =>
           Number(a.next.type === "view") - Number(b.next.type === "view"),
       );
-      for (const { old, next } of ordered) this.persist(old, next);
+      for (const { old, next } of ordered)
+        await this.saveHooked(next, old === null, false);
 
       for (const { next } of ordered) {
         const original = originals.get(next.id) ?? next;
@@ -368,26 +409,50 @@ export class CollectionStore {
     });
   }
 
-  // The storage dir goes after the outermost commit.
   async delete(nameOrId: string): Promise<void> {
-    await this.db.write(() => {
-      const c = this.require(nameOrId);
-      if (c.system)
-        throw new Error(`[${c.name}] system collections cannot be deleted`);
-      const refs = this.references(c);
-      if (refs.length > 0)
-        throw new Error(
-          `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
-        );
+    await this.deleteHooked(this.require(nameOrId), true);
+  }
+
+  // PB app.Delete; `checks` false is PB IntegrityChecks(false)
+  private async deleteHooked(c: Collection, checks: boolean) {
+    if (!checks) this.unchecked.add(c.id);
+    const write = () =>
+      this.db.write(() => {
+        this.db.run("DELETE FROM _collections WHERE id = ?", [c.id]);
+      });
+    try {
+      if (this.app) await deleteModel(this.app, c, write);
+      else await this.executeDelete(c, write);
+    } finally {
+      this.unchecked.delete(c.id);
+    }
+  }
+
+  // PB onCollectionDeleteExecute. The storage dir goes after the outermost commit.
+  async executeDelete(
+    c: Collection,
+    write: () => Promise<void>,
+  ): Promise<void> {
+    if (c.system)
+      throw new Error(`[${c.name}] system collections cannot be deleted`);
+    const checks = !this.unchecked.has(c.id);
+    const refs = checks ? this.references(c) : [];
+    if (refs.length > 0)
+      throw new Error(
+        `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
+      );
+    await this.db.write(async () => {
       this.changed([c.id]);
-      this.remove(c);
-      try {
-        this.resaveViews([c.id]);
-      } catch (e) {
-        throw new Error(
-          `[${c.name}] failed to delete due to existing view dependency: ${(e as Error).message}`,
-        );
-      }
+      dropTable(this.db, c);
+      if (checks)
+        try {
+          await this.resaveViews([c.id]);
+        } catch (e) {
+          throw new Error(
+            `[${c.name}] failed to delete due to existing view dependency: ${(e as Error).message}`,
+          );
+        }
+      await write();
     });
   }
 
@@ -410,11 +475,6 @@ export class CollectionStore {
           (f) => f.type === "relation" && f.collectionId === c.id,
         ),
     );
-  }
-
-  private remove(c: Collection) {
-    dropTable(this.db, c);
-    this.db.run("DELETE FROM _collections WHERE id = ?", [c.id]);
   }
 
   private importInput(
@@ -517,9 +577,13 @@ export class CollectionStore {
     if (otp!.enabled === true) mfa!.enabled = true;
   }
 
-  private persist(old: Collection | null, next: Collection) {
-    this.enforceSuperusers(next);
-    if (next.type === "view") this.persistView(old, next);
+  private async persistRow(c: Collection): Promise<void> {
+    await this.db.write(() => {
+      this.db.run(...rowInsert(c));
+    });
+  }
+
+  private syncTable(old: Collection | null, next: Collection) {
     try {
       syncTable(this.db, old, next);
     } catch (e) {
@@ -529,19 +593,6 @@ export class CollectionStore {
         { indexes: e.errors },
       );
     }
-    const row = toRow(next);
-    this.db.run(
-      "INSERT OR REPLACE INTO _collections (id, name, type, system, data, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [
-        row.id,
-        row.name,
-        row.type,
-        row.system,
-        row.data,
-        row.created,
-        row.updated,
-      ],
-    );
   }
 
   private persistView(old: Collection | null, next: Collection) {

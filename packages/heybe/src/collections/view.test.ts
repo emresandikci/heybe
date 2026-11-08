@@ -392,7 +392,8 @@ describe("view collections", () => {
       ...app.collections.find("demo4")!,
       listRule: "",
     });
-    expect(changes).toBe(1);
+    // the demo4 save and the hooked v2 re-save after it commit separately, like PB
+    expect(changes).toBe(2);
     expect(app.collections.find("v2")!.fields[1]!.hidden).toBe(false);
   });
 

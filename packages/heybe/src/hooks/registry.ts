@@ -205,6 +205,16 @@ interface TaggedBinder<T> {
   (tags: string | string[], fn: HookHandler<T>, opts?: BinderOptions): string;
 }
 
+/**
+ * `app.on<Hook>(fn)` or, for tagged hooks, `app.on<Hook>(tags, fn)`. Notes for handlers that write:
+ * - A write started inside a hook without being awaited joins the open transaction as a savepoint.
+ *   Statements the caller runs while it is open run inside that savepoint and are lost if it rolls back.
+ * - Such a late write is awaited before the transaction ends, so waiting there on something that is
+ *   released only after the outer write returns deadlocks.
+ * - `db.onComplete` callbacks (and the after-success hooks they run) are not called in strict
+ *   registration order: those of a nested write follow the ones its parent registered while it ran.
+ * - Await `e.next()`: a chain whose `next()` is not awaited ends before the action runs.
+ */
 export type HookBinders = {
   [K in HookName]: K extends TaggedName
     ? TaggedBinder<HookEvents[K]>

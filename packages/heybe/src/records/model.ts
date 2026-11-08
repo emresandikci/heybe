@@ -1,6 +1,6 @@
 import type { Collection } from "../collections/model";
 import { applyModifier, modifier, zeroValues } from "./service";
-import { sortKeys } from "./serialize";
+import { plain, sortKeys } from "./serialize";
 
 type Values = Record<string, unknown>;
 
@@ -11,7 +11,7 @@ export class RecordModel {
   private readonly originalValues: Values;
   private readonly data = new Map<string, unknown>();
   private readonly visibility = new Map<string, boolean>();
-  private readonly fresh: boolean;
+  private fresh: boolean;
   private customData = false;
   private emailVisible = false;
 
@@ -38,6 +38,11 @@ export class RecordModel {
       this.data.set(f.name, applyModifier(f, op, this.get(f.name), value));
   }
 
+  // stores the value as is, without modifiers or normalization
+  setRaw(key: string, value: unknown): void {
+    this.data.set(key, value);
+  }
+
   load(data: Values): void {
     for (const [key, value] of Object.entries(data)) this.set(key, value);
   }
@@ -48,6 +53,14 @@ export class RecordModel {
 
   isNew(): boolean {
     return this.fresh;
+  }
+
+  markAsNew(): void {
+    this.fresh = true;
+  }
+
+  markAsNotNew(): void {
+    this.fresh = false;
   }
 
   hide(...fields: string[]): void {
@@ -72,8 +85,10 @@ export class RecordModel {
       this.visibility.get(name) ?? byDefault;
     const out: Values = {};
     for (const f of c.fields) {
-      if (f.type === "password" || !visible(f.name, !f.hidden)) continue;
-      out[f.name] = this.get(f.name);
+      if (f.type === "password" && c.type === "auth") continue;
+      if (!visible(f.name, !f.hidden)) continue;
+      const value = this.get(f.name);
+      out[f.name] = f.type === "password" ? plain(value) : value;
     }
     if (this.customData) {
       const known = new Set(c.fields.map((f) => f.name));

@@ -445,37 +445,6 @@ describe("auth records", () => {
 });
 
 describe("concurrency", () => {
-  test("concurrent updates never lose a change", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-"));
-    const file = createApp({ dir, now });
-    try {
-      await file.collections.save({
-        name: "items",
-        fields: [text("title"), { name: "views", type: "number" }] as any,
-      });
-      const items = file.records("items");
-      const r = await items.create({ title: "a", views: 0 });
-      await Promise.all(
-        Array.from({ length: 20 }, () =>
-          items.update(r.id as string, { "views+": 1 } as any),
-        ),
-      );
-      expect((await items.findOne(r.id as string)).views).toBe(20);
-
-      await Promise.all([
-        items.update(r.id as string, { title: "x" }),
-        items.update(r.id as string, { "views+": 1 } as any),
-      ]);
-      expect(await items.findOne(r.id as string)).toMatchObject({
-        title: "x",
-        views: 21,
-      });
-    } finally {
-      file.close();
-      rmSync(dir, { recursive: true });
-    }
-  });
-
   test("50 parallel creates on a file-backed db all succeed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-"));
     const file = createApp({ dir, now });

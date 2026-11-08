@@ -26,15 +26,9 @@ export interface InternalRecords<
     opts?: { tokenKey?: string },
   ): Promise<T>;
   deletePrepared(p: PreparedWrite, id: string): Promise<void>;
-  settle(p: PreparedWrite, committed: boolean): Promise<void>;
+  settle(p: PreparedWrite): Promise<void>;
 }
 
-export function internalRecords(
-  app: Pick<App, "db" | "collections" | "files" | "now">,
-  name: string,
-): InternalRecords {
-  return new RecordServiceImpl(
-    { db: app.db, store: app.collections, files: app.files, now: app.now },
-    name,
-  );
+export function internalRecords(app: App, name: string): InternalRecords {
+  return new RecordServiceImpl(app, name);
 }

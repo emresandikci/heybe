@@ -126,19 +126,17 @@ async function save(
 ): Promise<void> {
   const records = internalRecords(app, c.name);
   const id = record.id as string;
-  let committed = false;
   let p: PreparedWrite | undefined;
   try {
     p = await records.prepare(data, id);
     await records.updatePrepared(p, id, data, { tokenKey });
-    committed = true;
   } catch (error) {
     if (error instanceof StaleTokenError) check({ token: invalidToken });
     if (error instanceof ValidationError)
       throw new ApiError(400, message, error.data);
     throw error;
   } finally {
-    if (p) await records.settle(p, committed);
+    if (p) await records.settle(p);
   }
 }
 

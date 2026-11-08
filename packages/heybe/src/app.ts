@@ -9,6 +9,7 @@ import { typegenCommand } from "./commands/typegen";
 import { CollectionStore } from "./collections/store";
 import { type Db, openDb } from "./db";
 import { type Filesystem, localFilesystem } from "./files/storage";
+import { RecordHooks, bindRecordHooks } from "./extend/record-hooks";
 import { Route } from "./extend/route";
 import { BootstrapEvent, TerminateEvent } from "./hooks/events";
 import {
@@ -17,6 +18,7 @@ import {
   createHooks,
   hookBinders,
 } from "./hooks/registry";
+import { registerSystemHooks } from "./hooks/system";
 import type { Router } from "./http/router";
 import { createRouter } from "./http/server";
 import { type Mailer, mailerFromSettings } from "./mail/mailer";
@@ -218,6 +220,10 @@ export function createApp(opts: AppOptions = {}): App {
     },
     register: (...classes: (new () => object)[]) => {
       for (const cls of classes) {
+        if (cls.prototype instanceof RecordHooks) {
+          bindRecordHooks(app, new cls() as RecordHooks);
+          continue;
+        }
         if (!(cls.prototype instanceof Route))
           throw new Error(`Unsupported extension class ${cls.name}`);
         const r = new cls() as Route;
@@ -236,6 +242,8 @@ export function createApp(opts: AppOptions = {}): App {
       if (memory) rmSync(storageRoot, { recursive: true, force: true });
     },
   } as App;
+  collections.app = app;
+  registerSystemHooks(app);
 
   app.command("serve", serveCommand, { description: "Starts the web server" });
   app.command("superuser", superuserCommand, {

@@ -48,3 +48,27 @@ routerAdd(
   (e) => e.json(200, { id: e.request.pathValue("id") }),
   $apis.requireSuperuserOrOwnerAuth("id"),
 );
+
+onRecordCreate((e) => {
+  const title = e.record.getString("title");
+  e.record.set("slug", title.toLowerCase().replace(/ /g, "-"));
+  e.next();
+}, "hooked");
+
+onRecordUpdate((e) => {
+  if (e.record.getString("title") === "block")
+    throw new BadRequestError("Blocked.");
+  e.next();
+}, "hooked");
+
+onRecordDelete((e) => {
+  if (e.record.getString("title") === "keep") return;
+  e.next();
+}, "hooked");
+
+onRecordAfterCreateSuccess((e) => {
+  const audit = new Record(e.app.findCollectionByNameOrId("audit"));
+  audit.set("note", "created " + e.record.getString("title"));
+  e.app.save(audit);
+  e.next();
+}, "hooked");

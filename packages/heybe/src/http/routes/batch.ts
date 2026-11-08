@@ -371,10 +371,7 @@ async function batch(e: RequestEvent): Promise<Response> {
 
   for (const item of items)
     if (item.p)
-      await internalRecords(e.app, item.p.ctx.collection.name).settle(
-        item.p,
-        error === null,
-      );
+      await internalRecords(e.app, item.p.ctx.collection.name).settle(item.p);
 
   if (error === TIMEOUT || error === INTERRUPTED)
     throw new ApiError(400, "Batch transaction failed.");
