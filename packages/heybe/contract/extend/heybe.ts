@@ -209,4 +209,7 @@ app.onSettingsListRequest((e) => {
   return e.next();
 });
 
+app.cron("zeta", "0 0 1 1 *", () => {});
+app.cron("alpha", "@hourly", () => {});
+
 process.exitCode = await app.start();

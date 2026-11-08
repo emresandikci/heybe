@@ -13,6 +13,7 @@ import {
 import { type Mux, Router, createEvent } from "./router";
 import { registerBatchRoutes } from "./routes/batch";
 import { registerCollectionRoutes } from "./routes/collections";
+import { registerCronRoutes } from "./routes/crons";
 import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRealtimeRoutes } from "./routes/realtime";
@@ -47,6 +48,7 @@ export function createRouter(): Router {
     bodyLimit(DEFAULT_MAX_BODY_SIZE),
   );
   registerHealthRoutes(router);
+  registerCronRoutes(router);
   registerRealtimeRoutes(router);
   registerRecordAuthRoutes(router);
   registerRecordAuthFlowRoutes(router);

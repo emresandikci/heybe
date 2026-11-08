@@ -1,5 +1,6 @@
 export { createApp } from "./app";
 export type { App, AppOptions } from "./app";
+export { Cron } from "./extend/cron";
 export { RecordHooks } from "./extend/record-hooks";
 export { Route } from "./extend/route";
 export * from "./hooks/events";

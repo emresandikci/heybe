@@ -15,6 +15,7 @@ export type MfaMethod = "password" | "otp" | "oauth2" | "";
 
 const mfaOptions = (c: Collection) =>
   c.mfa as { enabled: boolean; duration: number; rule: string };
+export const mfaDurationMs = (c: Collection) => mfaOptions(c).duration * 1000;
 
 // PB wantsMFA: an empty rule means everyone, and a failing rule must not skip MFA.
 function wantsMfa(

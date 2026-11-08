@@ -7,9 +7,12 @@ import { serveCommand } from "./commands/serve";
 import { superuserCommand } from "./commands/superuser";
 import { typegenCommand } from "./commands/typegen";
 import { CollectionStore } from "./collections/store";
+import { CronScheduler } from "./cron/scheduler";
+import { registerCronJobs } from "./cron/system";
 import { type Db, openDb } from "./db";
 import { type Filesystem, localFilesystem } from "./files/storage";
 import { RecordHooks, bindRecordHooks } from "./extend/record-hooks";
+import { Cron } from "./extend/cron";
 import { Route } from "./extend/route";
 import { BootstrapEvent, TerminateEvent } from "./hooks/events";
 import {
@@ -64,6 +67,7 @@ export interface App extends HookBinders, RouterMethods {
   files: Filesystem;
   mailer: Mailer;
   realtime: Broker;
+  scheduler: CronScheduler;
   now: () => Date;
   timers: Timers;
   dev: boolean;
@@ -79,6 +83,8 @@ export interface App extends HookBinders, RouterMethods {
     opts?: { description?: string },
   ): void;
   start(): Promise<number>;
+  cron(schedule: string, fn: (app: App) => unknown): string;
+  cron(id: string, schedule: string, fn: (app: App) => unknown): string;
   register(...classes: (new () => object)[]): void;
   close(): void;
 }
@@ -129,6 +135,8 @@ export function createApp(opts: AppOptions = {}): App {
     string,
     { run: CommandHandler; description: string }
   >();
+  const scheduler = new CronScheduler(opts.timers ?? realTimers, now);
+  let cronCount = 0;
   let closed = false;
   let bootstrapped = false;
 
@@ -152,6 +160,7 @@ export function createApp(opts: AppOptions = {}): App {
     files,
     mailer: { send: (msg) => appMailer(app).send(msg) },
     realtime: new Broker(),
+    scheduler,
     now,
     timers: opts.timers ?? realTimers,
     dev: opts.dev ?? flags.dev ?? false,
@@ -222,10 +231,24 @@ export function createApp(opts: AppOptions = {}): App {
       }
       return code;
     },
+    cron: (
+      ...args:
+        [string, (a: App) => unknown] | [string, string, (a: App) => unknown]
+    ) => {
+      const [id, schedule, fn] =
+        args.length === 2 ? [`cron_${++cronCount}`, ...args] : args;
+      scheduler.add(id, schedule, () => fn(app));
+      return id;
+    },
     register: (...classes: (new () => object)[]) => {
       for (const cls of classes) {
         if (cls.prototype instanceof RecordHooks) {
           bindRecordHooks(app, new cls() as RecordHooks);
+          continue;
+        }
+        if (cls.prototype instanceof Cron) {
+          const c = new cls() as Cron;
+          app.cron(c.id ?? cls.name, c.schedule, (a) => c.run(a));
           continue;
         }
         if (!(cls.prototype instanceof Route))
@@ -250,6 +273,7 @@ export function createApp(opts: AppOptions = {}): App {
   settings.app = app;
   registerSystemHooks(app);
   registerRealtimeHooks(app);
+  registerCronJobs(app);
 
   app.command("serve", serveCommand, { description: "Starts the web server" });
   app.command("superuser", superuserCommand, {

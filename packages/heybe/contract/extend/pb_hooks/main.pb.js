@@ -206,3 +206,7 @@ onSettingsListRequest((e) => {
   e.settings.meta.senderAddress = "***";
   e.next();
 });
+
+cronAdd("zeta", "0 0 1 1 *", () => {});
+
+cronAdd("alpha", "@hourly", () => {});
