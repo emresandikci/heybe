@@ -18,8 +18,18 @@ import { pickFields, pickItems } from "../../records/serialize";
 import { type PreparedWrite, replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
 import { ApiError, logUnexpected } from "../errors";
-import { DEFAULT_MAX_BODY_SIZE } from "../middlewares";
-import type { RequestEvent, Router } from "../router";
+import {
+  BODY_LIMIT_ID,
+  BODY_LIMIT_PRIORITY,
+  DEFAULT_MAX_BODY_SIZE,
+  applyBodyLimit,
+} from "../middlewares";
+import {
+  type Middleware,
+  type RequestEvent,
+  type Router,
+  jsonResponse,
+} from "../router";
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
@@ -107,15 +117,24 @@ function serialize(app: App, c: Collection, info: RequestInfo, id: string) {
 }
 
 // Port of PB dynamicCollectionBodyLimit.
-function collectionBodyLimit(app: App, params: Record<string, string>): number {
-  const c = app.collections.find(params.collection!);
-  if (!c) throw new ApiError(404, "Missing or invalid collection context.");
-  if (c.type === "view") return DEFAULT_MAX_BODY_SIZE;
-  return c.fields.reduce(
-    (sum, f) => sum + (fields[f.type].maxBodySize?.(f) ?? 0),
-    DEFAULT_MAX_BODY_SIZE,
-  );
-}
+const collectionBodyLimit: Middleware = {
+  id: BODY_LIMIT_ID,
+  priority: BODY_LIMIT_PRIORITY,
+  fn: (e) => {
+    const c = e.app.collections.find(e.params.collection ?? "");
+    if (!c) throw new ApiError(404, "Missing or invalid collection context.");
+    applyBodyLimit(
+      e,
+      c.type === "view"
+        ? DEFAULT_MAX_BODY_SIZE
+        : c.fields.reduce(
+            (sum, f) => sum + (fields[f.type].maxBodySize?.(f) ?? 0),
+            DEFAULT_MAX_BODY_SIZE,
+          ),
+    );
+    return e.next();
+  },
+};
 
 // Splits uploaded `File` values from the plain body values (multipart bodies have both).
 function splitUploads(body: Values): {
@@ -355,7 +374,7 @@ async function list(e: RequestEvent): Promise<Response> {
       expandPaths(info),
       info,
     );
-    return e.json(200, {
+    return jsonResponse(200, {
       items: pickItems(items, q.fields),
       page: result.page,
       perPage: result.perPage,
@@ -374,7 +393,7 @@ async function view(e: RequestEvent): Promise<Response> {
   const id = e.params.id!;
   const info = await requestInfo(e);
   await checkRule(e.app, c, c.viewRule, "view", e, id);
-  return e.json(200, serialize(e.app, c, info, id));
+  return jsonResponse(200, serialize(e.app, c, info, id));
 }
 
 async function create(e: RequestEvent): Promise<Response> {
@@ -388,7 +407,7 @@ async function create(e: RequestEvent): Promise<Response> {
   } catch (err) {
     saveFailed(CREATE_FAILED, err);
   }
-  return e.json(200, serialize(e.app, c, info, saved.id as string));
+  return jsonResponse(200, serialize(e.app, c, info, saved.id as string));
 }
 
 async function update(e: RequestEvent): Promise<Response> {
@@ -404,7 +423,7 @@ async function update(e: RequestEvent): Promise<Response> {
   } catch (err) {
     saveFailed(UPDATE_FAILED, err);
   }
-  return e.json(200, serialize(e.app, c, info, id));
+  return jsonResponse(200, serialize(e.app, c, info, id));
 }
 
 async function remove(e: RequestEvent): Promise<Response> {
@@ -490,11 +509,9 @@ export async function batchDelete(
 
 export function registerRecordRoutes(router: Router): void {
   const base = "/api/collections/{collection}/records";
-  router.add("GET", base, list);
-  router.add("GET", `${base}/{id}`, view);
-  router.add("POST", base, create, { bodyLimit: collectionBodyLimit });
-  router.add("PATCH", `${base}/{id}`, update, {
-    bodyLimit: collectionBodyLimit,
-  });
-  router.add("DELETE", `${base}/{id}`, remove);
+  router.route("GET", base, list);
+  router.route("GET", `${base}/{id}`, view);
+  router.route("POST", base, create, collectionBodyLimit);
+  router.route("PATCH", `${base}/{id}`, update, collectionBodyLimit);
+  router.route("DELETE", `${base}/{id}`, remove);
 }

@@ -14,7 +14,7 @@ import { expandRecords } from "../../records/expand";
 import { pickFields, serializeRecord } from "../../records/serialize";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
-import type { RequestEvent, Router } from "../router";
+import { type RequestEvent, type Router, jsonResponse } from "../router";
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
@@ -234,14 +234,14 @@ export async function authResponse(
     ).catch((err) =>
       console.error("heybe: failed to record auth origin:", err),
     );
-  return e.json(
+  return jsonResponse(
     200,
     pickFields({ ...extra, record: expanded, token }, e.query.get("fields")),
   );
 }
 
 export function registerRecordAuthRoutes(router: Router): void {
-  router.add("GET", "/api/collections/{collection}/auth-methods", (e) => {
+  router.route("GET", "/api/collections/{collection}/auth-methods", (e) => {
     const c = findAuthCollection(e);
     const password = c.passwordAuth as PasswordAuth;
     const otp = c.otp as { enabled: boolean; duration: number };
@@ -269,7 +269,7 @@ export function registerRecordAuthRoutes(router: Router): void {
     });
   });
 
-  router.add(
+  router.route(
     "POST",
     "/api/collections/{collection}/auth-with-password",
     async (e) => {
@@ -317,7 +317,7 @@ export function registerRecordAuthRoutes(router: Router): void {
     },
   );
 
-  router.add(
+  router.route(
     "POST",
     "/api/collections/{collection}/auth-refresh",
     async (e) => {

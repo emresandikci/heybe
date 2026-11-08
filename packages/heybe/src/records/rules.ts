@@ -14,55 +14,12 @@ import { internalRecords } from "./internal";
 type Values = Record<string, unknown>;
 export type RuleAction = "list" | "view" | "create" | "update" | "delete";
 
-const infos = new WeakMap<RequestEvent, RequestInfo>();
-
 const FORBIDDEN = "Only superusers can perform this action.";
 
-// PB inflector.Snakecase on the canonical header key ("X-Api-Key" -> "x_api_key")
-export const headerKey = (name: string) =>
-  name
-    .split(/[\W_]+/)
-    .filter((w) => w !== "")
-    .join("_")
-    .toLowerCase();
+export { buildRequestInfo, headerKey } from "../http/router";
 
-export function buildRequestInfo(
-  e: RequestEvent,
-  body: Values,
-  context = "default",
-): RequestInfo {
-  const query = new Map<string, string>();
-  for (const [k, v] of e.query) if (!query.has(k)) query.set(k, v);
-  const headers = new Map<string, string>();
-  for (const [k, v] of e.req.headers) headers.set(headerKey(k), v);
-  return {
-    auth: e.auth?.record ?? null,
-    authCollection: e.auth?.collection.name ?? null,
-    body,
-    query: Object.fromEntries(query),
-    headers: Object.fromEntries(headers),
-    method: e.req.method,
-    context,
-  };
-}
-
-// Port of PB RequestEvent.RequestInfo: built once per request, the body is read on first use.
-export async function requestInfo(e: RequestEvent): Promise<RequestInfo> {
-  let info = infos.get(e);
-  if (!info) {
-    let body: Values;
-    try {
-      body = await e.body();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 413) throw err;
-      logUnexpected(err);
-      throw new ApiError(400, "");
-    }
-    info = buildRequestInfo(e, body);
-    infos.set(e, info);
-  }
-  return info;
-}
+export const requestInfo = (e: RequestEvent): Promise<RequestInfo> =>
+  e.requestInfo();
 
 // A null rule is superuser only (403). Returns the rule to apply, or null when nothing restricts the request.
 // For view/update/delete with a `recordId`, a record outside the rule is a 404.

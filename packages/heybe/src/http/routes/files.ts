@@ -7,7 +7,7 @@ import { fileKey } from "../../files/storage";
 import { createThumb, thumbGenerator } from "../../files/thumbs";
 import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
-import { checkSuperuserIp, framable } from "../middlewares";
+import { checkSuperuserIp } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
 import { internalRecords } from "../../records/internal";
 
@@ -197,9 +197,8 @@ async function download(e: RequestEvent): Promise<Response> {
       "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "max-age=2592000, stale-while-revalidate=86400",
   });
-  const res = serveContent(e.req, blob, headers);
-  framable.add(res);
-  return res;
+  e.responseHeaders.delete("x-frame-options");
+  return serveContent(e.req, blob, headers);
 }
 
 const NO_OVERLAP = "invalid range: failed to overlap";
@@ -303,7 +302,7 @@ function serveContent(req: Request, blob: Blob, headers: Headers): Response {
 }
 
 export function registerFileRoutes(router: Router): void {
-  router.add("POST", "/api/files/token", (e) => {
+  router.route("POST", "/api/files/token", (e) => {
     if (!e.auth)
       throw new ApiError(
         401,
@@ -313,5 +312,9 @@ export function registerFileRoutes(router: Router): void {
       token: newFileToken(e.app, e.auth.collection, e.auth.record),
     });
   });
-  router.add("GET", "/api/files/{collection}/{recordId}/{filename}", download);
+  router.route(
+    "GET",
+    "/api/files/{collection}/{recordId}/{filename}",
+    download,
+  );
 }

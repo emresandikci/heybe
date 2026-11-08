@@ -1,14 +1,16 @@
 import type { App } from "../app";
+import { ServeEvent } from "../hooks/events";
 import { ApiError, errorResponse } from "./errors";
 import {
-  checkBodyLimit,
-  checkSuperuserIp,
+  DEFAULT_MAX_BODY_SIZE,
+  bodyLimit,
   cors,
-  framable,
-  loadAuth,
+  loadAuthToken,
+  panicRecover,
   securityHeaders,
+  superuserIPsWhitelist,
 } from "./middlewares";
-import { Router, createEvent, resolveBodyLimit } from "./router";
+import { type Mux, Router, createEvent } from "./router";
 import { registerBatchRoutes } from "./routes/batch";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
@@ -33,8 +35,16 @@ export function parseHttpAddr(addr: string): { host: string; port: number } {
   return { host: host.replace(/^\[(.*)\]$/, "$1"), port };
 }
 
+// Port of PB apis.NewRouter (the activity logger and rate limit come with phase 7).
 export function createRouter(): Router {
   const router = new Router();
+  router.use(
+    panicRecover(),
+    loadAuthToken(),
+    superuserIPsWhitelist(),
+    securityHeaders(),
+    bodyLimit(DEFAULT_MAX_BODY_SIZE),
+  );
   registerHealthRoutes(router);
   registerRecordAuthRoutes(router);
   registerRecordAuthFlowRoutes(router);
@@ -47,48 +57,78 @@ export function createRouter(): Router {
   return router;
 }
 
-export function serve(
-  app: App,
-  opts: { host: string; port: number; origins?: string[]; router?: Router },
-): { url: string; stop(): Promise<void> } {
-  const router = opts.router ?? createRouter();
-  router.add("GET", "/{path...}", () => {
-    throw new ApiError(404, "File not found");
-  });
-  const origins = opts.origins?.length ? opts.origins : ["*"];
-
-  const handle = async (req: Request): Promise<Response> => {
-    const c = cors(req, origins);
-    if (c.preflight) return c.preflight;
-    let res: Response;
-    try {
-      const path = new URL(req.url).pathname;
-      const found = router.match(req.method, path);
-      // downloads may wait up to PB_THUMBS_MAX_WAIT in the thumb queue
-      if (path.startsWith("/api/files/")) server.timeout(req, 0);
-      const bodyLimit = resolveBodyLimit(found, app);
-      checkBodyLimit(req, bodyLimit);
-      if (!found) throw new ApiError(404, "");
-      const event = createEvent(app, req, found.params, bodyLimit);
-      event.auth = loadAuth(app, req);
-      event.remoteIp = server.requestIP(req)?.address ?? "";
-      if (event.auth?.isSuperuser) checkSuperuserIp(app, req, event.remoteIp);
-      res = await found.h(event);
-    } catch (err) {
-      res = errorResponse(err);
-    }
-    for (const [k, v] of Object.entries(securityHeaders()))
-      if (k !== "x-frame-options" || !framable.has(res)) res.headers.set(k, v);
-    return c.apply(res);
-  };
-
-  const server = Bun.serve({
+export function serveOptions(opts: {
+  host: string;
+  port: number;
+  fetch: (req: Request, server: Bun.Server<unknown>) => Promise<Response>;
+}) {
+  return {
     hostname: opts.host,
     port: opts.port,
+    idleTimeout: 0,
     maxRequestBodySize: 2 ** 32 - 1,
-    fetch: handle,
-  });
+    fetch: opts.fetch,
+  };
+}
 
+async function handle(
+  app: App,
+  mux: Mux,
+  req: Request,
+  server: Bun.Server<unknown>,
+): Promise<Response> {
+  const remoteIp = server.requestIP(req)?.address ?? "";
+  const found = mux.match(req.method, new URL(req.url).pathname)!;
+  const e = createEvent(app, req, found.params, remoteIp);
+  let res: Response;
+  try {
+    res = await found.run(e);
+  } catch (err) {
+    res = e.response ?? errorResponse(err);
+  }
+  return withHeaders(res, e.responseHeaders);
+}
+
+// Middleware headers were set before the response in PB: they stay unless the response sets the
+// same key, a middleware Content-Type wins (PB setResponseHeaderIfEmpty) and Vary values add up.
+function withHeaders(res: Response, headers: Headers): Response {
+  if (headers.keys().next().done) return res;
+  const out = new Response(res.body, res);
+  for (const [k, v] of headers) {
+    const own = out.headers.get(k);
+    if (k === "vary") out.headers.set(k, own ? `${v}, ${own}` : v);
+    else if (k === "content-type" || own === null) out.headers.set(k, v);
+  }
+  return out;
+}
+
+// Port of PB apis.Serve: onServe can change the router, its final action starts the server.
+export async function serve(
+  app: App,
+  opts: { host: string; port: number; origins?: string[]; router?: Router },
+): Promise<{ url: string; stop(): Promise<void> }> {
+  const router = opts.router ?? app.router;
+  router.use(cors(opts.origins?.length ? opts.origins : ["*"]));
+  const event = ServeEvent.of({ app, router, server: null });
+  await app.hooks.onServe.trigger(event, (e) => {
+    if (!e.router.hasRoute("GET", "/{path...}"))
+      e.router.get("/{path...}", () => {
+        throw new ApiError(404, "File not found");
+      });
+    const mux = e.router.build();
+    e.server = Bun.serve(
+      serveOptions({
+        host: opts.host,
+        port: opts.port,
+        fetch: (req, server) => handle(app, mux, req, server),
+      }),
+    );
+  });
+  const server = event.server;
+  if (!server)
+    throw new Error(
+      "The OnServe listener was not initialized. Did you forget to call the ServeEvent.next() method?",
+    );
   return {
     url: `http://${opts.host}:${server.port}`,
     stop: async () => {

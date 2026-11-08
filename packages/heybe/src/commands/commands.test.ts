@@ -338,6 +338,7 @@ describe("lifecycle", () => {
         }
       });
     });
+    const warn = spyOn(console, "warn");
     const events: string[] = [];
     cli.onTerminate(async (e) => {
       events.push(`alive:${(await fetch(`${url}/api/health`)).ok}`);
@@ -349,6 +350,7 @@ describe("lifecycle", () => {
     process.emit("SIGINT");
     expect(await done).toBe(0);
     expect(events).toEqual(["alive:true", "after"]);
+    expect(warn).not.toHaveBeenCalled();
     expect(
       await fetch(`${url}/api/health`).then(
         () => "up",

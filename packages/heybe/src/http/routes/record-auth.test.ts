@@ -16,11 +16,13 @@ afterEach(() => app.close());
 
 async function call(path: string, init: RequestInit = {}) {
   const req = new Request(`http://x${path}`, { method: "POST", ...init });
-  const found = createRouter().match(req.method, new URL(req.url).pathname)!;
+  const found = createRouter()
+    .build()
+    .match(req.method, new URL(req.url).pathname)!;
   const e = createEvent(app, req, found.params);
   e.auth = loadAuth(app, req);
   try {
-    return await found.h(e);
+    return await found.run(e);
   } catch (err) {
     return err as { status: number; message: string };
   }

@@ -45,12 +45,14 @@ async function post(
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
-  const found = createRouter().match(req.method, new URL(req.url).pathname)!;
+  const found = createRouter()
+    .build()
+    .match(req.method, new URL(req.url).pathname)!;
   const e = createEvent(app, req, found.params);
   e.auth = loadAuth(app, req);
   e.remoteIp = "9.9.9.9";
   try {
-    return await found.h(e);
+    return await found.run(e);
   } catch (err) {
     return errorResponse(err);
   }
@@ -273,11 +275,10 @@ describe("tokenKey change", () => {
 describe("auth-methods", () => {
   test("reflects the otp config", async () => {
     const req = new Request("http://x/api/collections/users/auth-methods");
-    const found = createRouter().match(
-      "GET",
-      "/api/collections/users/auth-methods",
-    )!;
-    const res = await found.h(createEvent(app, req, found.params));
+    const found = createRouter()
+      .build()
+      .match("GET", "/api/collections/users/auth-methods")!;
+    const res = await found.run(createEvent(app, req, found.params));
     expect(((await res.json()) as any).otp).toEqual({
       enabled: true,
       duration: 180,

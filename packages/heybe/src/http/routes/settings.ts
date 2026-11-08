@@ -204,19 +204,19 @@ async function appleClientSecret(e: RequestEvent): Promise<Response> {
 }
 
 export function registerSettingsRoutes(router: Router): void {
-  router.add("GET", "/api/settings", (e) => {
+  router.route("GET", "/api/settings", (e) => {
     requireSuperuser(e);
     return e.json(200, e.app.settings);
   });
-  router.add("PATCH", "/api/settings", (e) => {
+  router.route("PATCH", "/api/settings", (e) => {
     requireSuperuser(e);
     return update(e);
   });
-  router.add("POST", "/api/settings/test/email", (e) => {
+  router.route("POST", "/api/settings/test/email", (e) => {
     requireSuperuser(e);
     return testEmail(e);
   });
-  router.add("POST", "/api/settings/apple/generate-client-secret", (e) => {
+  router.route("POST", "/api/settings/apple/generate-client-secret", (e) => {
     requireSuperuser(e);
     return appleClientSecret(e);
   });

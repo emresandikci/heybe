@@ -1,3 +1,4 @@
+import { STATUS_CODES } from "node:http";
 import { FilterError } from "../filter/parse";
 import { NotFoundError, ValidationError } from "../util";
 
@@ -10,9 +11,16 @@ const DEFAULT_MESSAGES: Record<number, string> = {
   500: "Something went wrong while processing your request.",
 };
 
-const STATUS_TEXT: Record<number, string> = {
+// Go http.StatusText where it differs from Node's STATUS_CODES.
+const GO_STATUS_TEXT: Record<number, string> = {
   413: "Request Entity Too Large",
+  414: "Request URI Too Long",
+  416: "Requested Range Not Satisfiable",
+  418: "I'm a teapot",
 };
+
+export const statusText = (status: number): string =>
+  GO_STATUS_TEXT[status] ?? STATUS_CODES[status] ?? "";
 
 function sentenize(text: string): string {
   const s = text.trim();
@@ -42,13 +50,32 @@ export class ApiError extends Error {
     message: string,
     data: Record<string, unknown> = {},
   ) {
-    super(
-      sentenize(
-        message || DEFAULT_MESSAGES[status] || STATUS_TEXT[status] || "",
-      ),
-    );
+    super(sentenize(message || DEFAULT_MESSAGES[status] || statusText(status)));
     this.data = sentenizeData(data) as Record<string, unknown>;
   }
+}
+
+const INVALID_VALUE = {
+  code: "validation_invalid_value",
+  message: "Invalid value.",
+};
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> => {
+  if (v === null || typeof v !== "object") return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+};
+
+// Port of PB router safeErrorsData for error data given to the RequestEvent error helpers: plain
+// objects recurse, any other value is reported as an invalid value.
+export function safeErrorsData(data: unknown): Record<string, unknown> {
+  if (!isPlainObject(data)) return {};
+  return Object.fromEntries(
+    Object.entries(data).map(([k, v]) => [
+      k,
+      isPlainObject(v) ? safeErrorsData(v) : { ...INVALID_VALUE },
+    ]),
+  );
 }
 
 // Expected failures turn into a status silently; anything else is a bug and is logged before conversion.
@@ -62,13 +89,16 @@ export function logUnexpected(err: unknown): void {
     console.error(err);
 }
 
+// Port of PB router.ToApiError: any other error is a 400 (logged here, since it is likely a bug).
 export function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
   if (err instanceof ValidationError)
     return new ApiError(400, err.message, err.data);
   if (err instanceof NotFoundError) return new ApiError(404, err.message);
   console.error(err);
-  return new ApiError(500, "");
+  if ((err as { code?: unknown } | null)?.code === "ENOENT")
+    return new ApiError(404, "");
+  return new ApiError(400, "");
 }
 
 export function errorResponse(err: unknown): Response {

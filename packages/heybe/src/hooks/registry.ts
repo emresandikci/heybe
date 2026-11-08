@@ -196,11 +196,13 @@ export function createHooks(): Hooks {
   ) as unknown as Hooks;
 }
 
-type Binder<T> = (fn: HookHandler<T>, opts?: BindOptions) => string;
+type BinderOptions = Omit<BindOptions, "tags">;
+
+type Binder<T> = (fn: HookHandler<T>, opts?: BinderOptions) => string;
 
 interface TaggedBinder<T> {
-  (fn: HookHandler<T>, opts?: BindOptions): string;
-  (tags: string | string[], fn: HookHandler<T>, opts?: BindOptions): string;
+  (fn: HookHandler<T>, opts?: BinderOptions): string;
+  (tags: string | string[], fn: HookHandler<T>, opts?: BinderOptions): string;
 }
 
 export type HookBinders = {

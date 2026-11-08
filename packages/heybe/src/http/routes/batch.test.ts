@@ -16,7 +16,7 @@ import * as mime from "../../files/mime";
 import { RecordServiceImpl } from "../../records/service";
 import { toApiError } from "../errors";
 import { loadAuth } from "../middlewares";
-import { createEvent, resolveBodyLimit } from "../router";
+import { createEvent } from "../router";
 import { createRouter } from "../server";
 import { internalRecords } from "../../records/internal";
 
@@ -94,11 +94,11 @@ async function call(
     },
     body: json ? JSON.stringify(body) : body,
   });
-  const found = createRouter().match(method, path)!;
-  const e = createEvent(app, req, found.params, resolveBodyLimit(found, app));
+  const found = createRouter().build().match(method, path)!;
+  const e = createEvent(app, req, found.params);
   e.auth = loadAuth(app, req);
   try {
-    const res = await found.h(e);
+    const res = await found.run(e);
     return { status: res.status, body: (await res.json()) as any };
   } catch (err) {
     const { status, message, data } = toApiError(err);

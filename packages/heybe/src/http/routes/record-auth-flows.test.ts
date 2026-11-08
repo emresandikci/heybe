@@ -29,11 +29,13 @@ async function post(path: string, body: unknown): Promise<Response> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const found = createRouter().match(req.method, new URL(req.url).pathname)!;
+  const found = createRouter()
+    .build()
+    .match(req.method, new URL(req.url).pathname)!;
   const e = createEvent(app, req, found.params);
   e.auth = loadAuth(app, req);
   try {
-    return await found.h(e);
+    return await found.run(e);
   } catch (err) {
     return errorResponse(err);
   }

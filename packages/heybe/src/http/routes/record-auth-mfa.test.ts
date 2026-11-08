@@ -41,12 +41,14 @@ async function post(path: string, body: unknown): Promise<Response> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const found = createRouter().match(req.method, new URL(req.url).pathname)!;
+  const found = createRouter()
+    .build()
+    .match(req.method, new URL(req.url).pathname)!;
   const e = createEvent(app, req, found.params);
   e.auth = loadAuth(app, req);
   e.remoteIp = "9.9.9.9";
   try {
-    return await found.h(e);
+    return await found.run(e);
   } catch (err) {
     return errorResponse(err);
   }
@@ -145,8 +147,10 @@ describe("mfa", () => {
 
   test("auth-methods reports the mfa config", async () => {
     const req = new Request("http://x/api/collections/users/auth-methods");
-    const found = createRouter().match("GET", new URL(req.url).pathname)!;
-    const res = await found.h(createEvent(app, req, found.params));
+    const found = createRouter()
+      .build()
+      .match("GET", new URL(req.url).pathname)!;
+    const res = await found.run(createEvent(app, req, found.params));
     expect(((await res.json()) as any).mfa).toEqual({
       enabled: true,
       duration: 600,

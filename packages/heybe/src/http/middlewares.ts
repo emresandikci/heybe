@@ -2,10 +2,31 @@ import type { App } from "../app";
 import { authFromToken } from "../auth/tokens";
 import { isIP } from "node:net";
 import { isIpInList } from "../ip";
-import { ApiError } from "./errors";
-import type { AuthState } from "./router";
+import { ApiError, toApiError } from "./errors";
+import type { AuthState, Middleware, RequestEvent } from "./router";
 
 export const DEFAULT_MAX_BODY_SIZE = 32 << 20;
+
+// PB apis/middlewares.go ids and priorities (DefaultRateLimitMiddlewarePriority is -1000).
+export const CORS_ID = "pbCors";
+export const CORS_PRIORITY = -1041;
+export const PANIC_RECOVER_ID = "pbPanicRecover";
+export const PANIC_RECOVER_PRIORITY = -1030;
+export const LOAD_AUTH_TOKEN_ID = "pbLoadAuthToken";
+export const LOAD_AUTH_TOKEN_PRIORITY = -1020;
+export const SUPERUSER_IPS_WHITELIST_ID = "pbSuperuserIPsWhitelist";
+export const SUPERUSER_IPS_WHITELIST_PRIORITY = -1015;
+export const SECURITY_HEADERS_ID = "pbSecurityHeaders";
+export const SECURITY_HEADERS_PRIORITY = -1010;
+export const BODY_LIMIT_ID = "pbBodyLimit";
+export const BODY_LIMIT_PRIORITY = -990;
+export const REQUIRE_GUEST_ONLY_ID = "pbRequireGuestOnly";
+export const REQUIRE_AUTH_ID = "pbRequireAuth";
+export const REQUIRE_SUPERUSER_AUTH_ID = "pbRequireSuperuserAuth";
+export const REQUIRE_SUPERUSER_OR_OWNER_AUTH_ID =
+  "pbRequireSuperuserOrOwnerAuth";
+export const REQUIRE_SAME_COLLECTION_CONTEXT_AUTH_ID =
+  "pbRequireSameCollectionContextAuth";
 
 const ALLOW_METHODS = "GET,HEAD,PUT,PATCH,POST,DELETE";
 
@@ -26,43 +47,165 @@ function originAllowed(origin: string, allowed: string[]): string {
   return "";
 }
 
-export function cors(
-  req: Request,
-  allowed: string[],
-): { preflight: Response | null; apply(res: Response): Response } {
-  const origin = req.headers.get("origin") ?? "";
-  const preflight = req.method === "OPTIONS";
-  const headers = new Headers({ vary: "Origin" });
-  const noContent = () => new Response(null, { status: 204, headers });
-  const result = () => ({
-    preflight: preflight ? noContent() : null,
-    apply: (res: Response) => withHeaders(res, headers),
-  });
-  if (origin === "") return result();
+// Port of PB apis/middlewares_cors.go (CORS with AllowOrigins and AllowMethods).
+export function cors(allowed: string[]): Middleware {
+  return {
+    id: CORS_ID,
+    priority: CORS_PRIORITY,
+    fn: (e) => {
+      const headers = e.responseHeaders;
+      headers.append("vary", "Origin");
+      const origin = e.req.headers.get("origin") ?? "";
+      const preflight = e.req.method === "OPTIONS";
+      const allowOrigin = origin === "" ? "" : originAllowed(origin, allowed);
+      if (allowOrigin === "") return preflight ? e.noContent(204) : e.next();
 
-  const allowOrigin = originAllowed(origin, allowed);
-  if (allowOrigin === "") return result();
+      headers.set("access-control-allow-origin", allowOrigin);
+      if (!preflight) return e.next();
 
-  headers.set("access-control-allow-origin", allowOrigin);
-  if (!preflight) return result();
-
-  headers.append("vary", "Access-Control-Request-Method");
-  headers.append("vary", "Access-Control-Request-Headers");
-  headers.set("access-control-allow-methods", ALLOW_METHODS);
-  const requested = req.headers.get("access-control-request-headers");
-  if (requested) headers.set("access-control-allow-headers", requested);
-  return result();
+      headers.append("vary", "Access-Control-Request-Method");
+      headers.append("vary", "Access-Control-Request-Headers");
+      headers.set("access-control-allow-methods", ALLOW_METHODS);
+      const requested = e.req.headers.get("access-control-request-headers");
+      if (requested) headers.set("access-control-allow-headers", requested);
+      return e.noContent(204);
+    },
+  };
 }
 
-// Responses that may be embedded in frames (PB drops X-Frame-Options for served files).
-export const framable = new WeakSet<Response>();
-
-export function securityHeaders(): Record<string, string> {
+export function requireGuestOnly(): Middleware {
   return {
-    "x-xss-protection": "1; mode=block",
-    "x-content-type-options": "nosniff",
-    "x-frame-options": "SAMEORIGIN",
-    "cross-origin-opener-policy": "same-origin",
+    id: REQUIRE_GUEST_ONLY_ID,
+    fn: (e) => {
+      if (e.auth)
+        throw e.badRequestError("The request can be accessed only by guests.");
+      return e.next();
+    },
+  };
+}
+
+const requireAuthFn = (collections: string[]) => (e: RequestEvent) => {
+  if (!e.auth)
+    throw e.unauthorizedError(
+      "The request requires valid record authorization token.",
+    );
+  if (collections.length > 0 && !collections.includes(e.auth.collection.name))
+    throw e.forbiddenError(
+      "The authorized record is not allowed to perform this action.",
+    );
+  return e.next();
+};
+
+export function requireAuth(...collections: string[]): Middleware {
+  return { id: REQUIRE_AUTH_ID, fn: requireAuthFn(collections) };
+}
+
+export function requireSuperuserAuth(): Middleware {
+  return { id: REQUIRE_SUPERUSER_AUTH_ID, fn: requireAuthFn(["_superusers"]) };
+}
+
+export function requireSuperuserOrOwnerAuth(param = "id"): Middleware {
+  return {
+    id: REQUIRE_SUPERUSER_OR_OWNER_AUTH_ID,
+    fn: (e) => {
+      if (!e.auth)
+        throw e.unauthorizedError(
+          "The request requires superuser or record authorization token.",
+        );
+      if (e.auth.isSuperuser) return e.next();
+      if (e.auth.record.id !== e.params[param])
+        throw e.forbiddenError("You are not allowed to perform this request.");
+      return e.next();
+    },
+  };
+}
+
+export function requireSameCollectionContextAuth(
+  param = "collection",
+): Middleware {
+  return {
+    id: REQUIRE_SAME_COLLECTION_CONTEXT_AUTH_ID,
+    fn: (e) => {
+      if (!e.auth)
+        throw e.unauthorizedError(
+          "The request requires valid record authorization token.",
+        );
+      const collection = e.app.collections.find(e.params[param] ?? "");
+      if (!collection || collection.id !== e.auth.collection.id)
+        throw e.forbiddenError(
+          `The request requires auth record from ${e.auth.collection.name} collection.`,
+        );
+      return e.next();
+    },
+  };
+}
+
+export function panicRecover(): Middleware {
+  return {
+    id: PANIC_RECOVER_ID,
+    priority: PANIC_RECOVER_PRIORITY,
+    fn: async (e) => {
+      try {
+        await e.next();
+      } catch (err) {
+        throw toApiError(err);
+      }
+    },
+  };
+}
+
+export function loadAuthToken(): Middleware {
+  return {
+    id: LOAD_AUTH_TOKEN_ID,
+    priority: LOAD_AUTH_TOKEN_PRIORITY,
+    fn: (e) => {
+      e.auth ??= loadAuth(e.app, e.req);
+      return e.next();
+    },
+  };
+}
+
+export function superuserIPsWhitelist(): Middleware {
+  return {
+    id: SUPERUSER_IPS_WHITELIST_ID,
+    priority: SUPERUSER_IPS_WHITELIST_PRIORITY,
+    fn: (e) => {
+      if (e.hasSuperuserAuth()) checkSuperuserIp(e.app, e.req, e.remoteIp);
+      return e.next();
+    },
+  };
+}
+
+export function securityHeaders(): Middleware {
+  return {
+    id: SECURITY_HEADERS_ID,
+    priority: SECURITY_HEADERS_PRIORITY,
+    fn: (e) => {
+      const h = e.responseHeaders;
+      h.set("x-xss-protection", "1; mode=block");
+      h.set("x-content-type-options", "nosniff");
+      h.set("x-frame-options", "SAMEORIGIN");
+      h.set("cross-origin-opener-policy", "same-origin");
+      return e.next();
+    },
+  };
+}
+
+// Port of PB applyBodyLimit: a limit <= 0 disables it.
+export function applyBodyLimit(e: RequestEvent, bytes: number): void {
+  if (bytes <= 0) return;
+  checkBodyLimit(e.req, bytes);
+  e.bodyLimit = bytes;
+}
+
+export function bodyLimit(bytes: number): Middleware {
+  return {
+    id: BODY_LIMIT_ID,
+    priority: BODY_LIMIT_PRIORITY,
+    fn: (e) => {
+      applyBodyLimit(e, bytes);
+      return e.next();
+    },
   };
 }
 
@@ -72,15 +215,6 @@ export function checkBodyLimit(
 ): void {
   const length = Number(req.headers.get("content-length") ?? 0);
   if (length > limit) throw new ApiError(413, "Request entity too large");
-}
-
-function withHeaders(res: Response, extra: Headers): Response {
-  const out = new Response(res.body, res);
-  for (const [k, v] of extra) {
-    if (k === "vary") out.headers.append(k, v);
-    else out.headers.set(k, v);
-  }
-  return out;
 }
 
 export async function readLimited(

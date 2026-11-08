@@ -548,13 +548,13 @@ async function impersonate(e: RequestEvent): Promise<Response> {
 
 export function registerRecordAuthFlowRoutes(router: Router): void {
   const base = "/api/collections/{collection}";
-  router.add("POST", `${base}/request-verification`, requestVerification);
-  router.add("POST", `${base}/confirm-verification`, confirmVerification);
-  router.add("POST", `${base}/request-password-reset`, requestPasswordReset);
-  router.add("POST", `${base}/confirm-password-reset`, confirmPasswordReset);
-  router.add("POST", `${base}/request-email-change`, requestEmailChange);
-  router.add("POST", `${base}/confirm-email-change`, confirmEmailChange);
-  router.add("POST", `${base}/request-otp`, requestOtp);
-  router.add("POST", `${base}/auth-with-otp`, authWithOtp);
-  router.add("POST", `${base}/impersonate/{id}`, impersonate);
+  router.route("POST", `${base}/request-verification`, requestVerification);
+  router.route("POST", `${base}/confirm-verification`, confirmVerification);
+  router.route("POST", `${base}/request-password-reset`, requestPasswordReset);
+  router.route("POST", `${base}/confirm-password-reset`, confirmPasswordReset);
+  router.route("POST", `${base}/request-email-change`, requestEmailChange);
+  router.route("POST", `${base}/confirm-email-change`, confirmEmailChange);
+  router.route("POST", `${base}/request-otp`, requestOtp);
+  router.route("POST", `${base}/auth-with-otp`, authWithOtp);
+  router.route("POST", `${base}/impersonate/{id}`, impersonate);
 }

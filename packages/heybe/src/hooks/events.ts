@@ -3,7 +3,7 @@ import type { App } from "../app";
 import type { AuthUser, Provider } from "../auth/oauth2/flow";
 import type { Collection, Field } from "../collections/model";
 import type { RequestInfo } from "../filter/compile";
-import type { AuthState, RequestEvent, Router } from "../http/router";
+import { RequestEvent, type Router } from "../http/router";
 import type { MailMessage, Mailer } from "../mail/mailer";
 import { RecordModel } from "../records/model";
 import type { SettingsData } from "../settings";
@@ -114,16 +114,9 @@ export class RecordEnrichEvent extends HookEvent {
   }
 }
 
-export class RequestHookEvent extends HookEvent implements RequestEvent {
-  declare app: App;
-  declare req: Request;
-  declare params: Record<string, string>;
-  declare query: URLSearchParams;
-  declare auth: AuthState | null;
-  declare remoteIp: string;
-  declare json: RequestEvent["json"];
-  declare body: RequestEvent["body"];
-}
+// Built with `RequestHookEvent.from(re, fields)`: shares auth, response, store and request info with
+// the router event `re`, with its own `next` and `extra`.
+export class RequestHookEvent extends RequestEvent {}
 
 class CollectionScopedRequestEvent extends RequestHookEvent {
   declare collection: Collection;

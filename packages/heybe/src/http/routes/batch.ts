@@ -9,6 +9,7 @@ import { buildRequestInfo, headerKey, ruleFilter } from "../../records/rules";
 import type { PreparedWrite } from "../../records/service";
 import { NotFoundError, ValidationError } from "../../util";
 import { ApiError, logUnexpected, toApiError } from "../errors";
+import { BODY_LIMIT_ID, applyBodyLimit } from "../middlewares";
 import { requestFiles } from "../multipart";
 import type { RequestEvent, Router } from "../router";
 import {
@@ -307,6 +308,13 @@ async function batch(e: RequestEvent): Promise<Response> {
     throw new ApiError(403, "Batch requests are not allowed.");
   const timeout =
     (settings.timeout > 0 ? settings.timeout : DEFAULT_TIMEOUT) * 1000;
+  // the body limit is inlined like PB
+  applyBodyLimit(
+    e,
+    settings.maxBodySize > 0
+      ? settings.maxBodySize
+      : DEFAULT_BATCH_MAX_BODY_SIZE,
+  );
 
   const requests = await readRequests(e, settings.maxRequests);
   const items = requests.map((r) => plan(e, r));
@@ -407,13 +415,6 @@ async function runItem(
   return write(app, item);
 }
 
-// The body limit is inlined like PB: a disabled batch is a 403 whatever the body size.
-function batchBodyLimit(app: App): number {
-  const { enabled, maxRequests, maxBodySize } = app.settings.get().batch;
-  if (!enabled || maxRequests <= 0) return Number.MAX_SAFE_INTEGER;
-  return maxBodySize > 0 ? maxBodySize : DEFAULT_BATCH_MAX_BODY_SIZE;
-}
-
 export function registerBatchRoutes(router: Router): void {
-  router.add("POST", "/api/batch", batch, { bodyLimit: batchBodyLimit });
+  router.route("POST", "/api/batch", batch).unbind(BODY_LIMIT_ID);
 }

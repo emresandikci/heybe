@@ -21,14 +21,15 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
     app.collections.onChange = () => writeTypesSafely(app, DEFAULT_TYPES_FILE);
     writeTypesSafely(app, DEFAULT_TYPES_FILE);
   }
-  const server = serve(app, { host, port, origins });
+  const server = await serve(app, { host, port, origins });
   console.log(`Server started at ${server.url}`);
-  runInstaller(app, server.url).catch((err) =>
+  const installer = runInstaller(app, server.url).catch((err) =>
     console.warn("Failed to initialize installer", err),
   );
   app.onTerminate(
     async (e) => {
       await server.stop().catch((err) => console.warn("Failed to stop", err));
+      await installer;
       await e.next();
     },
     { id: "heybeGracefulShutdown", priority: 999 },

@@ -44,11 +44,13 @@ async function call(
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const found = createRouter().match(method, new URL(req.url).pathname)!;
+  const found = createRouter()
+    .build()
+    .match(method, new URL(req.url).pathname)!;
   const e = createEvent(app, req, found.params);
   e.auth = loadAuth(app, req);
   try {
-    return await found.h(e);
+    return await found.run(e);
   } catch (err) {
     return err as { status: number; message: string };
   }

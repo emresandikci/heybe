@@ -107,9 +107,9 @@ function oauth2Redirect(e: RequestEvent): Response {
 }
 
 export function registerRecordAuthOAuth2Routes(router: Router): void {
-  router.add("GET", "/api/oauth2-redirect", oauth2Redirect);
-  router.add("POST", "/api/oauth2-redirect", oauth2Redirect);
-  router.add(
+  router.route("GET", "/api/oauth2-redirect", oauth2Redirect);
+  router.route("POST", "/api/oauth2-redirect", oauth2Redirect);
+  router.route(
     "POST",
     "/api/collections/{collection}/auth-with-oauth2",
     authWithOAuth2Route,

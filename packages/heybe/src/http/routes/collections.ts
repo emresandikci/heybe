@@ -15,7 +15,7 @@ import { FilterError } from "../../filter/parse";
 import { pickFields } from "../../records/serialize";
 import { ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
-import type { RequestEvent, Router } from "../router";
+import { type RequestEvent, type Router, jsonResponse } from "../router";
 import { internalRecords } from "../../records/internal";
 
 const DEFAULT_PER_PAGE = 30;
@@ -128,7 +128,7 @@ function list(e: RequestEvent): Response {
     Math.min((page - 1) * perPage, Number.MAX_SAFE_INTEGER),
   );
   const total = skipTotal ? -1 : app.collections.count(compiled);
-  return e.json(200, {
+  return jsonResponse(200, {
     page,
     perPage,
     totalItems: total,
@@ -157,7 +157,7 @@ async function create(e: RequestEvent): Promise<Response> {
   const input = decodeOrFail(blank, body);
   if (typeof body.id !== "string" || body.id === "")
     delete (input as Partial<Collection>).id;
-  return e.json(
+  return jsonResponse(
     200,
     picked(e, serializeCollection(await save(e.app, input, "create"))),
   );
@@ -171,7 +171,7 @@ async function update(e: RequestEvent): Promise<Response> {
   );
   const input = decodeOrFail(existing, body);
   if (input.id !== existing.id) throw new ApiError(404, "");
-  return e.json(
+  return jsonResponse(
     200,
     picked(e, serializeCollection(await save(e.app, input, "update"))),
   );
@@ -237,7 +237,7 @@ function scaffolds(e: RequestEvent): Response {
     c.id = "";
     out[type] = serializeCollection(c);
   }
-  return e.json(200, picked(e, out));
+  return jsonResponse(200, picked(e, out));
 }
 
 async function importCollections(e: RequestEvent): Promise<Response> {
@@ -322,33 +322,33 @@ async function dryRunViewQuery(e: RequestEvent): Promise<Response> {
 }
 
 export function registerCollectionRoutes(router: Router): void {
-  router.add("GET", "/api/collections", guarded(list));
-  router.add("POST", "/api/collections", guarded(create));
-  router.add(
+  router.route("GET", "/api/collections", guarded(list));
+  router.route("POST", "/api/collections", guarded(create));
+  router.route(
     "GET",
     "/api/collections/{collection}",
     guarded((e) =>
-      e.json(
+      jsonResponse(
         200,
         picked(e, serializeCollection(findOr404(e.app, e.params.collection!))),
       ),
     ),
   );
-  router.add("PATCH", "/api/collections/{collection}", guarded(update));
-  router.add("DELETE", "/api/collections/{collection}", guarded(remove));
-  router.add(
+  router.route("PATCH", "/api/collections/{collection}", guarded(update));
+  router.route("DELETE", "/api/collections/{collection}", guarded(remove));
+  router.route(
     "DELETE",
     "/api/collections/{collection}/truncate",
     guarded(truncate),
   );
-  router.add("PUT", "/api/collections/import", guarded(importCollections));
-  router.add("GET", "/api/collections/meta/scaffolds", guarded(scaffolds));
-  router.add(
+  router.route("PUT", "/api/collections/import", guarded(importCollections));
+  router.route("GET", "/api/collections/meta/scaffolds", guarded(scaffolds));
+  router.route(
     "GET",
     "/api/collections/meta/oauth2-providers",
     guarded(oauth2Providers),
   );
-  router.add(
+  router.route(
     "POST",
     "/api/collections/meta/dry-run-view",
     guarded(dryRunViewQuery),

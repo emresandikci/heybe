@@ -9,6 +9,7 @@ import { typegenCommand } from "./commands/typegen";
 import { CollectionStore } from "./collections/store";
 import { type Db, openDb } from "./db";
 import { type Filesystem, localFilesystem } from "./files/storage";
+import { Route } from "./extend/route";
 import { BootstrapEvent, TerminateEvent } from "./hooks/events";
 import {
   type HookBinders,
@@ -16,6 +17,8 @@ import {
   createHooks,
   hookBinders,
 } from "./hooks/registry";
+import type { Router } from "./http/router";
+import { createRouter } from "./http/server";
 import { type Mailer, mailerFromSettings } from "./mail/mailer";
 import { internalRecords } from "./records/internal";
 import type { RecordService } from "./records/service";
@@ -34,8 +37,23 @@ export interface AppOptions {
 
 export type CommandHandler = (args: string[], app: App) => unknown;
 
-export interface App extends HookBinders {
+type RouterMethods = Pick<
+  Router,
+  | "get"
+  | "post"
+  | "put"
+  | "patch"
+  | "delete"
+  | "head"
+  | "options"
+  | "any"
+  | "group"
+  | "use"
+>;
+
+export interface App extends HookBinders, RouterMethods {
   db: Db;
+  router: Router;
   hooks: Hooks;
   collections: CollectionStore;
   settings: Settings;
@@ -101,6 +119,7 @@ export function createApp(opts: AppOptions = {}): App {
   const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
   const hooks = createHooks();
+  const router = createRouter();
   const commands = new Map<
     string,
     { run: CommandHandler; description: string }
@@ -112,6 +131,17 @@ export function createApp(opts: AppOptions = {}): App {
     ...hookBinders(hooks),
     db,
     hooks,
+    router,
+    get: (...a) => router.get(...a),
+    post: (...a) => router.post(...a),
+    put: (...a) => router.put(...a),
+    patch: (...a) => router.patch(...a),
+    delete: (...a) => router.delete(...a),
+    head: (...a) => router.head(...a),
+    options: (...a) => router.options(...a),
+    any: (...a) => router.any(...a),
+    group: (prefix) => router.group(prefix),
+    use: (...mw) => router.use(...mw),
     collections,
     settings,
     files,
@@ -187,8 +217,17 @@ export function createApp(opts: AppOptions = {}): App {
       return code;
     },
     register: (...classes: (new () => object)[]) => {
-      for (const cls of classes)
-        throw new Error(`Unsupported extension class ${cls.name}`);
+      for (const cls of classes) {
+        if (!(cls.prototype instanceof Route))
+          throw new Error(`Unsupported extension class ${cls.name}`);
+        const r = new cls() as Route;
+        router.route(
+          r.method,
+          r.path,
+          (e) => r.handle(e),
+          ...(r.middlewares ?? []),
+        );
+      }
     },
     close: () => {
       if (closed) return;
