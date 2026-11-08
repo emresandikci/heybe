@@ -622,6 +622,12 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       (hash(values) !== hash(original) || values.email !== original.email)
     )
       values.tokenKey = randomByPattern(pattern);
+    // like PB, any tokenKey change (also an explicit one) drops the record's pending OTPs
+    if (values.tokenKey !== original.tokenKey)
+      this.deps.db.run(
+        "DELETE FROM _otps WHERE collectionRef = ? AND recordRef = ?",
+        [c.id, values.id as string],
+      );
   }
 
   private write(

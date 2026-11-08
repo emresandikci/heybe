@@ -1,0 +1,279 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { type App, createApp } from "../../app";
+import type { MailMessage } from "../../mail/mailer";
+import { errorResponse } from "../errors";
+import { createEvent } from "../router";
+import { loadAuth } from "../middlewares";
+import { createRouter } from "../server";
+
+let app: App;
+let clock: Date;
+let sent: MailMessage[];
+
+const users = () => app.collections.find("users")!;
+const setOtp = (enabled: boolean) =>
+  app.collections.save({
+    id: users().id,
+    otp: { ...(users().otp as object), enabled },
+  } as any);
+
+beforeEach(() => {
+  clock = new Date("2026-01-01T00:00:00Z");
+  app = createApp({ dir: ":memory:", now: () => clock });
+  sent = [];
+  app.mailer = { send: async (msg) => void sent.push(msg) };
+  setOtp(true);
+});
+
+afterEach(() => app.close());
+
+const advance = (seconds: number) => {
+  clock = new Date(clock.getTime() + seconds * 1000);
+};
+
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+async function post(
+  path: string,
+  body: unknown,
+  collection = "users",
+  headers: Record<string, string> = {},
+): Promise<Response> {
+  const req = new Request(`http://x/api/collections/${collection}/${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+  const found = createRouter().match(req.method, new URL(req.url).pathname)!;
+  const e = createEvent(app, req, found.params);
+  e.auth = loadAuth(app, req);
+  e.remoteIp = "9.9.9.9";
+  try {
+    return await found.h(e);
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+const createUser = (email: string, extra = {}) =>
+  app.records("users").create({ email, password: "12345678", ...extra });
+
+async function requestCode(
+  email: string,
+): Promise<{ otpId: string; code: string }> {
+  const res = await post("request-otp", { email });
+  const { otpId } = (await res.json()) as { otpId: string };
+  await tick();
+  const code = /<strong>(\d+)<\/strong>/.exec(sent.at(-1)!.html ?? "")![1]!;
+  return { otpId, code };
+}
+
+describe("request-otp", () => {
+  test("mails the code of the returned otpId to a known email", async () => {
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    expect(code).toHaveLength(8);
+    expect(sent).toHaveLength(1);
+    expect(app.records("_otps").findRaw(otpId).recordRef).toBeTruthy();
+  });
+
+  test("an unknown email gets a 200 with an id and no mail or row", async () => {
+    const res = await post("request-otp", { email: "nobody@example.com" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { otpId: string }).otpId).toHaveLength(15);
+    await tick();
+    expect(sent).toHaveLength(0);
+    expect(app.db.query("SELECT id FROM _otps")).toHaveLength(0);
+  });
+
+  test("a disabled collection answers 403", async () => {
+    setOtp(false);
+    expect((await post("request-otp", { email: "a@example.com" })).status).toBe(
+      403,
+    );
+    expect((await post("auth-with-otp", {})).status).toBe(403);
+  });
+
+  test("a failed mail deletes the OTP", async () => {
+    await createUser("a@example.com");
+    app.mailer = {
+      send: async () => {
+        throw new Error("down");
+      },
+    };
+    const log = console.error;
+    console.error = () => {};
+    try {
+      await post("request-otp", { email: "a@example.com" });
+      await tick();
+    } finally {
+      console.error = log;
+    }
+    expect(app.db.query("SELECT id FROM _otps")).toHaveLength(0);
+  });
+});
+
+describe("auth-with-otp", () => {
+  test("logs in with the code once", async () => {
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    const ok = await post("auth-with-otp", { otpId, password: code });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as any).record.email).toBe("a@example.com");
+    const again = await post("auth-with-otp", { otpId, password: code });
+    expect(again.status).toBe(400);
+    expect(((await again.json()) as any).message).toBe(
+      "Invalid or expired OTP.",
+    );
+  });
+
+  test("a wrong code fails and leaves the OTP usable", async () => {
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    const wrong = code === "00000000" ? "11111111" : "00000000";
+    expect(
+      (await post("auth-with-otp", { otpId, password: wrong })).status,
+    ).toBe(400);
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(200);
+  });
+
+  test("the 6th attempt in a window is rate limited even with the right code", async () => {
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    for (let i = 0; i < 5; i++)
+      await post("auth-with-otp", { otpId, password: "x" });
+    const limited = await post("auth-with-otp", { otpId, password: code });
+    expect(limited.status).toBe(429);
+    advance(180);
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(200);
+  });
+
+  test("an expired code fails", async () => {
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    advance(181);
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(400);
+  });
+
+  test("an otpId of another collection fails", async () => {
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    app.collections.save({
+      name: "members",
+      type: "auth",
+      otp: { ...(users().otp as object), enabled: true },
+    } as any);
+    expect(
+      (await post("auth-with-otp", { otpId, password: code }, "members"))
+        .status,
+    ).toBe(400);
+  });
+
+  test("a password change kills pending OTPs", async () => {
+    const user = await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    await app
+      .records("users")
+      .update(user.id as string, { password: "newpass123" });
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(400);
+  });
+
+  test("validation errors", async () => {
+    const res = await post("auth-with-otp", {});
+    expect(res.status).toBe(400);
+    const { data } = (await res.json()) as any;
+    expect(Object.keys(data)).toEqual(["otpId", "password"]);
+  });
+
+  test("an OTP mailed to the record email verifies it and replaces the password", async () => {
+    const user = await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    expect(app.records("_otps").findRaw(otpId).sentTo).toBe("a@example.com");
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(200);
+    expect(app.records("users").findRaw(user.id as string).verified).toBe(true);
+    const login = await post("auth-with-password", {
+      identity: "a@example.com",
+      password: "12345678",
+    });
+    expect(login.status).toBe(400);
+  });
+});
+
+const constrainPassword = () =>
+  app.collections.save({
+    id: users().id,
+    fields: users().fields.map((f) =>
+      f.name === "password" ? { ...f, max: 20, pattern: "^[a-z]+$" } : f,
+    ),
+  } as any);
+
+describe("random password after OTP verification", () => {
+  test("ignores the password field max and pattern", async () => {
+    const user = await createUser("a@example.com");
+    constrainPassword();
+    const { otpId, code } = await requestCode("a@example.com");
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(200);
+    const raw = app.records("users").findRaw(user.id as string);
+    expect(raw.verified).toBe(true);
+    const login = await post("auth-with-password", {
+      identity: "a@example.com",
+      password: "12345678",
+    });
+    expect(login.status).toBe(400);
+  });
+});
+
+describe("attempt limit behind a trusted proxy", () => {
+  test("clients are counted by their forwarded ip", async () => {
+    app.settings.update({ trustedProxy: { headers: ["x-forwarded-for"] } });
+    await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    const as = (ip: string, password: string) =>
+      post("auth-with-otp", { otpId, password }, "users", {
+        "x-forwarded-for": ip,
+      });
+    for (let i = 0; i < 5; i++) await as("1.1.1.1", "x");
+    expect((await as("1.1.1.1", code)).status).toBe(429);
+    expect((await as("2.2.2.2", code)).status).toBe(200);
+  });
+});
+
+describe("tokenKey change", () => {
+  test("an explicit tokenKey drops pending OTPs", async () => {
+    const user = await createUser("a@example.com");
+    const { otpId, code } = await requestCode("a@example.com");
+    await app.records("users").update(user.id as string, {
+      tokenKey: "k".repeat(50),
+    });
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(400);
+  });
+});
+
+describe("auth-methods", () => {
+  test("reflects the otp config", async () => {
+    const req = new Request("http://x/api/collections/users/auth-methods");
+    const found = createRouter().match(
+      "GET",
+      "/api/collections/users/auth-methods",
+    )!;
+    const res = await found.h(createEvent(app, req, found.params));
+    expect(((await res.json()) as any).otp).toEqual({
+      enabled: true,
+      duration: 180,
+    });
+  });
+});

@@ -123,7 +123,7 @@ export function loadAuth(app: App, req: Request): AuthState | null {
   return token === "" ? null : authFromToken(app, token);
 }
 
-function realIp(app: App, req: Request, remote: string): string {
+export function realIp(app: App, req: Request, remote: string): string {
   const { headers, useLeftmostIP } = app.settings.get().trustedProxy;
   for (const name of headers) {
     const ips = (req.headers.get(name) ?? "")

@@ -2,7 +2,7 @@ const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const SECRET_ALPHABET =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-function randomString(length: number, alphabet: string): string {
+export function randomString(length: number, alphabet: string): string {
   const limit = 256 - (256 % alphabet.length);
   let out = "";
   while (out.length < length) {

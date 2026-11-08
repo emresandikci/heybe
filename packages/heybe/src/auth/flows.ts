@@ -2,6 +2,9 @@ import type { App } from "../app";
 import { findSingleColumnUniqueIndex, quote } from "../collections/ddl";
 import type { Collection } from "../collections/model";
 import { type RecordMailKind, renderRecordMail } from "../mail/templates";
+import { PasswordValue } from "../fields";
+import { randomSecret } from "../util";
+import { findOtp } from "./otp";
 import { newMailToken } from "./tokens";
 
 type Values = Record<string, unknown>;
@@ -49,6 +52,29 @@ export async function sendFlowMail(
   });
 }
 
+// PB mails.SendRecordOTP.
+export async function sendOtpMail(
+  app: App,
+  c: Collection,
+  record: Values,
+  otpId: string,
+  code: string,
+): Promise<void> {
+  const mail = renderRecordMail(app, "otp", c, record, {
+    "{OTP_ID}": otpId,
+    "{OTP}": code,
+  });
+  const { meta } = app.settings.get();
+  await app.mailer.send({
+    from: { name: meta.senderName, address: meta.senderAddress },
+    to: [{ address: record.email as string }],
+    ...mail,
+  });
+  // sentTo is what lets a later OTP login mark the email verified
+  if (findOtp(app, otpId)?.sentTo === "")
+    await app.records("_otps").update(otpId, { sentTo: record.email });
+}
+
 // Like PB routine.FireAndForget: the response does not wait for the mail, so its timing does not
 // reveal whether the account exists.
 export function inBackground(task: () => Promise<void>): void {
@@ -85,3 +111,13 @@ export const verificationResendKey = (c: Collection, record: Values) =>
 
 export const passwordResetResendKey = (c: Collection, record: Values) =>
   `@limitPasswordResetEmail_${c.id}${record.id}`;
+
+// PB SetRandomPassword: stored hashed, so the password field's min, max and pattern do not apply.
+export async function randomPassword(c: Collection): Promise<PasswordValue> {
+  const cost = Number(c.fields.find((f) => f.name === "password")?.cost);
+  const hash = await Bun.password.hash(randomSecret(30), {
+    algorithm: "bcrypt",
+    cost: cost > 0 ? cost : 10,
+  });
+  return new PasswordValue(hash);
+}

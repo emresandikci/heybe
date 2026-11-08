@@ -177,7 +177,7 @@ function canAuthenticate(
   }
 }
 
-function authResponse(
+export function authResponse(
   e: RequestEvent,
   c: Collection,
   record: Values,
@@ -214,6 +214,7 @@ export function registerRecordAuthRoutes(router: Router): void {
   router.add("GET", "/api/collections/{collection}/auth-methods", (e) => {
     const c = findAuthCollection(e);
     const password = c.passwordAuth as PasswordAuth;
+    const otp = c.otp as { enabled: boolean; duration: number };
     const emailPassword =
       password.enabled && password.identityFields.includes("email");
     const usernamePassword =
@@ -225,7 +226,10 @@ export function registerRecordAuthRoutes(router: Router): void {
       },
       oauth2: { providers: [], enabled: false },
       mfa: { enabled: false, duration: 0 },
-      otp: { enabled: false, duration: 0 },
+      otp: {
+        enabled: otp.enabled,
+        duration: otp.enabled ? otp.duration : 0,
+      },
       authProviders: [],
       usernamePassword,
       emailPassword,

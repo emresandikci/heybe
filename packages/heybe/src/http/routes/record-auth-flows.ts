@@ -2,20 +2,36 @@ import type { App } from "../../app";
 import {
   findAuthRecordByEmail,
   inBackground,
+  randomPassword,
+  sendOtpMail,
   passwordResetResendKey,
   resendLimit,
   sendFlowMail,
   verificationResendKey,
 } from "../../auth/flows";
 import { decodeJwtClaims } from "../../auth/jwt";
-import { authFromToken } from "../../auth/tokens";
+import {
+  consumeOtpAttempt,
+  deleteExpiredOtps,
+  deleteOtp,
+  findOtp,
+  hasExpired,
+  issueOtp,
+  otpDurationMs,
+} from "../../auth/otp";
+import { authFromToken, newAuthToken } from "../../auth/tokens";
 import type { Collection } from "../../collections/model";
 import { isEmail } from "../../fields/email";
 import { runeLength } from "../../fields/shared";
-import { ValidationError, randomSecret } from "../../util";
+import { NotFoundError, ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
+import { realIp } from "../middlewares";
 import type { AuthState, RequestEvent, Router } from "../router";
-import { findAuthCollection, verifyPassword } from "./record-auth";
+import {
+  authResponse,
+  findAuthCollection,
+  verifyPassword,
+} from "./record-auth";
 
 type Values = Record<string, unknown>;
 type FieldError = {
@@ -47,17 +63,21 @@ const lengthError = (min: number, max: number): FieldError => ({
 
 const noContent = () => new Response(null, { status: 204 });
 
-async function readForm<K extends string>(
-  e: RequestEvent,
-  keys: K[],
-): Promise<Record<K, string>> {
-  let body: Values;
+async function loadBody(e: RequestEvent): Promise<Values> {
   try {
-    body = await e.body();
+    return await e.body();
   } catch (error) {
     if (error instanceof ApiError && error.status === 413) throw error;
     throw new ApiError(400, LOAD_FAILED);
   }
+}
+
+async function readForm<K extends string>(
+  e: RequestEvent,
+  keys: K[],
+  body?: Values,
+): Promise<Record<K, string>> {
+  body ??= await loadBody(e);
   const multipart = (e.req.headers.get("content-type") ?? "").startsWith(
     "multipart/form-data",
   );
@@ -188,7 +208,7 @@ async function confirmVerification(e: RequestEvent): Promise<Response> {
   if (record.verified !== true) {
     const data: Values = { verified: true };
     // like PB: guards against pre-hijacking if password auth is enabled later
-    if (!passwordAuthEnabled(c)) data.password = randomSecret(30);
+    if (!passwordAuthEnabled(c)) data.password = await randomPassword(c);
     await save(
       e.app,
       c,
@@ -356,6 +376,112 @@ async function confirmEmailChange(e: RequestEvent): Promise<Response> {
   return noContent();
 }
 
+function requireOtpEnabled(e: RequestEvent): Collection {
+  const c = findAuthCollection(e);
+  if (!(c.otp as { enabled: boolean }).enabled)
+    throw new ApiError(
+      403,
+      "The collection is not configured to allow OTP authentication.",
+    );
+  return c;
+}
+
+async function requestOtp(e: RequestEvent): Promise<Response> {
+  const c = requireOtpEnabled(e);
+  const { email } = await readForm(e, ["email"]);
+  check({ email: emailError(email) });
+
+  const record = findAuthRecordByEmail(e.app, c, email);
+  if (!record) {
+    // same bcrypt work as a real request, so the response time does not reveal the account
+    await Bun.password.hash("0".repeat(8), { algorithm: "bcrypt", cost: 8 });
+    return e.json(200, { otpId: newId() });
+  }
+
+  deleteExpiredOtps(e.app, c);
+  const { id, code } = await issueOtp(e.app, c, record);
+  if (code !== null) {
+    const app = e.app;
+    inBackground(async () => {
+      try {
+        await sendOtpMail(app, c, record, id, code);
+      } catch (error) {
+        deleteOtp(app, id);
+        console.error("heybe: failed to send OTP email:", error);
+      }
+    });
+  }
+  return e.json(200, { otpId: id });
+}
+
+async function authWithOtp(e: RequestEvent): Promise<Response> {
+  const c = requireOtpEnabled(e);
+  const body = await loadBody(e);
+  const form = await readForm(e, ["otpId", "password"], body);
+  check({
+    otpId:
+      form.otpId === ""
+        ? required
+        : runeLength(form.otpId) > 255
+          ? lengthError(1, 255)
+          : null,
+    password:
+      form.password === ""
+        ? required
+        : runeLength(form.password) > 71
+          ? lengthError(1, 71)
+          : null,
+  });
+
+  // one generic message for every failure, so ids and accounts can't be enumerated
+  const invalid = () => new ApiError(400, "Invalid or expired OTP");
+  const otp = findOtp(e.app, form.otpId);
+  if (!otp || otp.collectionRef !== c.id) throw invalid();
+  if (hasExpired(e.app, otp, otpDurationMs(c))) throw invalid();
+  let record: Values;
+  try {
+    record = e.app.records(c.name).findRaw(otp.recordRef as string);
+  } catch (error) {
+    if (error instanceof NotFoundError) throw invalid();
+    throw error;
+  }
+
+  if (!consumeOtpAttempt(e.app, record, realIp(e.app, e.req, e.remoteIp)))
+    throw new ApiError(
+      429,
+      "Too many attempts, please try again later with a new OTP.",
+    );
+  if (!(await verifyPassword(otp, form.password))) throw invalid();
+  if (!deleteOtp(e.app, otp.id as string)) throw invalid();
+
+  // the OTP was mailed to the record email, so it proves ownership of it
+  const sentTo = otp.sentTo as string;
+  if (record.verified !== true && sentTo !== "" && record.email === sentTo) {
+    const data: Values = { verified: true };
+    // like PB: without MFA a lone OTP login must not leave a guessable password behind
+    if (!(c.mfa as { enabled: boolean }).enabled)
+      data.password = await randomPassword(c);
+    try {
+      await e.app.records(c.name).update(record.id as string, data);
+      record = e.app.records(c.name).findRaw(record.id as string);
+    } catch (error) {
+      console.error(
+        "heybe: failed to mark the record verified after OTP:",
+        error,
+      );
+    }
+  }
+
+  return authResponse(
+    e,
+    c,
+    record,
+    newAuthToken(e.app, c, record),
+    body,
+    "otp",
+  );
+}
+
 export function registerRecordAuthFlowRoutes(router: Router): void {
   const base = "/api/collections/{collection}";
   router.add("POST", `${base}/request-verification`, requestVerification);
@@ -364,4 +490,6 @@ export function registerRecordAuthFlowRoutes(router: Router): void {
   router.add("POST", `${base}/confirm-password-reset`, confirmPasswordReset);
   router.add("POST", `${base}/request-email-change`, requestEmailChange);
   router.add("POST", `${base}/confirm-email-change`, confirmEmailChange);
+  router.add("POST", `${base}/request-otp`, requestOtp);
+  router.add("POST", `${base}/auth-with-otp`, authWithOtp);
 }

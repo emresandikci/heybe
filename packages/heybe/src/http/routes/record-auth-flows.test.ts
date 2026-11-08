@@ -167,3 +167,29 @@ describe("resend window", () => {
     expect(sent).toHaveLength(2);
   });
 });
+
+describe("verification with password auth disabled", () => {
+  test("the random password skips the password field max and pattern", async () => {
+    const record = await createUser("nopass@example.com");
+    const id = record.id as string;
+    app.collections.save({
+      id: users().id,
+      passwordAuth: { ...(users().passwordAuth as object), enabled: false },
+      fields: users().fields.map((f) =>
+        f.name === "password" ? { ...f, max: 20, pattern: "^[a-z]+$" } : f,
+      ),
+    } as any);
+    const token = newMailToken(
+      app,
+      "verification",
+      users(),
+      app.records("users").findRaw(id),
+    );
+    expect((await post("confirm-verification", { token })).status).toBe(204);
+    const raw = app.records("users").findRaw(id);
+    expect(raw.verified).toBe(true);
+    expect(
+      await Bun.password.verify("12345678", (raw.password as any).hash),
+    ).toBe(false);
+  });
+});
