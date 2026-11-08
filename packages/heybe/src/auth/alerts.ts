@@ -1,6 +1,8 @@
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
-import { escapeHtml, renderRecordMail } from "../mail/templates";
+import { sendRecordMail } from "../mail/mailer";
+import { escapeHtml, recordMessage } from "../mail/templates";
+import { RecordModel } from "../records/model";
 import { formatDate } from "../util";
 
 type Values = Record<string, unknown>;
@@ -8,21 +10,27 @@ type Values = Record<string, unknown>;
 const MAX_AUTH_ORIGINS = 5;
 const SEND_TIMEOUT_MS = 15_000;
 
-async function sendAuthAlert(
+// PB mails.SendRecordAuthAlert.
+export async function sendAuthAlert(
   app: App,
-  c: Collection,
-  record: Values,
+  record: RecordModel,
   info: string,
 ): Promise<void> {
-  const mail = renderRecordMail(app, "authAlert", c, record, {
-    "{ALERT_INFO}": escapeHtml(info),
-  });
-  const { meta } = app.settings.get();
-  await app.mailer.send({
-    from: { name: meta.senderName, address: meta.senderAddress },
-    to: [{ address: record.email as string }],
-    ...mail,
-  });
+  const escaped = escapeHtml(info);
+  const message = recordMessage(
+    app,
+    "authAlert",
+    record,
+    { "{ALERT_INFO}": escaped },
+    String(record.get("email")),
+  );
+  await sendRecordMail(
+    app,
+    app.hooks.onMailerRecordAuthAlertSend,
+    record,
+    message,
+    { info: escaped },
+  );
 }
 
 // Port of PB authAlert: remembers the ip and user agent of a login and mails the record about a new
@@ -61,7 +69,10 @@ export async function recordAuthOrigin(
       );
     });
     try {
-      await Promise.race([sendAuthAlert(app, c, record, info), timeout]);
+      await Promise.race([
+        sendAuthAlert(app, new RecordModel(c, record, false), info),
+        timeout,
+      ]);
     } finally {
       clearTimeout(timer);
     }

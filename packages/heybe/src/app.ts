@@ -21,7 +21,7 @@ import {
 import { registerSystemHooks } from "./hooks/system";
 import type { Router } from "./http/router";
 import { createRouter } from "./http/server";
-import { type Mailer, mailerFromSettings } from "./mail/mailer";
+import { type Mailer, appMailer } from "./mail/mailer";
 import { internalRecords } from "./records/internal";
 import type { RecordService } from "./records/service";
 import { Settings } from "./settings";
@@ -147,7 +147,7 @@ export function createApp(opts: AppOptions = {}): App {
     collections,
     settings,
     files,
-    mailer: { send: (msg) => mailerFromSettings(settings.get()).send(msg) },
+    mailer: { send: (msg) => appMailer(app).send(msg) },
     now,
     timers: opts.timers ?? realTimers,
     dev: opts.dev ?? flags.dev ?? false,
@@ -243,6 +243,7 @@ export function createApp(opts: AppOptions = {}): App {
     },
   } as App;
   collections.app = app;
+  settings.app = app;
   registerSystemHooks(app);
 
   app.command("serve", serveCommand, { description: "Starts the web server" });

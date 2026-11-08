@@ -10,12 +10,19 @@ import { quote, findSingleColumnUniqueIndex } from "../../collections/ddl";
 import type { Collection } from "../../collections/model";
 import { FilterError, parseFilter } from "../../filter/parse";
 import { buildRequestInfo } from "../../records/rules";
-import { expandRecords } from "../../records/expand";
-import { pickFields, serializeRecord } from "../../records/serialize";
+import { expandModels } from "../../records/expand";
+import { RecordModel } from "../../records/model";
+import { valuesOf } from "../../records/service";
+import {
+  RecordAuthRefreshRequestEvent,
+  RecordAuthRequestEvent,
+  RecordAuthWithPasswordRequestEvent,
+} from "../../hooks/events";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
-import { type RequestEvent, type Router, jsonResponse } from "../router";
+import type { RequestEvent, Router } from "../router";
 import { internalRecords } from "../../records/internal";
+import { enrichExpanded, triggerEnrich } from "./records";
 
 type Values = Record<string, unknown>;
 
@@ -123,14 +130,15 @@ function findRecord(
   return null;
 }
 
+// `stored` is the value of a password field
 export async function verifyPassword(
-  record: Values,
+  stored: unknown,
   password: string,
 ): Promise<boolean> {
   try {
     return await Bun.password.verify(
       password,
-      (record.password as { hash: string }).hash,
+      (stored as { hash: string }).hash,
     );
   } catch {
     return false;
@@ -157,7 +165,7 @@ async function dummyPasswordCheck(
 function canAuthenticate(
   e: RequestEvent,
   c: Collection,
-  record: Values,
+  id: string,
   body: Values,
   context: string,
 ): boolean {
@@ -175,7 +183,7 @@ function canAuthenticate(
   try {
     const { items } = internalRecords(e.app, c.name).query({
       ruleFilter,
-      filter: toAst({ id: record.id as string }),
+      filter: toAst({ id }),
       perPage: 1,
       skipTotal: true,
       request: buildRequestInfo(e, body, context),
@@ -188,55 +196,88 @@ function canAuthenticate(
   }
 }
 
+// PB ErrMFA: thrown after the 401 mfaId response was written, which the server keeps.
+export const ErrMFA = new ApiError(401, "mfa required");
+
+// Port of PB recordAuthResponse: the onRecordAuthRequest hook around MFA, the enrich hooks, the auth
+// alert and the response. `meta` is the OAuth2 `meta` of the 200 body.
 export async function authResponse(
   e: RequestEvent,
   c: Collection,
-  record: Values,
+  record: RecordModel,
   token: string,
   body: Values,
   context: string,
   method: MfaMethod,
-  // fields added to the 200 body (OAuth2 `meta`)
-  extra: Values = {},
-): Promise<Response> {
+  meta?: unknown,
+): Promise<void> {
   if (c.name === "_superusers") checkSuperuserIp(e.app, e.req, e.remoteIp);
-  if (!canAuthenticate(e, c, record, body, context))
+  if (!canAuthenticate(e, c, record.id, body, context))
     throw new ApiError(
       403,
       "The request doesn't satisfy the collection requirements to authenticate.",
     );
-  const mfaId = await checkMfa(e, c, record, method, body, context);
-  if (mfaId !== null) return e.json(401, { mfaId });
-  const serialized = serializeRecord(c, record, {
-    isSuperuser: c.name === "_superusers",
-    isOwner: true,
-  });
-  // like PB, relations expand as the authenticated record
-  const info = {
-    ...buildRequestInfo(e, body, context),
-    auth: record,
-    authCollection: c.name,
-  };
-  const [expanded] = await expandRecords(
-    e.app,
-    c,
-    [serialized],
-    (e.query.get("expand") ?? "").split(","),
-    info,
-  );
-  if (method !== "" && (c.authAlert as { enabled: boolean }).enabled)
-    await recordAuthOrigin(
-      e.app,
-      c,
-      record,
-      realIp(e.app, e.req, e.remoteIp),
-      e.req.headers.get("user-agent") ?? "",
-    ).catch((err) =>
-      console.error("heybe: failed to record auth origin:", err),
+  const respond = async (
+    record: RecordModel,
+    token: string,
+    method: MfaMethod,
+    meta: unknown,
+  ) => {
+    if (e.response) return;
+    const values = valuesOf(record);
+    const mfaId = await checkMfa(e, c, values, method, body, context);
+    if (mfaId !== null) {
+      // like PB, written eagerly and failed, so code after next() sees the extra step
+      e.json(401, { mfaId });
+      throw ErrMFA;
+    }
+    // like PB, relations expand as the authenticated record
+    const info = {
+      ...buildRequestInfo(e, body, context),
+      auth: values,
+      authCollection: c.name,
+    };
+    await triggerEnrich(e.app, info, [record], () => {
+      if (c.name === "_superusers")
+        record.unhide(...c.fields.map((f) => f.name));
+      record.ignoreEmailVisibility(true);
+      return expandModels(
+        e.app,
+        c,
+        [record],
+        (e.query.get("expand") ?? "").split(","),
+        info,
+        (rc, rels, request) => enrichExpanded(e.app, rc, rels, request),
+      );
+    });
+    if (method !== "" && (c.authAlert as { enabled: boolean }).enabled)
+      await recordAuthOrigin(
+        e.app,
+        c,
+        values,
+        realIp(e.app, e.req, e.remoteIp),
+        e.req.headers.get("user-agent") ?? "",
+      ).catch((err) =>
+        console.error("heybe: failed to record auth origin:", err),
+      );
+    e.json(
+      200,
+      meta === undefined || meta === null
+        ? { record, token }
+        : { meta, record, token },
     );
-  return jsonResponse(
-    200,
-    pickFields({ ...extra, record: expanded, token }, e.query.get("fields")),
+  };
+  const hook = e.app.hooks.onRecordAuthRequest;
+  if (hook.length === 0) return respond(record, token, method, meta);
+  const event = RecordAuthRequestEvent.from(e, {
+    collection: c,
+    record,
+    token,
+    meta,
+    authMethod: method,
+  });
+  await hook.trigger(event, (ae) =>
+    respond(ae.record, ae.token, ae.authMethod as MfaMethod, ae.meta),
   );
 }
 
@@ -294,26 +335,42 @@ export function registerRecordAuthRoutes(router: Router): void {
           "multipart/form-data",
         ),
       );
-      const record = findRecord(
+      const found = findRecord(
         e.app,
         c,
         form.identity,
         form.identityField,
         password.identityFields,
       );
-      if (!record || !(await verifyPassword(record, form.password))) {
-        if (!record) await dummyPasswordCheck(c, form.password);
-        throw new ApiError(400, "Failed to authenticate.");
-      }
-      return authResponse(
-        e,
-        c,
+      const login = async (record: RecordModel | null, password: string) => {
+        if (
+          !record ||
+          !(await verifyPassword(record.get("password"), password))
+        ) {
+          if (!record) await dummyPasswordCheck(c, password);
+          throw new ApiError(400, "Failed to authenticate.");
+        }
+        await authResponse(
+          e,
+          c,
+          record,
+          newAuthToken(e.app, c, valuesOf(record)),
+          body,
+          "password",
+          "password",
+        );
+      };
+      const record = found && new RecordModel(c, found, false);
+      const hook = e.app.hooks.onRecordAuthWithPasswordRequest;
+      if (hook.length === 0) return login(record, form.password);
+      const event = RecordAuthWithPasswordRequestEvent.from(e, {
+        collection: c,
         record,
-        newAuthToken(e.app, c, record),
-        body,
-        "password",
-        "password",
-      );
+        identity: form.identity,
+        identityField: form.identityField,
+        password: form.password,
+      });
+      await hook.trigger(event, (pe) => login(pe.record, pe.password));
     },
   );
 
@@ -333,10 +390,6 @@ export function registerRecordAuthRoutes(router: Router): void {
           403,
           `The request requires auth record from ${e.auth.collection.name} collection.`,
         );
-      let token = authTokenFromRequest(e.req);
-      const claims = parseUnverifiedJwt(token, e.app.now);
-      if (claims?.refreshable === true)
-        token = newAuthToken(e.app, e.auth.collection, e.auth.record);
       const body = await e.body().catch((err) => {
         if (err instanceof ApiError && err.status === 413) throw err;
         throw new ApiError(
@@ -344,7 +397,22 @@ export function registerRecordAuthRoutes(router: Router): void {
           "Something went wrong while processing your request.",
         );
       });
-      return authResponse(e, c, e.auth.record, token, body, "default", "");
+      const refresh = (record: RecordModel) => {
+        let token = authTokenFromRequest(e.req);
+        // impersonate tokens are not refreshable
+        const claims = parseUnverifiedJwt(token, e.app.now);
+        if (claims?.refreshable === true)
+          token = newAuthToken(e.app, c, valuesOf(record));
+        return authResponse(e, c, record, token, body, "default", "");
+      };
+      const record = new RecordModel(c, e.auth.record, false);
+      const hook = e.app.hooks.onRecordAuthRefreshRequest;
+      if (hook.length === 0) return refresh(record);
+      const event = RecordAuthRefreshRequestEvent.from(e, {
+        collection: c,
+        record,
+      });
+      await hook.trigger(event, (re) => refresh(re.record));
     },
   );
 }

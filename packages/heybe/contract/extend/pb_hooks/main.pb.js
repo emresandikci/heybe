@@ -168,3 +168,41 @@ onFileDownloadRequest((e) => {
 onFileTokenRequest((e) => {
   throw new ForbiddenError("No file tokens for users.");
 }, "users");
+
+onRecordAuthRequest((e) => {
+  e.meta = { custom: "yes" };
+  e.next();
+}, "users");
+
+onRecordAuthWithPasswordRequest((e) => {
+  if (e.identity === "blocked@example.com")
+    throw new BadRequestError("Blocked identity.");
+  e.next();
+}, "users");
+
+onRecordRequestVerificationRequest((e) => {
+  if (e.record.email() === "noverify@example.com")
+    throw new BadRequestError("No verification.");
+  e.next();
+}, "users");
+
+onMailerRecordVerificationSend((e) => {
+  e.message.subject = "Hooked " + e.record.email();
+  e.next();
+}, "users");
+
+onMailerSend((e) => {
+  if (e.message.to[0].address === "nomail@example.com") return;
+  e.next();
+});
+
+onSettingsUpdateRequest((e) => {
+  if (e.newSettings.meta.appName === "forbidden")
+    throw new BadRequestError("Forbidden app name.");
+  e.next();
+});
+
+onSettingsListRequest((e) => {
+  e.settings.meta.senderAddress = "***";
+  e.next();
+});

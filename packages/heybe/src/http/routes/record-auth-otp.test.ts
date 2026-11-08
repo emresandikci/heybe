@@ -54,7 +54,7 @@ async function post(
   try {
     return await found.run(e);
   } catch (err) {
-    return errorResponse(err);
+    return e.response ?? errorResponse(err);
   }
 }
 
@@ -283,5 +283,55 @@ describe("auth-methods", () => {
       enabled: true,
       duration: 180,
     });
+  });
+});
+
+describe("otp request hooks", () => {
+  test("onRecordRequestOTPRequest may set the code and onRecordAuthWithOTPRequest sees the OTP", async () => {
+    await createUser("a@example.com");
+    app.onRecordRequestOTPRequest((e) => {
+      e.password = "11112222";
+      return e.next();
+    });
+    const seen: unknown[] = [];
+    app.onRecordAuthWithOTPRequest(async (e) => {
+      seen.push(e.otp.id, e.record.get("email"));
+      await e.next();
+      seen.push(e.response?.status);
+    });
+    const { otpId, code } = await requestCode("a@example.com");
+    expect(code).toBe("11112222");
+    const res = await post("auth-with-otp", { otpId, password: "11112222" });
+    expect(res.status).toBe(200);
+    expect(seen).toEqual([otpId, "a@example.com", 200]);
+  });
+
+  test("an unknown email fails next() after the dummy 200", async () => {
+    let failed = false;
+    app.onRecordRequestOTPRequest(async (e) => {
+      try {
+        await e.next();
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    });
+    const res = await post("request-otp", { email: "nobody@example.com" });
+    expect(res.status).toBe(200);
+    expect(failed).toBe(true);
+  });
+
+  test("the used OTP goes through the hooked delete", async () => {
+    await createUser("a@example.com");
+    const deleted: string[] = [];
+    app.onRecordDelete("_otps", (e) => {
+      deleted.push(e.record.id);
+      return e.next();
+    });
+    const { otpId, code } = await requestCode("a@example.com");
+    expect(
+      (await post("auth-with-otp", { otpId, password: code })).status,
+    ).toBe(200);
+    expect(deleted).toEqual([otpId]);
   });
 });

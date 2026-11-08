@@ -39,6 +39,8 @@ export interface InternalRecords<
     opts?: { tokenKey?: string },
   ): Promise<T>;
   deleteRecord(record: RecordModel): Promise<void>;
+  // the hooked delete of each matching record, call it inside a write
+  deleteWhere(where: string, params: unknown[]): Promise<void>;
   // runs `write` and settles `p` once the outermost write ended
   commit<R>(p: PreparedWrite, write: () => Promise<R>): Promise<R>;
   settle(p: PreparedWrite): Promise<void>;

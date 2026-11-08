@@ -1,7 +1,10 @@
 import type { App } from "../app";
 import { findSingleColumnUniqueIndex, quote } from "../collections/ddl";
 import type { Collection } from "../collections/model";
-import { type RecordMailKind, renderRecordMail } from "../mail/templates";
+import { sendRecordMail } from "../mail/mailer";
+import { type RecordMailKind, recordMessage } from "../mail/templates";
+import type { RecordModel } from "../records/model";
+import { valuesOf } from "../records/service";
 import { PasswordValue } from "../fields";
 import { randomSecret } from "../util";
 import { findOtp } from "./otp";
@@ -33,47 +36,70 @@ const TEMPLATES: Record<MailFlow, RecordMailKind> = {
   emailChange: "confirmEmailChange",
 };
 
+const HOOKS = {
+  verification: "onMailerRecordVerificationSend",
+  passwordReset: "onMailerRecordPasswordResetSend",
+  emailChange: "onMailerRecordEmailChangeSend",
+} as const;
+
 // PB mails.SendRecordVerification, SendRecordPasswordReset and SendRecordChangeEmail.
 export async function sendFlowMail(
   app: App,
   flow: MailFlow,
-  c: Collection,
-  record: Values,
+  record: RecordModel,
   newEmail?: string,
 ): Promise<void> {
-  const token = newMailToken(app, flow, c, record, newEmail);
-  const mail = renderRecordMail(app, TEMPLATES[flow], c, record, {
-    "{TOKEN}": token,
-  });
-  const { meta } = app.settings.get();
-  await app.mailer.send({
-    from: { name: meta.senderName, address: meta.senderAddress },
-    to: [{ address: newEmail ?? (record.email as string) }],
-    ...mail,
-  });
+  const c = record.collection;
+  const token = newMailToken(app, flow, c, valuesOf(record), newEmail);
+  const message = recordMessage(
+    app,
+    TEMPLATES[flow],
+    record,
+    { "{TOKEN}": token },
+    newEmail ?? String(record.get("email")),
+  );
+  await sendRecordMail(
+    app,
+    app.hooks[HOOKS[flow]],
+    record,
+    message,
+    flow === "emailChange" ? { token, newEmail } : { token },
+  );
 }
 
-// PB mails.SendRecordOTP.
+// PB mails.SendRecordOTP: the OTP remembers the first address it was sent to.
 export async function sendOtpMail(
   app: App,
-  c: Collection,
-  record: Values,
+  record: RecordModel,
   otpId: string,
   code: string,
 ): Promise<void> {
-  const mail = renderRecordMail(app, "otp", c, record, {
-    "{OTP_ID}": otpId,
-    "{OTP}": code,
-  });
-  const { meta } = app.settings.get();
-  await app.mailer.send({
-    from: { name: meta.senderName, address: meta.senderAddress },
-    to: [{ address: record.email as string }],
-    ...mail,
-  });
-  // sentTo is what lets a later OTP login mark the email verified
-  if (findOtp(app, otpId)?.sentTo === "")
-    await internalRecords(app, "_otps").update(otpId, { sentTo: record.email });
+  const message = recordMessage(
+    app,
+    "otp",
+    record,
+    { "{OTP_ID}": otpId, "{OTP}": code },
+    String(record.get("email")),
+  );
+  await sendRecordMail(
+    app,
+    app.hooks.onMailerRecordOTPSend,
+    record,
+    message,
+    { otpId, password: code },
+    async (mailer, message) => {
+      await mailer.send(message);
+      const to = message.to[0]?.address ?? "";
+      // sentTo is what lets a later OTP login mark the email verified
+      if (to === "" || findOtp(app, otpId)?.sentTo !== "") return;
+      // like PB, a failed update is only logged
+      await internalRecords(app, "_otps")
+        .update(otpId, { sentTo: to })
+        .catch((err) =>
+          console.error("heybe: failed to update OTP sentTo:", err),
+        );
+    },
+  );
 }
 
 // Like PB routine.FireAndForget: the response does not wait for the mail, so its timing does not

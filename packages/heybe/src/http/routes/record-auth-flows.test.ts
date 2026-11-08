@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App, createApp } from "../../app";
-import { newMailToken } from "../../auth/tokens";
+import { sendAuthAlert } from "../../auth/alerts";
+import { newAuthToken, newMailToken } from "../../auth/tokens";
+import { ApiError } from "../errors";
+import { RecordModel } from "../../records/model";
 import type { MailMessage } from "../../mail/mailer";
 import { errorResponse } from "../errors";
 import { createEvent } from "../router";
@@ -23,10 +26,14 @@ afterEach(() => app.close());
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-async function post(path: string, body: unknown): Promise<Response> {
+async function post(
+  path: string,
+  body: unknown,
+  authorization = "",
+): Promise<Response> {
   const req = new Request(`http://x/api/collections/users/${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", authorization },
     body: JSON.stringify(body),
   });
   const found = createRouter()
@@ -37,7 +44,7 @@ async function post(path: string, body: unknown): Promise<Response> {
   try {
     return await found.run(e);
   } catch (err) {
-    return errorResponse(err);
+    return e.response ?? errorResponse(err);
   }
 }
 
@@ -232,5 +239,171 @@ describe("verification with password auth disabled", () => {
     expect(
       await Bun.password.verify("12345678", (raw.password as any).hash),
     ).toBe(false);
+  });
+});
+
+const tokenOf = (
+  kind: "verification" | "passwordReset" | "emailChange",
+  id: string,
+) =>
+  newMailToken(
+    app,
+    kind,
+    users(),
+    internalRecords(app, "users").findRaw(id),
+    "new@example.com",
+  );
+
+const authTokenOf = (collection: string, id: string) =>
+  newAuthToken(
+    app,
+    app.collections.find(collection)!,
+    internalRecords(app, collection).findRaw(id),
+  );
+
+const findUser = (id: string) => internalRecords(app, "users").findRaw(id);
+
+describe("confirm request hooks", () => {
+  test("confirm-verification saves the handler's changes with the verified state", async () => {
+    const { id } = await createUser("v@example.com");
+    app.onRecordConfirmVerificationRequest((e) => {
+      e.record.set("name", "hooked");
+      return e.next();
+    });
+    const res = await post("confirm-verification", {
+      token: tokenOf("verification", id as string),
+    });
+    expect(res.status).toBe(204);
+    expect(findUser(id as string)).toMatchObject({
+      name: "hooked",
+      verified: true,
+    });
+  });
+
+  test("confirm-password-reset can be blocked, keeping the password", async () => {
+    const { id } = await createUser("r@example.com");
+    const hash = (findUser(id as string).password as { hash: string }).hash;
+    app.onRecordConfirmPasswordResetRequest(() => {
+      throw new ApiError(400, "No resets.");
+    });
+    const res = await post("confirm-password-reset", {
+      token: tokenOf("passwordReset", id as string),
+      password: "newpass123",
+      passwordConfirm: "newpass123",
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toBe(
+      "No resets.",
+    );
+    expect((findUser(id as string).password as { hash: string }).hash).toBe(
+      hash,
+    );
+  });
+
+  test("confirm-email-change uses the handler's new email", async () => {
+    const { id } = await createUser("c@example.com");
+    app.onRecordConfirmEmailChangeRequest((e) => {
+      expect(e.newEmail).toBe("new@example.com");
+      e.newEmail = "other@example.com";
+      return e.next();
+    });
+    const res = await post("confirm-email-change", {
+      token: tokenOf("emailChange", id as string),
+      password: "12345678",
+    });
+    expect(res.status).toBe(204);
+    expect(findUser(id as string).email).toBe("other@example.com");
+  });
+});
+
+describe("record mail hooks", () => {
+  test("pass PB's meta keys", async () => {
+    await app.collections.save({
+      id: users().id,
+      otp: { ...(users().otp as object), enabled: true },
+    } as any);
+    const { id } = await createUser("m@example.com");
+    const meta: Record<string, string[]> = {};
+    for (const name of [
+      "onMailerRecordVerificationSend",
+      "onMailerRecordPasswordResetSend",
+      "onMailerRecordEmailChangeSend",
+      "onMailerRecordOTPSend",
+      "onMailerRecordAuthAlertSend",
+    ] as const)
+      app[name]((e) => {
+        meta[name] = Object.keys(e.meta).sort();
+        return e.next();
+      });
+    await post("request-verification", { email: "m@example.com" });
+    await post("request-password-reset", { email: "m@example.com" });
+    await post("request-otp", { email: "m@example.com" });
+    await post(
+      "request-email-change",
+      { newEmail: "new@example.com" },
+      authTokenOf("users", id as string),
+    );
+    await sendAuthAlert(
+      app,
+      new RecordModel(users(), findUser(id as string), false),
+      "info",
+    );
+    await tick();
+    expect(meta).toEqual({
+      onMailerRecordVerificationSend: ["token"],
+      onMailerRecordPasswordResetSend: ["token"],
+      onMailerRecordEmailChangeSend: ["newEmail", "token"],
+      onMailerRecordOTPSend: ["otpId", "password"],
+      onMailerRecordAuthAlertSend: ["info"],
+    });
+    expect(sent).toHaveLength(5);
+  });
+
+  test("an ApiError from a mail hook is the request-email-change answer", async () => {
+    const { id } = await createUser("e@example.com");
+    app.onMailerRecordEmailChangeSend(() => {
+      throw new ApiError(403, "Mail blocked.");
+    });
+    const res = await post(
+      "request-email-change",
+      { newEmail: "new@example.com" },
+      authTokenOf("users", id as string),
+    );
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { message: string }).message).toBe(
+      "Mail blocked.",
+    );
+  });
+});
+
+describe("onRecordAuthRequest", () => {
+  test("wraps the refresh and impersonate responses", async () => {
+    const { id } = await createUser("a@example.com");
+    const superuser = await app
+      .records("_superusers")
+      .create({ email: "s@example.com", password: "1234567890" });
+    const seen: string[] = [];
+    app.onRecordAuthRequest("users", (e) => {
+      seen.push(`${e.record.id} "${e.authMethod}"`);
+      e.meta = { hooked: true };
+      return e.next();
+    });
+    const refresh = await post(
+      "auth-refresh",
+      {},
+      authTokenOf("users", id as string),
+    );
+    const impersonate = await post(
+      `impersonate/${id}`,
+      {},
+      authTokenOf("_superusers", superuser.id as string),
+    );
+    for (const res of [refresh, impersonate]) {
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { meta: unknown }).meta).toEqual({
+        hooked: true,
+      });
+    }
+    expect(seen).toEqual([`${id} ""`, `${id} ""`]);
   });
 });

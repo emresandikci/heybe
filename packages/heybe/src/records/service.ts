@@ -208,7 +208,7 @@ function insertSql(c: Collection, cols: string[]): string {
 // the prepare context of each record being saved, for values a hook sets that still need preparing
 const preparing = new WeakMap<RecordModel, PreparedWrite>();
 
-const valuesOf = (record: RecordModel): Values =>
+export const valuesOf = (record: RecordModel): Values =>
   Object.fromEntries(
     record.collection.fields.map((f) => [f.name, record.get(f.name)]),
   );

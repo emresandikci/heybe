@@ -9,8 +9,10 @@ import { fields } from "../../fields";
 import type { RequestInfo } from "../../filter/compile";
 import { ApiError, logUnexpected } from "../../http/errors";
 import { DEFAULT_MAX_BODY_SIZE } from "../../http/middlewares";
-import type { AuthState } from "../../http/router";
-import { createPreparedChecked } from "../../http/routes/records";
+import type { RequestEvent } from "../../http/router";
+import { internalCreate } from "../../http/routes/records";
+import { RecordAuthWithOAuth2RequestEvent } from "../../hooks/events";
+import { RecordModel } from "../../records/model";
 import { PasswordValue } from "../../fields/password";
 import type { PreparedWrite } from "../../records/service";
 import { ValidationError, formatDate, randomSecret } from "../../util";
@@ -713,16 +715,35 @@ function authFailed(err: unknown): ApiError {
 
 type Service = ReturnType<typeof internalRecords>;
 
-// Port of PB recordAuthWithOAuth2 and oauth2Submit: fetches the provider user, then logs in, links
-// or creates the auth record in one transaction, so a failing step keeps nothing.
+// The OAuth2 meta of the auth response, PB's AuthUser JSON field order.
+export function oauth2Meta(e: RecordAuthWithOAuth2RequestEvent): Values {
+  const user = e.oauth2User;
+  return {
+    expiry: user.expiry,
+    rawUser: user.rawUser,
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    avatarURL: user.avatarURL,
+    accessToken: user.accessToken,
+    refreshToken: user.refreshToken,
+    email: user.email,
+    avatarUrl: user.avatarURL,
+    isNew: e.isNewRecord,
+  };
+}
+
+// Port of PB recordAuthWithOAuth2: fetches the provider user and finds its auth record, then the
+// onRecordAuthWithOAuth2Request hook runs oauth2Submit and `respond`.
 export async function authWithOAuth2(
-  app: App,
+  e: RequestEvent,
   c: Collection,
   input: OAuth2Input,
-  auth: AuthState | null,
   info: RequestInfo,
+  respond: (e: RecordAuthWithOAuth2RequestEvent) => Promise<void>,
   opts: { allowIp?: (ip: string) => boolean } = {},
-): Promise<{ record: Values; meta: Values }> {
+): Promise<void> {
+  const app = e.app;
   const config = providerConfigs(c).find((p) => p.name === input.provider);
   const p = config && initProvider(config);
   if (!p) throw new ApiError(500, "Missing or invalid provider config.");
@@ -743,18 +764,43 @@ export async function authWithOAuth2(
   }
 
   const link = findExternalAuth(app, c, p.name, user.id);
-  let record: Values | null = null;
+  let found: Values | null = null;
   if (link) {
     try {
-      record = internalRecords(app, c.name).findRaw(link.recordRef as string);
+      found = internalRecords(app, c.name).findRaw(link.recordRef as string);
     } catch {
       throw new ApiError(404, "");
     }
-  } else if (auth && auth.collection.id === c.id) record = auth.record;
-  else if (user.email !== "")
-    record = findAuthRecordByEmail(app, c, user.email);
-  const isNew = record === null;
+  } else if (e.auth && e.auth.collection.id === c.id) found = e.auth.record;
+  else if (user.email !== "") found = findAuthRecordByEmail(app, c, user.email);
 
+  const event = RecordAuthWithOAuth2RequestEvent.from(e, {
+    collection: c,
+    providerName: p.name,
+    providerClient: p,
+    record: found && new RecordModel(c, found, false),
+    oauth2User: user,
+    createData: input.createData ?? {},
+    isNewRecord: found === null,
+  });
+  await app.hooks.onRecordAuthWithOAuth2Request.trigger(event, async (oe) => {
+    try {
+      await oauth2Submit(oe, info, opts.allowIp);
+    } catch (err) {
+      throw authFailed(err);
+    }
+    await respond(oe);
+  });
+}
+
+// Port of PB oauth2Submit: logs in, links or creates the auth record of `e` in one transaction, so a
+// failing step keeps nothing.
+async function oauth2Submit(
+  e: RecordAuthWithOAuth2RequestEvent,
+  info: RequestInfo,
+  allowIp: ((ip: string) => boolean) | undefined,
+): Promise<void> {
+  const { app, collection: c, oauth2User: user } = e;
   const records = internalRecords(app, c.name);
   const links = internalRecords(app, "_externalAuths");
   const pending: [Service, PreparedWrite][] = [];
@@ -766,28 +812,25 @@ export async function authWithOAuth2(
   const linkData = (recordRef: unknown) => ({
     collectionRef: c.id,
     recordRef,
-    provider: p.name,
+    provider: e.providerName,
     providerId: user.id,
   });
 
-  let saved: Values;
   try {
-    if (record === null) {
+    if (e.record === null) {
       if (c.name === "_superusers")
         throw new Error("superusers are not allowed to sign-up with OAuth2");
       const { payload, generated } = await signUpPayload(
         app,
         c,
         user,
-        input.createData,
-        opts.allowIp,
+        e.createData,
+        allowIp,
       );
       const create = await prepare(records, payload);
       if (generated) skipPlainPassword(create);
-      const id = create.ctx.recordId;
-      const verify = await prepare(records, { verified: true }, id);
-      const newLink = linkData(id);
-      const linkWrite = await prepare(links, newLink);
+      const verify = await prepare(records, {}, create.ctx.recordId);
+      const linkWrite = await prepare(links, linkData(create.ctx.recordId));
       const createInfo: RequestInfo = {
         ...info,
         body: payload,
@@ -796,33 +839,40 @@ export async function authWithOAuth2(
         context: "oauth2",
         headers: { ...info.headers, content_type: "multipart/form-data" },
       };
-      saved = await app.db.write(async () => {
+      e.record = await app.db.write(async () => {
+        let created: RecordModel;
         try {
-          await createPreparedChecked(app, c, createInfo, create);
+          created = await internalCreate(e, c, createInfo, create);
         } catch (err) {
           // the internal create request fails with its own response
           if (err instanceof ValidationError)
             throw new ApiError(400, err.message, err.data);
           throw err;
         }
-        const created = records.findRaw(id);
         // verified as long as it matches the OAuth2 data (even if the email is empty)
-        if (created.email === user.email && created.verified !== true)
-          await records.updatePrepared(verify, id, { verified: true });
-        await links.createPrepared(linkWrite, newLink);
-        return records.findRaw(id);
+        if (
+          created.get("email") === user.email &&
+          created.get("verified") !== true
+        )
+          await records.updatePrepared(verify, created.id, { verified: true });
+        await links.createPrepared(linkWrite, linkData(created.id));
+        return new RecordModel(c, records.findRaw(created.id), false);
       });
     } else {
-      const id = record.id as string;
+      const id = e.record.id;
       const isLogged =
-        auth !== null && auth.collection.id === c.id && auth.record.id === id;
+        e.auth !== null &&
+        e.auth.collection.id === c.id &&
+        e.auth.record.id === id;
       // hashed ahead (bcrypt is async); used only if the record is still unverified in the transaction
       const password =
-        !isLogged && record.verified !== true ? await randomPassword(c) : null;
+        !isLogged && e.record.get("verified") !== true
+          ? await randomPassword(c)
+          : null;
       const update = await prepare(records, {}, id);
-      const newLink = linkData(id);
-      const linkWrite = await prepare(links, newLink);
-      saved = await app.db.write(async () => {
+      const linkWrite = await prepare(links, linkData(id));
+      const record = e.record;
+      await app.db.write(async () => {
         // decided on the record as it is now, not as it was before the awaits
         const current = records.findRaw(id);
         const verified = current.verified === true;
@@ -841,38 +891,25 @@ export async function authWithOAuth2(
         if (!verified && (email === "" || email === user.email))
           data.verified = true;
         // pre-hijacking with another provider: an unverified record keeps only this link
+        // (PB DeleteAllExternalAuthsByRecord)
         if (!verified)
-          app.db.run(
-            "DELETE FROM _externalAuths WHERE collectionRef = ? AND recordRef = ?",
-            [c.id, id],
-          );
-        if (Object.keys(data).length > 0)
-          await records.updatePrepared(update, id, data);
-        if (!findExternalAuth(app, c, p.name, user.id))
-          await links.createPrepared(linkWrite, newLink);
-        return records.findRaw(id);
+          await links.deleteWhere("collectionRef = ? AND recordRef = ?", [
+            c.id,
+            id,
+          ]);
+        // like PB the event record is saved, with the handlers' changes
+        if (Object.keys(data).length > 0) {
+          // the guarded fields as they are now, so a concurrent change is not overwritten
+          for (const key of ["verified", "email", "password", "tokenKey"])
+            record.setRaw(key, current[key]);
+          record.load(data);
+          await records.savePrepared(update, record);
+        }
+        if (!findExternalAuth(app, c, e.providerName, user.id))
+          await links.createPrepared(linkWrite, linkData(id));
       });
     }
-  } catch (err) {
-    throw authFailed(err);
   } finally {
     for (const [service, prepared] of pending) await service.settle(prepared);
   }
-  return {
-    record: saved,
-    // PB's AuthUser JSON field order
-    meta: {
-      expiry: user.expiry,
-      rawUser: user.rawUser,
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      avatarURL: user.avatarURL,
-      accessToken: user.accessToken,
-      refreshToken: user.refreshToken,
-      email: user.email,
-      avatarUrl: user.avatarURL,
-      isNew,
-    },
-  };
 }

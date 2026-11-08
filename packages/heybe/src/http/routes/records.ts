@@ -25,7 +25,7 @@ import {
   RecordsListRequestEvent,
 } from "../../hooks/events";
 import { PasswordValue } from "../../fields/password";
-import type { Hook, HookEvent } from "../../hooks/hook";
+import type { Hook } from "../../hooks/hook";
 import { pickFields, pickItems } from "../../records/serialize";
 import { type PreparedWrite, replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
@@ -38,7 +38,7 @@ import {
 } from "../middlewares";
 import {
   type Middleware,
-  type RequestEvent,
+  RequestEvent,
   type Router,
   jsonResponse,
   markListResult,
@@ -46,7 +46,7 @@ import {
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
-type Finalizer = () => Promise<void>;
+type Finalizer = (record: RecordModel) => Promise<void>;
 type Access = "default" | "manager" | "superuser";
 
 const MAX_FILTER_LENGTH = 3500;
@@ -119,7 +119,7 @@ const expandPaths = (info: RequestInfo) => (info.query.expand ?? "").split(",");
 
 // Port of PB triggerRecordEnrichHooks: each record's onRecordEnrich chain runs inside the final
 // action of the previous one, the last one runs `finalize`.
-async function triggerEnrich(
+export async function triggerEnrich(
   app: App,
   requestInfo: RequestInfo,
   records: RecordModel[],
@@ -155,13 +155,21 @@ export async function enrichRecords(
       records,
       expandPaths(info),
       info,
-      (rc, rels, request) =>
-        triggerEnrich(app, request, rels, () =>
-          resolveFlags(app, rc, rels, request),
-        ),
+      (rc, rels, request) => enrichExpanded(app, rc, rels, request),
     );
   });
 }
+
+// PB expandFetch: expanded records go through their enrich hooks around PB's default flags.
+export const enrichExpanded = (
+  app: App,
+  c: Collection,
+  records: RecordModel[],
+  request: RequestInfo,
+): Promise<void> =>
+  triggerEnrich(app, request, records, () =>
+    resolveFlags(app, c, records, request),
+  );
 
 const ENRICH_FAILED = "Failed to enrich record.";
 
@@ -179,24 +187,24 @@ async function enrichOrFail(
   }
 }
 
-// PB optFinalizer: called at the end of the final action, or after the chain when it stopped
-// before it.
-async function triggerWithFinalizer<T extends HookEvent>(
+// PB optFinalizer: called with the event record at the end of the final action, or after the chain
+// when it stopped before it.
+async function triggerWithFinalizer<T extends RecordRequestEvent>(
   hook: Hook<T>,
   event: T,
   final: (e: T) => Promise<void>,
   finalizer?: Finalizer,
 ): Promise<void> {
   let called = false;
-  const finalize = async () => {
+  const finalize = async (e: T) => {
     called = true;
-    await finalizer?.();
+    await finalizer?.(e.record);
   };
   await hook.trigger(event, async (e) => {
     await final(e);
-    await finalize();
+    await finalize(e);
   });
-  if (!called) await finalize();
+  if (!called) await finalize(event);
 }
 
 // With no list, view or enrich handlers the records are serialized without building models.
@@ -700,22 +708,29 @@ async function deleteRecord(
   );
 }
 
-// The create route's checks and write on a prepared record (OAuth2 sign-up).
-export async function createPreparedChecked(
-  app: App,
+// PB sendOAuth2RecordCreateRequest (processInternalRequest): the create route with its request hooks
+// as an internal request of `e`, on a prepared record. Returns the record it created.
+export async function internalCreate(
+  e: RequestEvent,
   c: Collection,
   info: RequestInfo,
   p: PreparedWrite,
-): Promise<Values> {
-  const { data, access } = createChecks(app, c, info);
-  const records = internalRecords(app, c.name);
-  try {
-    const record = records.draft(p, data);
-    validateAuthForm(record, data, null, access, CREATE_FAILED, null);
-    return await records.savePrepared(p, record);
-  } catch (err) {
-    saveFailed(CREATE_FAILED, err);
-  }
+): Promise<RecordModel> {
+  const headers = new Headers(e.req.headers);
+  headers.set("content-type", "multipart/form-data");
+  const req = new Request(
+    new URL(`/api/collections/${c.name}/records`, e.req.url),
+    { method: "POST", headers },
+  );
+  const sub = RequestEvent.internal(e, req, { collection: c.name }, info);
+  let created: RecordModel | null = null;
+  await batchCreate(sub, c, p, async (record) => {
+    created = record;
+  });
+  // like PB's response recorder, no written response is a 200
+  if ((sub.response?.status ?? 200) !== 200 || !created)
+    throw new Error("failed to create OAuth2 auth record");
+  return created;
 }
 
 // The write routes for batch sub-requests (`e` from RequestEvent.internal), with the uploads and

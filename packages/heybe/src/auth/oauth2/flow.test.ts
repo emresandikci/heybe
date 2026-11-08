@@ -15,11 +15,15 @@ import {
 import { type App, createApp } from "../../app";
 import type { RequestInfo } from "../../filter/compile";
 import { ApiError } from "../../http/errors";
+import { createEvent } from "../../http/router";
+import { createRouter } from "../../http/server";
+import { valuesOf } from "../../records/service";
 import {
   authWithOAuth2,
   buildAuthURL,
   initProvider,
   isPublicIp,
+  oauth2Meta,
   safeFileFromURL,
 } from "./flow";
 import { readText } from "./http";
@@ -71,19 +75,34 @@ beforeEach(async () => {
 });
 afterEach(() => app.close());
 
-const login = (
+async function login(
   code: string,
   provider = "google",
   opts: { allowIp?: (ip: string) => boolean } = allowAll,
-) =>
-  authWithOAuth2(
+) {
+  const e = createEvent(
     app,
+    new Request("http://localhost/api/collections/users/auth-with-oauth2", {
+      method: "POST",
+    }),
+    { collection: "users" },
+  );
+  let result!: {
+    record: Record<string, unknown>;
+    meta: Record<string, unknown>;
+  };
+  await authWithOAuth2(
+    e,
     users(),
     { provider, code, codeVerifier: "", redirectURL: "" },
-    null,
     info,
+    async (oe) => {
+      result = { record: valuesOf(oe.record!), meta: oauth2Meta(oe) };
+    },
     opts,
   );
+  return result;
+}
 
 const failure = (p: Promise<unknown>) =>
   p.then(
@@ -294,6 +313,117 @@ describe("external auth links", () => {
     await app.records("users").delete(user.id as string);
     expect(countLinks()).toBe(0);
   });
+
+  test("of an unverified record go through the hooked delete on login", async () => {
+    await linkedUser();
+    const deleted: unknown[] = [];
+    app.onRecordDelete("_externalAuths", (e) => {
+      deleted.push(e.record.get("provider"));
+      return e.next();
+    });
+    mock.set("dee", {
+      user: { sub: "g-dee", email: "dee@example.com", email_verified: true },
+    });
+    await login("dee");
+    expect(deleted).toEqual(["github"]);
+  });
+});
+
+describe("hooks", () => {
+  test("handler edits to an existing record are saved when the login updates it", async () => {
+    const { id } = await app
+      .records("users")
+      .create({ email: "ed@example.com", password: "12345678" });
+    app.onRecordAuthWithOAuth2Request("users", (e) => {
+      e.record!.set("name", "Edited");
+      return e.next();
+    });
+    mock.set("ed", {
+      user: { sub: "g-ed", email: "ed@example.com", email_verified: true },
+    });
+    const { record } = await login("ed");
+    expect(record.name).toBe("Edited");
+    expect(record.verified).toBe(true);
+    expect(internalRecords(app, "users").findRaw(id as string)).toMatchObject({
+      name: "Edited",
+      verified: true,
+    });
+  });
+
+  test("without an update the edits are only answered", async () => {
+    const { id } = await app.records("users").create({
+      email: "ok@example.com",
+      password: "12345678",
+      verified: true,
+    });
+    app.onRecordAuthWithOAuth2Request("users", (e) => {
+      e.record!.set("name", "Answered");
+      return e.next();
+    });
+    mock.set("ok", {
+      user: { sub: "g-ok", email: "ok@example.com", email_verified: true },
+    });
+    expect((await login("ok")).record.name).toBe("Answered");
+    expect(internalRecords(app, "users").findRaw(id as string).name).toBe("");
+  });
+
+  test("the route wraps its response in onRecordAuthRequest", async () => {
+    const seen: unknown[] = [];
+    app.onRecordAuthRequest("users", async (e) => {
+      seen.push(e.authMethod, (e.meta as { isNew: boolean }).isNew);
+      await e.next();
+    });
+    mock.set("route", {
+      user: { sub: "g-r", email: "r@example.com", email_verified: true },
+    });
+    const req = new Request("http://x/api/collections/users/auth-with-oauth2", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "google", code: "route" }),
+    });
+    const found = createRouter()
+      .build()
+      .match(req.method, new URL(req.url).pathname)!;
+    const res = await found.run(createEvent(app, req, found.params));
+    expect(res.status).toBe(200);
+    expect(seen).toEqual(["oauth2", true]);
+  });
+
+  test("a sign-up runs the create request and enrich hooks of its internal request", async () => {
+    const seen: string[] = [];
+    app.onRecordCreateRequest("users", (e) => {
+      seen.push(`create ${e.req.method} ${new URL(e.req.url).pathname}`);
+      e.record.set("name", "Hooked");
+      return e.next();
+    });
+    app.onRecordEnrich("users", (e) => {
+      seen.push(`enrich ${e.requestInfo.context}`);
+      return e.next();
+    });
+    mock.set("hooked", {
+      user: { sub: "g-h", email: "h@example.com", email_verified: true },
+    });
+    const { record } = await login("hooked");
+    expect(record.name).toBe("Hooked");
+    expect(seen).toEqual([
+      "create POST /api/collections/users/records",
+      "enrich oauth2",
+    ]);
+  });
+
+  test("onRecordAuthWithOAuth2Request sees the provider user and can stop the login", async () => {
+    app.onRecordAuthWithOAuth2Request("users", (e) => {
+      expect(e.isNewRecord).toBe(true);
+      expect(e.record).toBeNull();
+      expect(e.oauth2User.email).toBe("s@example.com");
+      throw new ApiError(400, "Stopped.");
+    });
+    mock.set("stopped", {
+      user: { sub: "g-s", email: "s@example.com", email_verified: true },
+    });
+    expect((await failure(login("stopped")))?.message).toBe("Stopped.");
+    expect(countUsers()).toBe(0);
+  });
 });
 
 describe("safeFileFromURL", () => {
@@ -418,6 +548,46 @@ describe("existing record decisions", () => {
         )
         .map((r) => r.provider),
     ).toEqual(["github", "google"]);
+  });
+});
+
+describe("existing record update race", () => {
+  test("a verification during the login is not overwritten by the update", async () => {
+    const user = await app
+      .records("users")
+      .create({ email: "race@example.com", password: "12345678" });
+    // an earlier provider gave no email
+    await app.db.write(() =>
+      app.db.run("UPDATE users SET email = '' WHERE id = ?", [
+        user.id as string,
+      ]),
+    );
+    await app.records("_externalAuths").create({
+      collectionRef: users().id,
+      recordRef: user.id,
+      provider: "google",
+      providerId: "g-race",
+    });
+    const hash = Bun.password.hash;
+    const spy = spyOn(Bun.password, "hash").mockImplementation(
+      async (...args: Parameters<typeof hash>) => {
+        app.db.run("UPDATE users SET verified = 1 WHERE id = ?", [
+          user.id as string,
+        ]);
+        return hash(...args);
+      },
+    );
+    mock.set("race", {
+      user: { sub: "g-race", email: "race@example.com", email_verified: true },
+    });
+    try {
+      await login("race");
+    } finally {
+      spy.mockRestore();
+    }
+    expect(
+      internalRecords(app, "users").findRaw(user.id as string),
+    ).toMatchObject({ email: "race@example.com", verified: true });
   });
 });
 

@@ -2,6 +2,7 @@ import type { App } from "../app";
 import type { Collection } from "../collections/model";
 import { NotFoundError, formatDate, randomString } from "../util";
 import { internalRecords } from "../records/internal";
+import { RecordModel } from "../records/model";
 
 type Values = Record<string, unknown>;
 
@@ -16,6 +17,8 @@ const otpOptions = (c: Collection) =>
   c.otp as { enabled: boolean; duration: number; length: number };
 
 export const otpDurationMs = (c: Collection) => otpOptions(c).duration * 1000;
+
+export const otpLength = (c: Collection) => otpOptions(c).length;
 
 export const generateOtpCode = (length: number) => randomString(length, DIGITS);
 
@@ -49,6 +52,7 @@ export async function issueOtp(
   app: App,
   c: Collection,
   record: Values,
+  code = generateOtpCode(otpLength(c)),
 ): Promise<{ id: string; code: string | null }> {
   const existing = findRecordOtps(app, c, record);
   let recent = 0;
@@ -57,7 +61,6 @@ export async function issueOtp(
     if (recent > MAX_RECENT)
       return { id: existing[0]!.id as string, code: null };
   }
-  const code = generateOtpCode(otpOptions(c).length);
   const created = await internalRecords(app, "_otps").create({
     collectionRef: c.id,
     recordRef: record.id,
@@ -66,12 +69,18 @@ export async function issueOtp(
   return { id: created.id as string, code };
 }
 
-// False when another request already used it, which keeps the code single use under concurrency.
-export async function deleteOtp(app: App, id: string): Promise<boolean> {
-  const { changes } = await app.db.write(() =>
-    app.db.run("DELETE FROM _otps WHERE id = ?", [id]),
-  );
-  return changes > 0;
+// The hooked delete; false when another request already used it (writes are serialized), which keeps
+// the code single use under concurrency.
+export function deleteOtp(app: App, id: string): Promise<boolean> {
+  return app.db.write(async () => {
+    const otp = findOtp(app, id);
+    if (!otp) return false;
+    const c = app.collections.find("_otps")!;
+    await internalRecords(app, c.name).deleteRecord(
+      new RecordModel(c, otp, false),
+    );
+    return true;
+  });
 }
 
 export async function deleteExpiredOtps(app: App, c: Collection) {

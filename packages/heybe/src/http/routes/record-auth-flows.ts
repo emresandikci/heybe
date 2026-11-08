@@ -15,17 +15,30 @@ import {
   deleteExpiredOtps,
   deleteOtp,
   findOtp,
+  generateOtpCode,
   hasExpired,
   issueOtp,
   otpDurationMs,
+  otpLength,
 } from "../../auth/otp";
 import { authFromToken, newAuthToken } from "../../auth/tokens";
 import type { Collection } from "../../collections/model";
 import { isEmail } from "../../fields/email";
 import { runeLength } from "../../fields/shared";
-import { type PreparedWrite, StaleTokenError } from "../../records/service";
+import { RecordModel } from "../../records/model";
+import { StaleTokenError, valuesOf } from "../../records/service";
+import {
+  RecordAuthWithOTPRequestEvent,
+  RecordConfirmEmailChangeRequestEvent,
+  RecordConfirmPasswordResetRequestEvent,
+  RecordConfirmVerificationRequestEvent,
+  RecordCreateOTPRequestEvent,
+  RecordRequestEmailChangeRequestEvent,
+  RecordRequestPasswordResetRequestEvent,
+  RecordRequestVerificationRequestEvent,
+} from "../../hooks/events";
 import { NotFoundError, ValidationError, newId } from "../../util";
-import { ApiError } from "../errors";
+import { ApiError, logUnexpected } from "../errors";
 import { realIp } from "../middlewares";
 import type { AuthState, RequestEvent, Router } from "../router";
 import { requireSuperuser } from "./collections";
@@ -115,30 +128,37 @@ function emailError(v: string): FieldError | null {
   return null;
 }
 
-// `tokenKey`: the one the request's token was checked against, so a token is used only once
+// The hooked save of `record`. `tokenKey`: the one the request's token was checked against, so a
+// token is used only once.
 async function save(
   app: App,
-  c: Collection,
-  record: Values,
-  data: Values,
+  record: RecordModel,
   message: string,
   tokenKey?: string,
 ): Promise<void> {
-  const records = internalRecords(app, c.name);
-  const id = record.id as string;
-  let p: PreparedWrite | undefined;
+  const records = internalRecords(app, record.collection.name);
   try {
-    p = await records.prepare(data, id);
-    await records.updatePrepared(p, id, data, { tokenKey });
+    const p = await records.prepare({}, record.id);
+    await records.commit(p, () =>
+      records.savePrepared(p, record, { tokenKey }),
+    );
   } catch (error) {
     if (error instanceof StaleTokenError) check({ token: invalidToken });
-    if (error instanceof ValidationError)
-      throw new ApiError(400, message, error.data);
-    throw error;
-  } finally {
-    if (p) await records.settle(p);
+    throw failed(error, message);
   }
 }
+
+// PB firstApiError(err, e.BadRequestError(message, err))
+function failed(error: unknown, message: string): ApiError {
+  if (error instanceof ApiError) return error;
+  if (error instanceof ValidationError)
+    return new ApiError(400, message, error.data);
+  logUnexpected(error);
+  return new ApiError(400, message);
+}
+
+const model = (c: Collection, values: Values) =>
+  new RecordModel(c, values, false);
 
 // PB RequireSameCollectionContextAuth (with the collection lookup of the rate limit middleware before it).
 function requireCollectionAuth(e: RequestEvent): AuthState {
@@ -160,29 +180,40 @@ function requireCollectionAuth(e: RequestEvent): AuthState {
 const passwordAuthEnabled = (c: Collection) =>
   (c.passwordAuth as { enabled: boolean }).enabled;
 
-async function requestVerification(e: RequestEvent): Promise<Response> {
+async function requestVerification(e: RequestEvent): Promise<unknown> {
   const c = findAuthCollection(e);
   if (c.name === "_superusers")
     throw new ApiError(400, "All superusers are verified by default.");
   const { email } = await readForm(e, ["email"]);
   check({ email: emailError(email) });
 
-  // unknown, verified and throttled get the same 204 without a mail
-  const record = findAuthRecordByEmail(e.app, c, email);
-  if (!record || record.verified === true) return noContent();
-  const key = verificationResendKey(c, record);
-  if (resendLimit.has(e.app, key)) return noContent();
+  // unknown and throttled get the same 204 without a mail
+  const found = findAuthRecordByEmail(e.app, c, email);
+  if (!found) return noContent();
+  const key = verificationResendKey(c, found);
+  if (found.verified !== true && resendLimit.has(e.app, key))
+    return noContent();
 
-  const app = e.app;
-  inBackground(async () => {
-    try {
-      await sendFlowMail(app, "verification", c, record);
-    } catch (error) {
-      console.error("heybe: failed to send verification email:", error);
-    }
-    resendLimit.set(app, key);
+  const event = RecordRequestVerificationRequestEvent.from(e, {
+    collection: c,
+    record: model(c, found),
   });
-  return noContent();
+  await e.app.hooks.onRecordRequestVerificationRequest.trigger(event, (ve) => {
+    if (ve.record.get("verified") === true) {
+      ve.noContent(204);
+      return;
+    }
+    const { app, record } = ve;
+    inBackground(async () => {
+      try {
+        await sendFlowMail(app, "verification", record);
+      } catch (error) {
+        console.error("heybe: failed to send verification email:", error);
+      }
+      resendLimit.set(app, key);
+    });
+    ve.noContent(204);
+  });
 }
 
 function verificationTokenError(
@@ -204,7 +235,7 @@ function verificationTokenError(
   return null;
 }
 
-async function confirmVerification(e: RequestEvent): Promise<Response> {
+async function confirmVerification(e: RequestEvent): Promise<void> {
   const c = findAuthCollection(e);
   if (c.name === "_superusers")
     throw new ApiError(400, "All superusers are verified by default.");
@@ -215,25 +246,36 @@ async function confirmVerification(e: RequestEvent): Promise<Response> {
   const auth = authFromToken(e.app, token, "verification");
   if (!auth) throw new ApiError(400, "Invalid or expired verification token.");
 
-  const { record } = auth;
   // a reused token is accepted but changes nothing, as in PB
-  if (record.verified !== true) {
-    const data: Values = { verified: true };
-    // like PB: guards against pre-hijacking if password auth is enabled later
-    if (!passwordAuthEnabled(c)) data.password = await randomPassword(c);
-    await save(
-      e.app,
-      c,
-      record,
-      data,
-      "An error occurred while saving the verified state.",
-    );
-  }
-  resendLimit.remove(e.app, verificationResendKey(c, record));
-  return noContent();
+  const wasVerified = auth.record.verified === true;
+  const event = RecordConfirmVerificationRequestEvent.from(e, {
+    collection: c,
+    record: model(c, auth.record),
+  });
+  await e.app.hooks.onRecordConfirmVerificationRequest.trigger(
+    event,
+    async (ve) => {
+      if (!wasVerified) {
+        ve.record.set("verified", true);
+        // like PB: guards against pre-hijacking if password auth is enabled later
+        if (!passwordAuthEnabled(ve.record.collection))
+          ve.record.set("password", await randomPassword(ve.record.collection));
+        await save(
+          ve.app,
+          ve.record,
+          "An error occurred while saving the verified state.",
+        );
+      }
+      resendLimit.remove(
+        ve.app,
+        verificationResendKey(ve.record.collection, valuesOf(ve.record)),
+      );
+      ve.noContent(204);
+    },
+  );
 }
 
-async function requestPasswordReset(e: RequestEvent): Promise<Response> {
+async function requestPasswordReset(e: RequestEvent): Promise<unknown> {
   const c = findAuthCollection(e);
   if (!passwordAuthEnabled(c))
     throw new ApiError(
@@ -243,25 +285,31 @@ async function requestPasswordReset(e: RequestEvent): Promise<Response> {
   const { email } = await readForm(e, ["email"]);
   check({ email: emailError(email) });
 
-  const record = findAuthRecordByEmail(e.app, c, email);
-  if (!record) return noContent();
-  const key = passwordResetResendKey(c, record);
+  const found = findAuthRecordByEmail(e.app, c, email);
+  if (!found) return noContent();
+  const key = passwordResetResendKey(c, found);
   if (resendLimit.has(e.app, key)) return noContent();
 
-  const app = e.app;
-  inBackground(async () => {
-    try {
-      await sendFlowMail(app, "passwordReset", c, record);
-    } catch (error) {
-      console.error("heybe: failed to send password reset email:", error);
-      return;
-    }
-    resendLimit.set(app, key);
+  const event = RecordRequestPasswordResetRequestEvent.from(e, {
+    collection: c,
+    record: model(c, found),
   });
-  return noContent();
+  await e.app.hooks.onRecordRequestPasswordResetRequest.trigger(event, (re) => {
+    const { app, record } = re;
+    inBackground(async () => {
+      try {
+        await sendFlowMail(app, "passwordReset", record);
+      } catch (error) {
+        console.error("heybe: failed to send password reset email:", error);
+        return;
+      }
+      resendLimit.set(app, key);
+    });
+    re.noContent(204);
+  });
 }
 
-async function confirmPasswordReset(e: RequestEvent): Promise<Response> {
+async function confirmPasswordReset(e: RequestEvent): Promise<void> {
   const c = findAuthCollection(e);
   const form = await readForm(e, ["token", "password", "passwordConfirm"]);
   const field = c.fields.find((f) => f.name === "password");
@@ -291,27 +339,31 @@ async function confirmPasswordReset(e: RequestEvent): Promise<Response> {
   if (!auth)
     throw new ApiError(400, "Invalid or expired password reset token.");
 
-  const { record } = auth;
-  const data: Values = { password: form.password };
-  // mark as verified only if the email hasn't changed since the token was issued
-  if (
-    record.verified !== true &&
-    record.email === decodeJwtClaims(form.token)?.email
-  )
-    data.verified = true;
-  await save(
-    e.app,
-    c,
+  // like PB, the final action works on the record of the token
+  const record = model(c, auth.record);
+  const tokenKey = auth.record.tokenKey as string;
+  const event = RecordConfirmPasswordResetRequestEvent.from(e, {
+    collection: c,
     record,
-    data,
-    "Failed to set new password.",
-    record.tokenKey as string,
+  });
+  await e.app.hooks.onRecordConfirmPasswordResetRequest.trigger(
+    event,
+    async (re) => {
+      record.set("password", form.password);
+      // mark as verified only if the email hasn't changed since the token was issued
+      if (
+        record.get("verified") !== true &&
+        record.get("email") === decodeJwtClaims(form.token)?.email
+      )
+        record.set("verified", true);
+      await save(re.app, record, "Failed to set new password.", tokenKey);
+      resendLimit.remove(re.app, passwordResetResendKey(c, auth.record));
+      re.noContent(204);
+    },
   );
-  resendLimit.remove(e.app, passwordResetResendKey(c, record));
-  return noContent();
 }
 
-async function requestEmailChange(e: RequestEvent): Promise<Response> {
+async function requestEmailChange(e: RequestEvent): Promise<void> {
   const { record } = requireCollectionAuth(e);
   const c = findAuthCollection(e);
   if (c.name === "_superusers")
@@ -331,12 +383,22 @@ async function requestEmailChange(e: RequestEvent): Promise<Response> {
         : taken()),
   });
 
-  try {
-    await sendFlowMail(e.app, "emailChange", c, record, newEmail);
-  } catch {
-    throw new ApiError(400, "Failed to request email change.");
-  }
-  return noContent();
+  const event = RecordRequestEmailChangeRequestEvent.from(e, {
+    collection: c,
+    record: model(c, record),
+    newEmail,
+  });
+  await e.app.hooks.onRecordRequestEmailChangeRequest.trigger(
+    event,
+    async (re) => {
+      try {
+        await sendFlowMail(re.app, "emailChange", re.record, re.newEmail);
+      } catch (error) {
+        throw failed(error, "Failed to request email change.");
+      }
+      re.noContent(204);
+    },
+  );
 }
 
 function parseEmailChangeToken(
@@ -361,7 +423,7 @@ function parseEmailChangeToken(
   return { record: auth.record, newEmail };
 }
 
-async function confirmEmailChange(e: RequestEvent): Promise<Response> {
+async function confirmEmailChange(e: RequestEvent): Promise<void> {
   const c = findAuthCollection(e);
   if (c.name === "_superusers")
     throw new ApiError(400, "All superusers can change their emails directly.");
@@ -371,7 +433,7 @@ async function confirmEmailChange(e: RequestEvent): Promise<Response> {
     if (form.password === "") return required;
     if (runeLength(form.password) > 100) return lengthError(1, 100);
     return "record" in parsed &&
-      (await verifyPassword(parsed.record, form.password))
+      (await verifyPassword(parsed.record.password, form.password))
       ? null
       : err(
           "validation_invalid_password",
@@ -385,15 +447,26 @@ async function confirmEmailChange(e: RequestEvent): Promise<Response> {
   if (!("record" in parsed))
     throw new ApiError(400, "Invalid or expired token.");
 
-  await save(
-    e.app,
-    c,
-    parsed.record,
-    { email: parsed.newEmail, verified: true },
-    "Failed to confirm email change.",
-    parsed.record.tokenKey as string,
+  const tokenKey = parsed.record.tokenKey as string;
+  const event = RecordConfirmEmailChangeRequestEvent.from(e, {
+    collection: c,
+    record: model(c, parsed.record),
+    newEmail: parsed.newEmail,
+  });
+  await e.app.hooks.onRecordConfirmEmailChangeRequest.trigger(
+    event,
+    async (ce) => {
+      ce.record.set("email", ce.newEmail);
+      ce.record.set("verified", true);
+      await save(
+        ce.app,
+        ce.record,
+        "Failed to confirm email change.",
+        tokenKey,
+      );
+      ce.noContent(204);
+    },
   );
-  return noContent();
 }
 
 function requireOtpEnabled(e: RequestEvent): Collection {
@@ -406,35 +479,44 @@ function requireOtpEnabled(e: RequestEvent): Collection {
   return c;
 }
 
-async function requestOtp(e: RequestEvent): Promise<Response> {
+async function requestOtp(e: RequestEvent): Promise<void> {
   const c = requireOtpEnabled(e);
   const { email } = await readForm(e, ["email"]);
   check({ email: emailError(email) });
 
-  const record = findAuthRecordByEmail(e.app, c, email);
-  if (!record) {
-    // same bcrypt work as a real request, so the response time does not reveal the account
-    await Bun.password.hash("0".repeat(8), { algorithm: "bcrypt", cost: 8 });
-    return e.json(200, { otpId: newId() });
-  }
-
-  await deleteExpiredOtps(e.app, c);
-  const { id, code } = await issueOtp(e.app, c, record);
-  if (code !== null) {
-    const app = e.app;
-    inBackground(async () => {
-      try {
-        await sendOtpMail(app, c, record, id, code);
-      } catch (error) {
-        await deleteOtp(app, id);
-        console.error("heybe: failed to send OTP email:", error);
-      }
-    });
-  }
-  return e.json(200, { otpId: id });
+  const found = findAuthRecordByEmail(e.app, c, email);
+  const event = RecordCreateOTPRequestEvent.from(e, {
+    collection: c,
+    record: found && model(c, found),
+    password: generateOtpCode(otpLength(c)),
+  });
+  await e.app.hooks.onRecordRequestOTPRequest.trigger(event, async (oe) => {
+    const { app, record, password } = oe;
+    if (!record) {
+      // same bcrypt work as a real request, so the response time does not reveal the account
+      await Bun.password.hash("0".repeat(8), { algorithm: "bcrypt", cost: 8 });
+      oe.json(200, { otpId: newId() });
+      throw new ApiError(
+        400,
+        `missing or invalid ${c.name} OTP auth record with email ${email}`,
+      );
+    }
+    await deleteExpiredOtps(app, c);
+    const { id, code } = await issueOtp(app, c, valuesOf(record), password);
+    if (code !== null)
+      inBackground(async () => {
+        try {
+          await sendOtpMail(app, record, id, code);
+        } catch (error) {
+          await deleteOtp(app, id);
+          console.error("heybe: failed to send OTP email:", error);
+        }
+      });
+    oe.json(200, { otpId: id });
+  });
 }
 
-async function authWithOtp(e: RequestEvent): Promise<Response> {
+async function authWithOtp(e: RequestEvent): Promise<void> {
   const c = requireOtpEnabled(e);
   const body = await loadBody(e);
   const form = await readForm(e, ["otpId", "password"], body);
@@ -471,40 +553,50 @@ async function authWithOtp(e: RequestEvent): Promise<Response> {
       429,
       "Too many attempts, please try again later with a new OTP.",
     );
-  if (!(await verifyPassword(otp, form.password))) throw invalid();
-  if (!(await deleteOtp(e.app, otp.id as string))) throw invalid();
+  if (!(await verifyPassword(otp.password, form.password))) throw invalid();
 
-  // the OTP was mailed to the record email, so it proves ownership of it
-  const sentTo = otp.sentTo as string;
-  if (record.verified !== true && sentTo !== "" && record.email === sentTo) {
-    const data: Values = { verified: true };
-    // like PB: without MFA a lone OTP login must not leave a guessable password behind
-    if (!(c.mfa as { enabled: boolean }).enabled)
-      data.password = await randomPassword(c);
-    try {
-      await internalRecords(e.app, c.name).update(record.id as string, data);
-      record = internalRecords(e.app, c.name).findRaw(record.id as string);
-    } catch (error) {
-      console.error(
-        "heybe: failed to mark the record verified after OTP:",
-        error,
-      );
+  const event = RecordAuthWithOTPRequestEvent.from(e, {
+    collection: c,
+    record: model(c, record),
+    otp: model(e.app.collections.find("_otps")!, otp),
+  });
+  await e.app.hooks.onRecordAuthWithOTPRequest.trigger(event, async (oe) => {
+    if (!(await deleteOtp(oe.app, oe.otp.id))) throw invalid();
+    // the OTP was mailed to the record email, so it proves ownership of it
+    const sentTo = oe.otp.get("sentTo") as string;
+    const r = oe.record;
+    if (
+      r.get("verified") !== true &&
+      sentTo !== "" &&
+      r.get("email") === sentTo
+    ) {
+      r.set("verified", true);
+      // like PB: without MFA a lone OTP login must not leave a guessable password behind
+      if (!(r.collection.mfa as { enabled: boolean }).enabled)
+        r.set("password", await randomPassword(r.collection));
+      try {
+        await save(oe.app, r, "Failed to update the verified state.");
+      } catch (error) {
+        console.error(
+          "heybe: failed to mark the record verified after OTP:",
+          error,
+        );
+      }
     }
-  }
-
-  return authResponse(
-    e,
-    c,
-    record,
-    newAuthToken(e.app, c, record),
-    body,
-    "otp",
-    "otp",
-  );
+    await authResponse(
+      oe,
+      r.collection,
+      r,
+      newAuthToken(oe.app, r.collection, valuesOf(r)),
+      body,
+      "otp",
+      "otp",
+    );
+  });
 }
 
 // PB apis/record_auth_impersonate.go: a static token (non-refreshable, custom duration), and no MFA (method "").
-async function impersonate(e: RequestEvent): Promise<Response> {
+async function impersonate(e: RequestEvent): Promise<void> {
   requireSuperuser(e);
   const c = e.app.collections.find(e.params.collection!);
   if (c?.type !== "auth")
@@ -541,7 +633,7 @@ async function impersonate(e: RequestEvent): Promise<Response> {
     duration: nanos > 0n ? Number(nanos / 1_000_000_000n) : undefined,
     refreshable: false,
   });
-  return authResponse(e, c, record, token, body, "default", "");
+  await authResponse(e, c, model(c, record), token, body, "default", "");
 }
 
 export function registerRecordAuthFlowRoutes(router: Router): void {

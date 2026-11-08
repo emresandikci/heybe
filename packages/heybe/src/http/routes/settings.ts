@@ -3,15 +3,17 @@ import {
   appleFormErrors,
   generateAppleClientSecret,
 } from "../../auth/apple";
-import { newMailToken } from "../../auth/tokens";
+import { sendAuthAlert } from "../../auth/alerts";
+import { sendFlowMail, sendOtpMail } from "../../auth/flows";
 import type { Collection } from "../../collections/model";
 import { isEmail } from "../../fields/email";
+import type { RecordMailKind } from "../../mail/templates";
+import { RecordModel } from "../../records/model";
 import {
-  type RecordMailKind,
-  escapeHtml,
-  renderRecordMail,
-} from "../../mail/templates";
-import { SettingsLoadError } from "../../settings";
+  SettingsListRequestEvent,
+  SettingsUpdateRequestEvent,
+} from "../../hooks/events";
+import { SettingsLoadError, publicSettings } from "../../settings";
 import { randomSecret } from "../../util";
 import { ApiError } from "../errors";
 import type { RequestEvent, Router } from "../router";
@@ -19,7 +21,18 @@ import { requireSuperuser } from "./collections";
 
 const LOAD_FAILED = "An error occurred while loading the submitted data.";
 
-async function update(e: RequestEvent): Promise<Response> {
+function list(e: RequestEvent): unknown {
+  const hook = e.app.hooks.onSettingsListRequest;
+  if (hook.length === 0) return e.json(200, e.app.settings);
+  const event = SettingsListRequestEvent.from(e, {
+    settings: e.app.settings.get(),
+  });
+  return hook.trigger(event, (le) => {
+    le.json(200, publicSettings(le.settings));
+  });
+}
+
+async function update(e: RequestEvent): Promise<void> {
   let body: Record<string, unknown> = {};
   try {
     body = await e.body();
@@ -27,13 +40,21 @@ async function update(e: RequestEvent): Promise<Response> {
     if (err instanceof ApiError && err.status === 413) throw err;
     throw new ApiError(400, LOAD_FAILED);
   }
+  let newSettings;
   try {
-    await e.app.settings.update(body);
+    newSettings = e.app.settings.bind(body);
   } catch (err) {
     if (err instanceof SettingsLoadError) throw new ApiError(400, LOAD_FAILED);
     throw err;
   }
-  return e.json(200, e.app.settings);
+  const event = SettingsUpdateRequestEvent.from(e, {
+    oldSettings: e.app.settings.get(),
+    newSettings,
+  });
+  await e.app.hooks.onSettingsUpdateRequest.trigger(event, async (ue) => {
+    await ue.app.settings.save(ue.newSettings);
+    ue.json(200, ue.app.settings);
+  });
 }
 
 const TEST_TEMPLATES: Record<string, RecordMailKind> = {
@@ -129,31 +150,26 @@ async function testEmail(e: RequestEvent): Promise<Response> {
   if (Object.keys(errors).length > 0 || !collection)
     throw new ApiError(400, "Failed to send the test email.", errors);
 
-  const record = testRecord(collection, form.email);
-  const kind = TEST_TEMPLATES[form.template]!;
-  const token = (type: "verification" | "passwordReset" | "emailChange") => ({
-    "{TOKEN}": newMailToken(e.app, type, collection, record, form.email),
-  });
-  const data = {
-    verification: () => token("verification"),
-    resetPassword: () => token("passwordReset"),
-    confirmEmailChange: () => token("emailChange"),
-    otp: () => ({ "{OTP_ID}": "_PB_TEST_OTP_ID_", "{OTP}": "123456" }),
-    authAlert: () => ({
-      "{ALERT_INFO}": escapeHtml(
+  const record = new RecordModel(
+    collection,
+    testRecord(collection, form.email),
+    false,
+  );
+  const send = {
+    verification: () => sendFlowMail(e.app, "verification", record),
+    resetPassword: () => sendFlowMail(e.app, "passwordReset", record),
+    confirmEmailChange: () =>
+      sendFlowMail(e.app, "emailChange", record, form.email),
+    otp: () => sendOtpMail(e.app, record, "_PB_TEST_OTP_ID_", "123456"),
+    authAlert: () =>
+      sendAuthAlert(
+        e.app,
+        record,
         `${e.app.now().toISOString().replace("T", " ")} - TEST_IP TEST_USER_AGENT`,
       ),
-    }),
-  }[kind]();
-
-  const mail = renderRecordMail(e.app, kind, collection, record, data);
-  const { meta } = e.app.settings.get();
+  }[TEST_TEMPLATES[form.template]!];
   try {
-    await e.app.mailer.send({
-      from: { name: meta.senderName, address: meta.senderAddress },
-      to: [{ address: form.email }],
-      ...mail,
-    });
+    await send();
   } catch (err) {
     throw new ApiError(
       400,
@@ -206,7 +222,7 @@ async function appleClientSecret(e: RequestEvent): Promise<Response> {
 export function registerSettingsRoutes(router: Router): void {
   router.route("GET", "/api/settings", (e) => {
     requireSuperuser(e);
-    return e.json(200, e.app.settings);
+    return list(e);
   });
   router.route("PATCH", "/api/settings", (e) => {
     requireSuperuser(e);

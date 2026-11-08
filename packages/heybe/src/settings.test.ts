@@ -230,3 +230,47 @@ describe("settings", () => {
     rmSync(dir, { recursive: true });
   });
 });
+
+describe("onSettingsReload", () => {
+  const watch = () => {
+    const seen: [string, string][] = [];
+    app.onSettingsReload(async (e) => {
+      const before = e.app.settings.get().meta.appName;
+      await e.next();
+      seen.push([before, e.app.settings.get().meta.appName]);
+    });
+    return seen;
+  };
+
+  test("fires at bootstrap", async () => {
+    const seen = watch();
+    await app.bootstrap();
+    expect(seen).toEqual([["Acme", "Acme"]]);
+  });
+
+  test("fires once per committed save, with the old settings before next()", async () => {
+    const seen = watch();
+    await app.settings.update({ meta: { appName: "One" } } as never);
+    await app.db.write(async () => {
+      await app.settings.update({ meta: { appName: "Two" } } as never);
+      expect(seen).toHaveLength(1);
+    });
+    expect(seen).toEqual([
+      ["Acme", "One"],
+      ["One", "Two"],
+    ]);
+  });
+
+  test("does not fire for a rolled back save", async () => {
+    const seen = watch();
+    const failure = new Error("rollback");
+    await expect(
+      app.db.write(async () => {
+        await app.settings.update({ meta: { appName: "Lost" } } as never);
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+    expect(seen).toEqual([]);
+    expect(app.settings.get().meta.appName).toBe("Acme");
+  });
+});

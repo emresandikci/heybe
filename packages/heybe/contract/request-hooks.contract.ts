@@ -2,8 +2,10 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { type Target, both, expectSame, startTargets } from "./harness";
+import { type SmtpCapture, startSmtpCapture } from "./smtp";
 
 let targets: Awaited<ReturnType<typeof startTargets>>;
+let mail: { pocketbase: SmtpCapture; heybe: SmtpCapture };
 
 const api = (
   t: Target,
@@ -49,6 +51,10 @@ const fileNames: Record<string, string> = {};
 const userTokens: Record<string, string> = {};
 
 beforeAll(async () => {
+  mail = {
+    pocketbase: await startSmtpCapture(),
+    heybe: await startSmtpCapture(),
+  };
   targets = await startTargets({
     heybeEntry: resolve(import.meta.dir, "extend/heybe.ts"),
     pbHooksDir: resolve(import.meta.dir, "extend/pb_hooks"),
@@ -56,6 +62,12 @@ beforeAll(async () => {
   await eachOk((t) =>
     api(t, "PATCH", "/api/settings", {
       batch: { enabled: true, maxRequests: 10 },
+      smtp: {
+        enabled: true,
+        host: "127.0.0.1",
+        port: mail[t.name].port,
+        tls: false,
+      },
     }),
   );
   for (const t of [targets.pb, targets.hb]) {
@@ -96,6 +108,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await targets.stop();
+  await Promise.all([mail.pocketbase.stop(), mail.heybe.stop()]);
 });
 
 test("onRecordCreateRequest changes a submitted field", async () => {
@@ -368,4 +381,100 @@ test("collection request hooks", async () => {
     deleteMissing: true,
   });
   expect(imported.message).toBe("No deleteMissing imports.");
+});
+
+const guest = () => "";
+
+async function createUsers(...emails: string[]) {
+  for (const email of emails)
+    await eachOk((t) =>
+      api(t, "POST", "/api/collections/users/records", {
+        email,
+        password: "12345678",
+        passwordConfirm: "12345678",
+      }),
+    );
+}
+
+test("auth request hooks add meta and block an identity", async () => {
+  const path = "/api/collections/users/auth-with-password";
+  const body = await same(
+    "POST",
+    path,
+    200,
+    { identity: "req@example.com", password: "12345678" },
+    guest,
+  );
+  expect(body.meta).toEqual({ custom: "yes" });
+  const blocked = await same(
+    "POST",
+    path,
+    400,
+    { identity: "blocked@example.com", password: "12345678" },
+    guest,
+  );
+  expect(blocked.message).toBe("Blocked identity.");
+});
+
+test("verification request and record mail hooks", async () => {
+  await createUsers("verifyme@example.com", "noverify@example.com");
+  const path = "/api/collections/users/request-verification";
+  const blocked = await same(
+    "POST",
+    path,
+    400,
+    { email: "noverify@example.com" },
+    guest,
+  );
+  expect(blocked.message).toBe("No verification.");
+  await same("POST", path, 204, { email: "verifyme@example.com" }, guest);
+  const [pb, hb] = await Promise.all([
+    mail.pocketbase.waitFor("verifyme@example.com"),
+    mail.heybe.waitFor("verifyme@example.com"),
+  ]);
+  expect(pb.subject).toBe("Hooked verifyme@example.com");
+  expect(hb.subject).toBe(pb.subject);
+});
+
+test("onMailerSend skips a send without changing the response", async () => {
+  const tokens: Record<string, string> = {};
+  for (const t of [targets.pb, targets.hb]) {
+    const res = await api(
+      t,
+      "POST",
+      "/api/collections/users/auth-with-password",
+      { identity: "req@example.com", password: "12345678" },
+      "",
+    );
+    tokens[t.name] = ((await res.json()) as { token: string }).token;
+  }
+  await same(
+    "POST",
+    "/api/collections/users/request-email-change",
+    204,
+    { newEmail: "nomail@example.com" },
+    (t) => tokens[t.name]!,
+  );
+  for (const capture of [mail.pocketbase, mail.heybe])
+    expect(
+      capture
+        .messages()
+        .some((m) => m.recipients.includes("nomail@example.com")),
+    ).toBe(false);
+});
+
+test("settings request hooks", async () => {
+  const rejected = await same("PATCH", "/api/settings", 400, {
+    meta: { appName: "forbidden" },
+  });
+  expect(rejected.message).toBe("Forbidden app name.");
+  for (const t of [targets.pb, targets.hb]) {
+    const res = await api(t, "GET", "/api/settings");
+    expect(res.status).toBe(200);
+    const { meta } = (await res.json()) as {
+      meta: { appName: string; senderAddress: string };
+    };
+    expect(meta.senderAddress).toBe("***");
+    expect(meta.appName).not.toBe("forbidden");
+  }
 });

@@ -6,6 +6,7 @@ import { createEvent } from "../router";
 import { loadAuth } from "../middlewares";
 import { createRouter } from "../server";
 import { internalRecords } from "../../records/internal";
+import { ErrMFA } from "./record-auth";
 
 let app: App;
 let clock: Date;
@@ -50,7 +51,7 @@ async function post(path: string, body: unknown): Promise<Response> {
   try {
     return await found.run(e);
   } catch (err) {
-    return errorResponse(err);
+    return e.response ?? errorResponse(err);
   }
 }
 
@@ -155,5 +156,25 @@ describe("mfa", () => {
       enabled: true,
       duration: 600,
     });
+  });
+});
+
+describe("mfa with auth request handlers", () => {
+  test("next() fails with ErrMFA after the 401 is written", async () => {
+    await createUser();
+    const seen: string[] = [];
+    app.onRecordAuthRequest(async (e) => {
+      try {
+        await e.next();
+        seen.push(`ok ${e.authMethod}`);
+      } catch (err) {
+        seen.push(err === ErrMFA ? `mfa ${e.authMethod}` : "other");
+        throw err;
+      }
+    });
+    const mfaId = await startMfa();
+    expect(seen).toEqual(["mfa password"]);
+    expect((await withOtp(mfaId)).status).toBe(200);
+    expect(seen).toEqual(["mfa password", "ok otp"]);
   });
 });

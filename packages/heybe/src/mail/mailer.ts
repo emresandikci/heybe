@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
+import type { App } from "../app";
+import { MailerEvent, MailerRecordEvent } from "../hooks/events";
+import type { Hook } from "../hooks/hook";
+import type { RecordModel } from "../records/model";
 import type { SettingsData } from "../settings";
 
 export interface MailMessage {
@@ -94,4 +98,36 @@ const sendmailMailer: Mailer = {
 
 export function mailerFromSettings(settings: SettingsData): Mailer {
   return settings.smtp.enabled ? smtpMailer(settings.smtp) : sendmailMailer;
+}
+
+// PB NewMailClient with its __pbMailerOnSend__ handler: every send goes through onMailerSend, whose
+// handlers may replace the message or skip the send.
+export function appMailer(app: App): Mailer {
+  return {
+    send(message) {
+      const client = mailerFromSettings(app.settings.get());
+      const hook = app.hooks.onMailerSend;
+      if (hook.length === 0) return client.send(message);
+      return hook.trigger(
+        MailerEvent.of({ app, mailer: client, message }),
+        (e) => client.send(e.message),
+      );
+    },
+  };
+}
+
+// PB mails/record.go: `hook` (an onMailerRecord*Send) around `send`, by default the app mailer send.
+export function sendRecordMail(
+  app: App,
+  hook: Hook<MailerRecordEvent>,
+  record: RecordModel,
+  message: MailMessage,
+  meta: Record<string, unknown>,
+  send = (mailer: Mailer, message: MailMessage) => mailer.send(message),
+): Promise<void> {
+  if (hook.length === 0) return send(app.mailer, message);
+  return hook.trigger(
+    MailerRecordEvent.of({ app, mailer: app.mailer, message, record, meta }),
+    (e) => send(e.mailer, e.message),
+  );
 }

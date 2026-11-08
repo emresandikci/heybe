@@ -121,3 +121,29 @@ describe("auth-refresh guard order", () => {
     );
   });
 });
+
+describe("auth response", () => {
+  test("runs the enrich hooks of the auth record", async () => {
+    await app.records("users").create({
+      id: "u00000000000001",
+      email: "a@example.com",
+      password: "12345678",
+    });
+    const enriched: string[] = [];
+    app.onRecordEnrich("users", async (e) => {
+      enriched.push(e.record.id);
+      expect(e.requestInfo.auth?.id).toBe("u00000000000001");
+      await e.next();
+      e.record.withCustomData(true);
+      e.record.set("label", "enriched");
+    });
+    const res = (await call("/api/collections/users/auth-with-password", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity: "a@example.com", password: "12345678" }),
+    })) as Response;
+    const body = (await res.json()) as { record: Record<string, unknown> };
+    expect(enriched).toEqual(["u00000000000001"]);
+    expect(body.record.label).toBe("enriched");
+    expect(body.record.email).toBe("a@example.com");
+  });
+});

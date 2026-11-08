@@ -1,6 +1,9 @@
 import { html2text } from "./html2text";
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
+import type { RecordModel } from "../records/model";
+import { valuesOf } from "../records/service";
+import type { MailMessage } from "./mailer";
 
 const LAYOUT = `
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
@@ -167,5 +170,21 @@ export function renderRecordMail(
     subject: resolve(template.subject, values),
     html,
     text: html2text(html),
+  };
+}
+
+// The record mail of `kind` to `to`, from the app sender (PB mails/record.go).
+export function recordMessage(
+  app: App,
+  kind: RecordMailKind,
+  record: RecordModel,
+  data: Record<string, string>,
+  to: string,
+): MailMessage {
+  const { meta } = app.settings.get();
+  return {
+    from: { name: meta.senderName, address: meta.senderAddress },
+    to: [{ address: to }],
+    ...renderRecordMail(app, kind, record.collection, valuesOf(record), data),
   };
 }

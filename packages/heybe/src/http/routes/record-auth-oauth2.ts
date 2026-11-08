@@ -1,7 +1,12 @@
-import { authWithOAuth2, providerConfigs } from "../../auth/oauth2/flow";
+import {
+  authWithOAuth2,
+  oauth2Meta,
+  providerConfigs,
+} from "../../auth/oauth2/flow";
 import { newAuthToken } from "../../auth/tokens";
 import { runeLength } from "../../fields/shared";
 import { buildRequestInfo } from "../../records/rules";
+import { valuesOf } from "../../records/service";
 import { ApiError } from "../errors";
 import type { RequestEvent, Router } from "../router";
 import { authResponse, findAuthCollection } from "./record-auth";
@@ -46,7 +51,7 @@ function bindForm(body: Values, multipart: boolean) {
   };
 }
 
-async function authWithOAuth2Route(e: RequestEvent): Promise<Response> {
+async function authWithOAuth2Route(e: RequestEvent): Promise<void> {
   const c = findAuthCollection(e);
   if (!(c.oauth2 as { enabled: boolean }).enabled)
     throw new ApiError(
@@ -78,22 +83,17 @@ async function authWithOAuth2Route(e: RequestEvent): Promise<Response> {
   if (Object.keys(errors).length > 0)
     throw new ApiError(400, LOAD_FAILED, errors);
 
-  const { record, meta } = await authWithOAuth2(
-    e.app,
-    c,
-    form,
-    e.auth,
-    buildRequestInfo(e, body, "oauth2"),
-  );
-  return authResponse(
-    e,
-    c,
-    record,
-    newAuthToken(e.app, c, record),
-    body,
-    "oauth2",
-    "oauth2",
-    { meta },
+  await authWithOAuth2(e, c, form, buildRequestInfo(e, body, "oauth2"), (oe) =>
+    authResponse(
+      oe,
+      c,
+      oe.record!,
+      newAuthToken(oe.app, c, valuesOf(oe.record!)),
+      body,
+      "oauth2",
+      "oauth2",
+      oauth2Meta(oe),
+    ),
   );
 }
 

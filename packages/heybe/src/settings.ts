@@ -9,7 +9,9 @@ import {
   lengthRule,
   required,
 } from "./collections/errors";
+import type { App } from "./app";
 import type { Db } from "./db";
+import { SettingsReloadEvent } from "./hooks/events";
 import { isEmail } from "./fields/email";
 import { isUrl } from "./fields/url";
 import { isIpOrSubnet } from "./ip";
@@ -516,8 +518,23 @@ function validate(s: SettingsData): Errors | null {
   return errors as Errors | null;
 }
 
+// PB Settings.MarshalJSON: the secrets are left out.
+export function publicSettings(data: SettingsData): object {
+  const { smtp, s3, backups, ...rest } = data;
+  const { password: _smtp, ...smtpPublic } = smtp;
+  const { secret: _s3, ...s3Public } = s3;
+  const { secret: _backups, ...backupsS3Public } = backups.s3;
+  return {
+    ...rest,
+    smtp: smtpPublic,
+    s3: s3Public,
+    backups: { ...backups, s3: backupsS3Public },
+  };
+}
+
 export class Settings {
   private cached: SettingsData | null = null;
+  app?: App;
 
   constructor(private readonly db: Db) {}
 
@@ -526,8 +543,19 @@ export class Settings {
     return structuredClone(this.cached);
   }
 
-  reload(): void {
-    this.cached = null;
+  // PB ReloadSettings: onSettingsReload around loading the stored settings, so its handlers see the
+  // old settings before next() and the new ones after.
+  reload(): Promise<void> {
+    return this.reloadWith(null);
+  }
+
+  private async reloadWith(next: SettingsData | null): Promise<void> {
+    const apply = () => {
+      this.cached = next;
+    };
+    const hook = this.app?.hooks.onSettingsReload;
+    if (!hook || hook.length === 0) return apply();
+    await hook.trigger(SettingsReloadEvent.of({ app: this.app! }), apply);
   }
 
   private load(): SettingsData {
@@ -541,9 +569,25 @@ export class Settings {
     ) as SettingsData;
   }
 
-  async update(patch: DeepPartial<SettingsData>): Promise<SettingsData> {
+  // The current settings with `patch` loaded into them, not saved (PB BindBody on a settings clone).
+  bind(patch: DeepPartial<SettingsData>): SettingsData {
+    return merge(SCHEMA, patch, this.get()) as SettingsData;
+  }
+
+  update(patch: DeepPartial<SettingsData>): Promise<SettingsData> {
+    return this.write(() => merge(SCHEMA, patch, this.load()) as SettingsData);
+  }
+
+  save(data: SettingsData): Promise<SettingsData> {
+    return this.write(() => data);
+  }
+
+  // onSettingsReload runs once the write committed
+  private async write(build: () => SettingsData): Promise<SettingsData> {
+    this.get();
+    let reloaded: Promise<void> | undefined;
     const next = await this.db.write(() => {
-      const next = merge(SCHEMA, patch, this.load()) as SettingsData;
+      const next = build();
       const errors = validate(next);
       if (errors)
         throw new ValidationError(
@@ -555,23 +599,17 @@ export class Settings {
         [JSON.stringify(next)],
       );
       this.db.onComplete((err) => {
-        this.cached = err === null ? next : null;
+        if (err !== null) this.cached = null;
+        else reloaded = this.reloadWith(structuredClone(next));
+        return reloaded;
       });
       return next;
     });
+    await reloaded;
     return structuredClone(next);
   }
 
   toJSON(): object {
-    const { smtp, s3, backups, ...rest } = this.get();
-    const { password: _smtp, ...smtpPublic } = smtp;
-    const { secret: _s3, ...s3Public } = s3;
-    const { secret: _backups, ...backupsS3Public } = backups.s3;
-    return {
-      ...rest,
-      smtp: smtpPublic,
-      s3: s3Public,
-      backups: { ...backups, s3: backupsS3Public },
-    };
+    return publicSettings(this.get());
   }
 }
