@@ -89,7 +89,7 @@ export function forbidUnlessSuperuser(
 }
 
 // Port of PB checkForSuperuserOnlyRuleFields.
-function checkClientFilterFields(info: RequestInfo): void {
+export function checkClientFilterFields(info: RequestInfo): void {
   if (isSuperuser(info)) return;
   for (const param of ["filter", "sort"]) {
     const value = info.query[param] ?? "";

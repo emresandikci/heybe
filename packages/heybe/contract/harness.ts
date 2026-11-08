@@ -191,7 +191,11 @@ export async function startTargets(
   return active;
 }
 
-function normalize(target: Target["name"], value: unknown, key = ""): unknown {
+export function normalize(
+  target: Target["name"],
+  value: unknown,
+  key = "",
+): unknown {
   const ids = idMaps.get(target) ?? new Map<string, string>();
   idMaps.set(target, ids);
   const placeholder = (v: string) => {

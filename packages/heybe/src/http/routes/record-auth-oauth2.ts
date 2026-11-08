@@ -2,9 +2,11 @@ import {
   authWithOAuth2,
   oauth2Meta,
   providerConfigs,
+  storeAppleName,
 } from "../../auth/oauth2/flow";
 import { newAuthToken } from "../../auth/tokens";
 import { runeLength } from "../../fields/shared";
+import { IP_KEY } from "../../realtime/broadcast";
 import { buildRequestInfo } from "../../records/rules";
 import { valuesOf } from "../../records/service";
 import { ApiError } from "../errors";
@@ -15,6 +17,8 @@ type Values = Record<string, unknown>;
 
 const LOAD_FAILED = "An error occurred while loading the submitted data.";
 const FAILURE_PATH = "../_/#/auth/oauth2-redirect-failure";
+const SUCCESS_PATH = "../_/#/auth/oauth2-redirect-success";
+const OAUTH2_TOPIC = "@oauth2";
 
 const isObject = (v: unknown): v is Values =>
   v !== null && typeof v === "object" && !Array.isArray(v);
@@ -97,13 +101,74 @@ async function authWithOAuth2Route(e: RequestEvent): Promise<void> {
   );
 }
 
-// PB oauth2SubscriptionRedirect forwards the code to the realtime client named by `state`. Realtime
-// comes in phase 4, so no client exists yet and every redirect takes PB's failure path.
-function oauth2Redirect(e: RequestEvent): Response {
-  return new Response(null, {
-    status: e.req.method === "GET" ? 307 : 303,
-    headers: { location: FAILURE_PATH },
-  });
+interface RedirectData {
+  state: string;
+  code: string;
+  error: string;
+  user: string;
+}
+
+// PB oauth2RedirectData binding: the query for GET, the body for POST (`user` only from a form).
+async function redirectData(e: RequestEvent): Promise<RedirectData | null> {
+  if (e.req.method !== "POST") {
+    const q = e.query;
+    const get = (k: string) => q.get(k) ?? "";
+    return {
+      state: get("state"),
+      code: get("code"),
+      error: get("error"),
+      user: "",
+    };
+  }
+  let body: Values;
+  try {
+    body = await e.body();
+  } catch {
+    return null;
+  }
+  const json = (e.req.headers.get("content-type") ?? "").startsWith(
+    "application/json",
+  );
+  const text = (key: string) => {
+    let v = body[key];
+    if (!json && Array.isArray(v)) v = v[0];
+    if (v === undefined || v === null) return "";
+    return typeof v === "string" ? v : null;
+  };
+  const data = {
+    state: text("state"),
+    code: text("code"),
+    error: text("error"),
+    user: json ? "" : text("user"),
+  };
+  return Object.values(data).includes(null) ? null : (data as RedirectData);
+}
+
+// Port of PB oauth2SubscriptionRedirect: forwards the code to the realtime client named by `state`.
+async function oauth2Redirect(e: RequestEvent): Promise<Response> {
+  const status = e.req.method === "GET" ? 307 : 303;
+  const failure = () => e.redirect(status, FAILURE_PATH);
+  const data = await redirectData(e);
+  if (!data || data.state === "") return failure();
+  const client = e.app.realtime.clientById(data.state);
+  if (!client || client.isDiscarded() || !client.hasSubscription(OAUTH2_TOPIC))
+    return failure();
+  try {
+    const ip = client.get(IP_KEY);
+    if (typeof ip === "string" && ip !== "" && ip !== e.realIp())
+      return failure();
+    if (data.user !== "" && data.error === "" && data.code !== "")
+      storeAppleName(e.app, data.code, data.user);
+    const { state, code, error } = data;
+    client.send({
+      name: OAUTH2_TOPIC,
+      data: JSON.stringify(error ? { state, code, error } : { state, code }),
+    });
+    if (error !== "" || code === "") return failure();
+    return e.redirect(status, SUCCESS_PATH);
+  } finally {
+    client.unsubscribe(OAUTH2_TOPIC);
+  }
 }
 
 export function registerRecordAuthOAuth2Routes(router: Router): void {

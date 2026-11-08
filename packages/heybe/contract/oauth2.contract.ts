@@ -12,6 +12,7 @@ import {
   type OAuth2Mock,
   startOAuth2Mock,
 } from "./oauth2-mock";
+import { connect } from "./sse";
 
 let targets: Awaited<ReturnType<typeof startTargets>>;
 let mock: OAuth2Mock;
@@ -672,4 +673,110 @@ describe("oauth2-redirect", () => {
   test("unknown client", () => redirect("GET", "?state=abc&code=123"));
   test("provider error", () => redirect("GET", "?state=abc&error=denied"));
   test("form post", () => redirect("POST", "", "state=abc&code=123"));
+
+  // a subscribed @oauth2 client per target; `query` gets its id as the state
+  async function subscribed(
+    method: string,
+    params: (state: string) => string,
+    status: number,
+    location: string,
+  ) {
+    const [pb, hb] = await Promise.all([
+      connect(targets.pb),
+      connect(targets.hb),
+    ]);
+    const clients = { pocketbase: pb, heybe: hb };
+    try {
+      for (const sse of [pb, hb])
+        expect((await sse.subscribe(["@oauth2"])).status).toBe(204);
+      const [res] = await same(
+        (t) => {
+          const query = params(clients[t.name].clientId);
+          return fetch(
+            `${t.url}/api/oauth2-redirect${method === "GET" ? `?${query}` : ""}`,
+            {
+              method,
+              redirect: "manual",
+              headers:
+                method === "GET"
+                  ? {}
+                  : { "content-type": "application/x-www-form-urlencoded" },
+              body: method === "GET" ? undefined : query,
+            },
+          );
+        },
+        status,
+        { headers: ["location"] },
+      );
+      expect(res.headers.location).toBe(location);
+      const frames = await Promise.all(
+        [pb, hb].map(async (sse) => {
+          const f = await sse.next();
+          return {
+            event: f.event,
+            data: JSON.parse(f.data.replaceAll(sse.clientId, "<clientId>")),
+          };
+        }),
+      );
+      expect(frames[1]).toEqual(frames[0]!);
+      // the subscription is used once: a second redirect with the same state fails
+      const [again] = await same(
+        (t) =>
+          fetch(
+            `${t.url}/api/oauth2-redirect?state=${clients[t.name].clientId}&code=1`,
+            { redirect: "manual" },
+          ),
+        307,
+        { headers: ["location"] },
+      );
+      expect(again.headers.location).toBe(FAILURE);
+      return frames[0]!;
+    } finally {
+      pb.close();
+      hb.close();
+    }
+  }
+
+  const SUCCESS = "../_/#/auth/oauth2-redirect-success";
+  const FAILURE = "../_/#/auth/oauth2-redirect-failure";
+
+  test("a subscribed client gets the code", async () => {
+    const frame = await subscribed(
+      "GET",
+      (s) => `state=${s}&code=123`,
+      307,
+      SUCCESS,
+    );
+    expect(frame).toEqual({
+      event: "@oauth2",
+      data: { state: "<clientId>", code: "123" },
+    });
+  });
+
+  test("a subscribed client gets the provider error", async () => {
+    const frame = await subscribed(
+      "GET",
+      (s) => `state=${s}&code=123&error=denied`,
+      307,
+      FAILURE,
+    );
+    expect(frame.data).toEqual({
+      state: "<clientId>",
+      code: "123",
+      error: "denied",
+    });
+  });
+
+  test("a form post with the Apple user", async () => {
+    const user = encodeURIComponent(
+      JSON.stringify({ name: { firstName: "Ada", lastName: "Lovelace" } }),
+    );
+    const frame = await subscribed(
+      "POST",
+      (s) => `state=${s}&code=apple-code&user=${user}`,
+      303,
+      SUCCESS,
+    );
+    expect(frame.data).toEqual({ state: "<clientId>", code: "apple-code" });
+  });
 });

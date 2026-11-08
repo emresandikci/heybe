@@ -5,6 +5,7 @@ import type { Collection, Field } from "../collections/model";
 import type { RequestInfo } from "../filter/compile";
 import { RequestEvent, type Router } from "../http/router";
 import type { MailMessage, Mailer } from "../mail/mailer";
+import type { Client, Message } from "../realtime/broker";
 import { RecordModel } from "../records/model";
 import type { SettingsData } from "../settings";
 import { HookEvent } from "./hook";
@@ -164,20 +165,19 @@ export class CollectionsImportRequestEvent extends RequestHookEvent {
 
 export class CollectionRequestEvent extends CollectionScopedRequestEvent {}
 
-// client and message get their types with the realtime broker (Task 9)
 export class RealtimeConnectRequestEvent extends RequestHookEvent {
-  declare client: unknown;
+  declare client: Client;
   declare idleTimeout: number;
   declare maxTimeout: number;
 }
 
 export class RealtimeMessageEvent extends RequestHookEvent {
-  declare client: unknown;
-  declare message: unknown;
+  declare client: Client;
+  declare message: Message;
 }
 
 export class RealtimeSubscribeRequestEvent extends RequestHookEvent {
-  declare client: unknown;
+  declare client: Client;
   declare subscriptions: string[];
 }
 

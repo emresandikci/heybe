@@ -25,6 +25,8 @@ import {
   isPublicIp,
   oauth2Meta,
   safeFileFromURL,
+  storeAppleName,
+  takeAppleName,
 } from "./flow";
 import { readText } from "./http";
 import { validateTokenSignature } from "./jwk";
@@ -265,6 +267,48 @@ describe("oidc id_token", () => {
     const { record, meta } = await login("id-ok", "oidc");
     expect(meta.id).toBe("o1");
     expect(record.email).toBe("olga@example.com");
+  });
+
+  test("an apple login takes the name kept by the redirect, once", async () => {
+    await app.collections.save({
+      id: users().id,
+      oauth2: {
+        ...(users().oauth2 as object),
+        providers: [
+          {
+            name: "apple",
+            clientId: mock.clientId,
+            clientSecret: mock.clientSecret,
+            tokenURL: `${mock.url}/token`,
+          },
+        ],
+      },
+    } as any);
+    const realFetch = fetch;
+    const spy = spyOn(globalThis, "fetch").mockImplementation(((
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) =>
+      realFetch(
+        String(input) === "https://appleid.apple.com/auth/keys"
+          ? `${mock.url}/jwks`
+          : input,
+        init,
+      )) as typeof fetch);
+    try {
+      const apple = { ...claims, sub: "a1", iss: "https://appleid.apple.com" };
+      storeAppleName(
+        app,
+        "apple-1",
+        JSON.stringify({ name: { firstName: "Ada", lastName: "Lovelace" } }),
+      );
+      mock.set("apple-1", { user: {}, idToken: await idToken(apple) });
+      const { record } = await login("apple-1", "apple");
+      expect(record.name).toBe("Ada Lovelace");
+      expect(takeAppleName(app, "apple-1")).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   test.each([

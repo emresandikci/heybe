@@ -733,6 +733,55 @@ export function oauth2Meta(e: RecordAuthWithOAuth2RequestEvent): Values {
   };
 }
 
+const APPLE_NAME_PREFIX = "@redirect_name_";
+const appleNames = new WeakMap<App, Map<string, string>>();
+
+function appleNamesOf(app: App): Map<string, string> {
+  let names = appleNames.get(app);
+  if (!names) appleNames.set(app, (names = new Map()));
+  return names;
+}
+
+// Port of PB parseAndStoreAppleRedirectName: Apple sends the user's name only with the first
+// redirect, so it is kept for a minute for the auth-with-oauth2 call with the same code.
+export function storeAppleName(app: App, code: string, user: string): void {
+  const key = APPLE_NAME_PREFIX + code;
+  if (user === "" || Buffer.byteLength(key) > 1000) return;
+  let data: unknown;
+  try {
+    data = JSON.parse(user);
+  } catch {
+    return;
+  }
+  const str = (v: unknown) =>
+    v === undefined || v === null ? "" : typeof v === "string" ? v : null;
+  const name = (data as { name?: unknown } | null)?.name;
+  if (
+    (data !== null && (typeof data !== "object" || Array.isArray(data))) ||
+    (name != null && (typeof name !== "object" || Array.isArray(name)))
+  )
+    return;
+  const first = str((name as Values | null)?.firstName);
+  const last = str((name as Values | null)?.lastName);
+  if (first === null || last === null) return;
+  let full = `${first} ${last}`;
+  const bytes = Buffer.from(full);
+  if (bytes.length > 150) full = bytes.subarray(0, 150).toString();
+  full = full.trim();
+  if (full === "") return;
+  const names = appleNamesOf(app);
+  names.set(key, full);
+  app.timers.setTimeout(() => names.delete(key), 60_000);
+}
+
+export function takeAppleName(app: App, code: string): string | undefined {
+  const names = appleNamesOf(app);
+  const key = APPLE_NAME_PREFIX + code;
+  const name = names.get(key);
+  names.delete(key);
+  return name;
+}
+
 // Port of PB recordAuthWithOAuth2: fetches the provider user and finds its auth record, then the
 // onRecordAuthWithOAuth2Request hook runs oauth2Submit and `respond`.
 export async function authWithOAuth2(
@@ -761,6 +810,10 @@ export async function authWithOAuth2(
     user = await fetchUser(p, token, { app, signal });
   } catch {
     throw new ApiError(400, "Failed to fetch OAuth2 user.");
+  }
+  if (p.name === "apple" && user.name === "") {
+    const name = takeAppleName(app, input.code);
+    if (name !== undefined) user.name = name;
   }
 
   const link = findExternalAuth(app, c, p.name, user.id);

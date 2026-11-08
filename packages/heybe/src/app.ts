@@ -19,6 +19,8 @@ import {
   hookBinders,
 } from "./hooks/registry";
 import { registerSystemHooks } from "./hooks/system";
+import { Broker } from "./realtime/broker";
+import { registerRealtimeHooks } from "./realtime/broadcast";
 import type { Router } from "./http/router";
 import { createRouter } from "./http/server";
 import { type Mailer, appMailer } from "./mail/mailer";
@@ -61,6 +63,7 @@ export interface App extends HookBinders, RouterMethods {
   settings: Settings;
   files: Filesystem;
   mailer: Mailer;
+  realtime: Broker;
   now: () => Date;
   timers: Timers;
   dev: boolean;
@@ -148,6 +151,7 @@ export function createApp(opts: AppOptions = {}): App {
     settings,
     files,
     mailer: { send: (msg) => appMailer(app).send(msg) },
+    realtime: new Broker(),
     now,
     timers: opts.timers ?? realTimers,
     dev: opts.dev ?? flags.dev ?? false,
@@ -245,6 +249,7 @@ export function createApp(opts: AppOptions = {}): App {
   collections.app = app;
   settings.app = app;
   registerSystemHooks(app);
+  registerRealtimeHooks(app);
 
   app.command("serve", serveCommand, { description: "Starts the web server" });
   app.command("superuser", superuserCommand, {

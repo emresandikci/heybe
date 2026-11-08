@@ -15,6 +15,7 @@ import { registerBatchRoutes } from "./routes/batch";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
+import { registerRealtimeRoutes } from "./routes/realtime";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
 import { registerRecordAuthFlowRoutes } from "./routes/record-auth-flows";
 import { registerRecordAuthOAuth2Routes } from "./routes/record-auth-oauth2";
@@ -46,6 +47,7 @@ export function createRouter(): Router {
     bodyLimit(DEFAULT_MAX_BODY_SIZE),
   );
   registerHealthRoutes(router);
+  registerRealtimeRoutes(router);
   registerRecordAuthRoutes(router);
   registerRecordAuthFlowRoutes(router);
   registerRecordAuthOAuth2Routes(router);
