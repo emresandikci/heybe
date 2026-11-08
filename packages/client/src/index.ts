@@ -14,4 +14,5 @@ export type {
   AuthResponse,
   OAuth2Provider,
 } from "./auth.js";
+export type { OAuth2Config } from "./oauth2.js";
 export type { Realtime, TopicOptions } from "./realtime.js";

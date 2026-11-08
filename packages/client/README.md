@@ -74,6 +74,24 @@ Also available: `withOAuth2Code`, `impersonate(recordId, seconds)` (returns a ne
 
 `autoRefreshThreshold` (seconds): before each request, when the stored token expires within the threshold, the client runs one shared `auth-refresh` and sends the request with the new token. A failed refresh leaves the store as it is. For superusers, `withPassword(identity, password, { autoRefreshThreshold })` also logs in again with the same credentials when the token is invalid or the refresh fails, until the store is cleared or holds another record.
 
+## OAuth2
+
+```ts
+// browser: opens a centered popup and waits for the provider redirect
+await heybe.auth("users").withOAuth2({ provider: "google" });
+
+// Bun, Node or a custom window: open the URL yourself
+await heybe.auth("users").withOAuth2({
+  provider: "github",
+  scopes: ["read:user", "user:email"],
+  createData: { name: "New user" },
+  urlCallback: (url) => openInBrowser(url),
+  signal: AbortSignal.timeout(120_000),
+});
+```
+
+`withOAuth2` follows PocketBase's realtime flow: it reads the provider from `methods()`, opens its own realtime connection, subscribes to `@oauth2`, and passes the provider's auth URL (with `state` set to the realtime client id and `redirect_uri` set to the server's `/api/oauth2-redirect`) to the popup or `urlCallback`. When the redirect arrives with a matching `state`, the code is exchanged with `withOAuth2Code` and the store is saved. Without `urlCallback` outside a browser it rejects. A state mismatch, a provider error, a lost realtime connection or an aborted `signal` rejects with a `HeybeError`; every outcome closes the popup and the realtime connection.
+
 ## Realtime
 
 ```ts

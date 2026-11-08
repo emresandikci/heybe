@@ -2,6 +2,8 @@ import { toExpand, type Expand } from "@heybe/query";
 import type { AuthRecord } from "./auth-store.js";
 import type { HeybeClient } from "./client.js";
 import { tokenPayload } from "./jwt.js";
+import { authWithOAuth2, type OAuth2Config } from "./oauth2.js";
+import type { Realtime } from "./realtime.js";
 import type { Rec } from "./records.js";
 import type { AutoRefresh } from "./refresh.js";
 import { hasAuthorization, type RequestOptions } from "./send.js";
@@ -56,6 +58,7 @@ export interface AuthClient<T> {
     createData?: Partial<T>,
     opts?: AuthOptions,
   ): Promise<AuthResponse<T>>;
+  withOAuth2(config: OAuth2Config<T>): Promise<AuthResponse<T>>;
   refresh(opts?: AuthOptions): Promise<AuthResponse<T>>;
   impersonate(
     recordId: string,
@@ -82,6 +85,7 @@ export interface AuthClient<T> {
 export interface AuthDeps {
   autoRefresh: AutoRefresh;
   fork(): HeybeClient;
+  realtime(): Realtime;
 }
 
 const SUPERUSERS = ["_superusers", "pbc_3142635823"];
@@ -154,7 +158,7 @@ export function createAuth<T>(
     );
   };
 
-  return {
+  const auth: AuthClient<T> = {
     methods(opts) {
       return client.send(base + "/auth-methods", {
         ...opts,
@@ -187,6 +191,11 @@ export function createAuth<T>(
         opts,
       );
     },
+    withOAuth2: (config) =>
+      authWithOAuth2(
+        { auth, realtime: deps.realtime, buildURL: client.buildURL },
+        config,
+      ),
     refresh(opts) {
       return authenticate("/auth-refresh", undefined, opts);
     },
@@ -229,4 +238,5 @@ export function createAuth<T>(
       if (sameRecord(token)) store.clear();
     },
   };
+  return auth;
 }

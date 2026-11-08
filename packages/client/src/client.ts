@@ -72,6 +72,14 @@ export function createClientWith(
   });
   const fork = () =>
     createClientWith(url, { lang, authStore: memoryStore(env.now) }, env);
+  const realtime = (store = authStore) =>
+    createRealtime({
+      env,
+      authStore: store,
+      buildURL: (path) => buildURL(url, path),
+      send: sender.send,
+      cancelRequest: sender.cancelRequest,
+    });
   const client: HeybeClient = {
     url,
     lang,
@@ -79,15 +87,15 @@ export function createClientWith(
     autoCancel: opts.autoCancel ?? true,
     buildURL: (path) => buildURL(url, path),
     ...sender,
-    realtime: createRealtime({
-      env,
-      authStore,
-      buildURL: (path) => buildURL(url, path),
-      send: sender.send,
-      cancelRequest: sender.cancelRequest,
-    }),
+    realtime: realtime(),
     records: (name: string) => createRecords(client, name),
-    auth: (name: string) => createAuth(client, name, { autoRefresh, fork }),
+    auth: (name: string) =>
+      createAuth(client, name, {
+        autoRefresh,
+        fork,
+        // own store, so auth changes elsewhere do not restart an OAuth2 flow
+        realtime: () => realtime(memoryStore(env.now)),
+      }),
   } as HeybeClient;
   return client;
 }
