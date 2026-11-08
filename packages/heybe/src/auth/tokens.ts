@@ -78,3 +78,32 @@ export function authFromToken(
     isSuperuser: collection.name === "_superusers",
   };
 }
+
+type MailTokenKind = "verification" | "passwordReset" | "emailChange";
+
+const MAIL_TOKEN_CONFIG = {
+  verification: "verificationToken",
+  passwordReset: "passwordResetToken",
+  emailChange: "emailChangeToken",
+} as const;
+
+export function newMailToken(
+  app: App,
+  kind: MailTokenKind,
+  collection: Collection,
+  record: Record<string, unknown>,
+  newEmail?: string,
+): string {
+  const config = collection[MAIL_TOKEN_CONFIG[kind]] as TokenConfig;
+  return signJwt(
+    {
+      type: kind,
+      id: record.id,
+      collectionId: collection.id,
+      email: record.email,
+      ...(kind === "emailChange" ? { newEmail } : {}),
+      exp: Math.floor(app.now().getTime() / 1000) + config.duration,
+    },
+    `${record.tokenKey}${config.secret}`,
+  );
+}

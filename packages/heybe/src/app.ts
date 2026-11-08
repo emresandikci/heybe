@@ -5,6 +5,7 @@ import type { CollectionName, Collections } from "@heybe/query";
 import { CollectionStore } from "./collections/store";
 import { type Db, openDb } from "./db";
 import { type Filesystem, localFilesystem } from "./files/storage";
+import { type Mailer, mailerFromSettings } from "./mail/mailer";
 import { type RecordService, RecordServiceImpl } from "./records/service";
 import { Settings } from "./settings";
 
@@ -13,6 +14,7 @@ export interface App {
   collections: CollectionStore;
   settings: Settings;
   files: Filesystem;
+  mailer: Mailer;
   now: () => Date;
   records<N extends CollectionName>(name: N): RecordService<Collections[N]>;
   records(name: string): RecordService<Record<string, unknown>>;
@@ -36,6 +38,7 @@ export function createApp(opts: { dir: string; now?: () => Date }): App {
     collections,
     settings,
     files,
+    mailer: { send: (msg) => mailerFromSettings(settings.get()).send(msg) },
     now,
     records: (name: string) =>
       new RecordServiceImpl({ db, store: collections, files, now }, name),
