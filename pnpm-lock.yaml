@@ -112,14 +112,13 @@ importers:
         version: 7.0.2
 
   packages/client:
-    dependencies:
-      '@heybe/query':
-        specifier: workspace:*
-        version: link:../query
     devDependencies:
       '@heybe/configs':
         specifier: workspace:*
         version: link:../configs
+      '@heybe/query':
+        specifier: workspace:*
+        version: link:../query
 
   packages/configs: {}
 

@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
 import { type SmtpCapture, startSmtpCapture } from "../../heybe/contract/smtp";
-import type { HeybeClient } from "../src/client";
 import { HeybeError } from "../src/error";
 import { same, startPair, type Name, type Pair } from "./pair";
 
@@ -11,8 +10,6 @@ let mail: Record<Name, SmtpCapture>;
 const NAMES: Name[] = ["pocketbase", "heybe"];
 const PASSWORD = "12345678";
 const EMAIL = "admin-svc@example.com";
-
-const admin = (c: HeybeClient, name: Name) => pair.admin[name] ?? c;
 
 beforeAll(async () => {
   mail = {
@@ -54,8 +51,8 @@ afterAll(async () => {
 const field = (name: string) => ({ name, type: "text" });
 
 test("collections lifecycle", async () => {
-  await same(pair, async (c, t) => {
-    const a = admin(c, t.name);
+  await same(pair, async (_, t) => {
+    const a = pair.admin[t.name];
     const created = await a.collections.create({
       name: "adm_posts",
       type: "base",
@@ -95,8 +92,8 @@ test("collections lifecycle", async () => {
 });
 
 test("import with and without deleteMissing", async () => {
-  await same(pair, async (c, t) => {
-    const a = admin(c, t.name);
+  await same(pair, async (_, t) => {
+    const a = pair.admin[t.name];
     await a.collections.create({ name: "adm_keep", type: "base" });
     const existing = (await a.collections.findMany({ perPage: 200 })).items;
     const keep = existing.filter((item) => !item.name.startsWith("adm_keep"));
@@ -108,10 +105,7 @@ test("import with and without deleteMissing", async () => {
       orderBy: { name: "asc" },
     });
     await a.collections.import(
-      [
-        ...keep,
-        { name: "adm_imported", type: "base", fields: [field("t")] },
-      ] as never,
+      [...keep, { name: "adm_imported", type: "base", fields: [field("t")] }],
       true,
     );
     const pruned = await a.collections.findMany({
@@ -122,8 +116,8 @@ test("import with and without deleteMissing", async () => {
 });
 
 test("scaffolds", async () => {
-  await same(pair, async (c, t) => {
-    const scaffolds = await admin(c, t.name).collections.scaffolds();
+  await same(pair, async (_, t) => {
+    const scaffolds = await pair.admin[t.name].collections.scaffolds();
     return JSON.parse(
       JSON.stringify(scaffolds).replace(/(idx_\w+?)_[a-z0-9]{10}/g, "$1"),
     );
@@ -131,8 +125,8 @@ test("scaffolds", async () => {
 });
 
 test("settings get and update mask secrets", async () => {
-  await same(pair, async (c, t) => {
-    const a = admin(c, t.name);
+  await same(pair, async (_, t) => {
+    const a = pair.admin[t.name];
     const portless = (settings: Record<string, unknown>) => ({
       ...settings,
       smtp: { ...(settings.smtp as object), port: undefined },
@@ -146,9 +140,9 @@ test("settings get and update mask secrets", async () => {
 });
 
 test("test email reaches the mail server", async () => {
-  await same(pair, async (c, t) => {
+  await same(pair, async (_, t) => {
     mail[t.name].clear();
-    await admin(c, t.name).settings.testEmail("users", EMAIL, "verification");
+    await pair.admin[t.name].settings.testEmail("users", EMAIL, "verification");
     const received = await mail[t.name].waitFor(EMAIL);
     return { to: received.to, subject: received.subject };
   });
@@ -160,11 +154,10 @@ test("apple client secret", async () => {
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
     publicKeyEncoding: { type: "spki", format: "pem" },
   }).privateKey;
-  await same(pair, async (c, t) => {
-    const { secret } = await admin(
-      c,
-      t.name,
-    ).settings.generateAppleClientSecret(
+  await same(pair, async (_, t) => {
+    const { secret } = await pair.admin[
+      t.name
+    ].settings.generateAppleClientSecret(
       "com.example.app",
       "TEAM123456",
       "KEY1234567",
@@ -177,16 +170,16 @@ test("apple client secret", async () => {
       .map((part) => JSON.parse(Buffer.from(part, "base64url").toString()));
     return { header, claimKeys: Object.keys(claims) };
   });
-  await same(pair, (c, t) =>
-    admin(c, t.name)
-      .settings.generateAppleClientSecret("x", "short", "k", "nope", 1)
+  await same(pair, (_, t) =>
+    pair.admin[t.name].settings
+      .generateAppleClientSecret("x", "short", "k", "nope", 1)
       .catch((err: HeybeError) => ({ status: err.status, ...err.response })),
   );
 });
 
 test("crons list and run", async () => {
-  await same(pair, async (c, t) => {
-    const a = admin(c, t.name);
+  await same(pair, async (_, t) => {
+    const a = pair.admin[t.name];
     const missing = await a.crons
       .run("missing")
       .catch((err: HeybeError) => ({ status: err.status }));

@@ -59,7 +59,9 @@ function hasFile(value: unknown): boolean {
   return (Array.isArray(value) ? value : [value]).some(isFile);
 }
 
-function isRawBody(body: unknown): body is BodyInit {
+type RawBody = string | Blob | FormData | URLSearchParams;
+
+function isRawBody(body: unknown): body is RawBody {
   return (
     typeof body === "string" ||
     body instanceof FormData ||
@@ -68,7 +70,7 @@ function isRawBody(body: unknown): body is BodyInit {
   );
 }
 
-export function toBody(body: unknown): BodyInit | undefined {
+export function toBody(body: unknown): RawBody | undefined {
   if (body === undefined || body === null) return undefined;
   if (isRawBody(body)) return body;
   if (typeof body !== "object" || !Object.values(body).some(hasFile))

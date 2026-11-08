@@ -10,6 +10,7 @@ declare module "./index.js" {
       tags_rel: Relation<"chk_org">[];
       loose: Relation;
       lost: Relation<"chk_missing">;
+      either: Relation<"chk_org" | "chk_user">;
     };
   }
 }
@@ -36,6 +37,16 @@ assert<
   Equal<
     NonNullable<typeof many.expand>["tags_rel"],
     import("./index.js").Collections["chk_org"][] | undefined
+  >
+>();
+
+declare const union: WithExpand<Post, { either: true }>;
+assert<
+  Equal<
+    NonNullable<typeof union.expand>["either"],
+    | import("./index.js").Collections["chk_org"]
+    | import("./index.js").Collections["chk_user"]
+    | undefined
   >
 >();
 

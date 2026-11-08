@@ -1,6 +1,7 @@
-import type { AuthStore } from "./auth-store.js";
+import type { AuthRecord, AuthStore } from "./auth-store.js";
 import type { Env } from "./env.js";
 import { HeybeError } from "./error.js";
+import { tokenPayload } from "./jwt.js";
 import type { SendOptions } from "./send.js";
 import { readFrames, type Frame } from "./sse.js";
 
@@ -36,6 +37,13 @@ type Pending = { resolve: () => void; reject: (err: unknown) => void };
 const CONNECT_TIMEOUT = 15000;
 const RECONNECT_DELAYS = [200, 300, 500, 1000, 1200, 1500, 2000];
 
+// what the server compares on resubmit: the token's own ids, the record's only when the token lacks them
+function identity(token: string, record: AuthRecord | null): string {
+  if (!token) return "";
+  const p = tokenPayload(token);
+  return `${p.collectionId ?? record?.collectionId}/${p.id ?? record?.id}`;
+}
+
 function parse(data: string): any {
   try {
     return JSON.parse(data) || {};
@@ -58,6 +66,8 @@ export function createRealtime(deps: RealtimeDeps): Realtime {
   let pendingSubmits: Pending[] = [];
   let processing = false;
   let token = deps.authStore.token;
+  let authId = identity(token, deps.authStore.record);
+  let sentToken = "";
 
   const cancelKey = () => `realtime_${clientId}`;
   const keys = () => [...subs.keys()].filter((k) => subs.get(k)!.length);
@@ -82,17 +92,19 @@ export function createRealtime(deps: RealtimeDeps): Realtime {
   async function sendSubscriptions(): Promise<void> {
     if (!keys().length) return disconnect();
     if (!clientId) return;
-    if (!hasUnsent()) return;
+    if (!hasUnsent() && sentToken === deps.authStore.token) return;
     lastSent = keys();
-    await deps
-      .send("/api/realtime", {
+    try {
+      await deps.send("/api/realtime", {
         method: "POST",
         body: { clientId, subscriptions: lastSent },
         requestKey: cancelKey(),
-      })
-      .catch((err) => {
-        if (!err?.isAbort) throw err;
       });
+      // read after the POST: a refresh run by its own beforeSend is already sent
+      sentToken = deps.authStore.token;
+    } catch (err: any) {
+      if (!err?.isAbort) throw err;
+    }
   }
 
   async function processSubmits(): Promise<void> {
@@ -231,10 +243,13 @@ export function createRealtime(deps: RealtimeDeps): Realtime {
     }
   }
 
-  deps.authStore.onChange((t) => {
+  deps.authStore.onChange((t, record) => {
     if (t === token) return;
+    const sameAuth = identity(t, record) === authId;
     token = t;
+    authId = identity(t, record);
     if (!clientId) return;
+    if (sameAuth) return void submit().catch(() => {});
     restarting = true;
     initConnect();
   });

@@ -122,6 +122,13 @@ describe("auth", () => {
     expect(env.requests[1]!.headers.get("Authorization")).toBe(token);
   });
 
+  test("impersonate keeps the caller's autoCancel", async () => {
+    const { client } = setup();
+    client.autoCancel = false;
+    const other = await client.auth("users").impersonate("u1", 60);
+    expect(other.autoCancel).toBe(false);
+  });
+
   test("impersonate keeps a caller Authorization in any case", async () => {
     const { env, client } = setup();
     client.authStore.save("super", user);

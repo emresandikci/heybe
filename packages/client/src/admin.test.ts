@@ -37,6 +37,14 @@ describe("collections", () => {
     });
   });
 
+  test("findMany and crons.run pass request options through", async () => {
+    const { env, client } = setup();
+    await client.collections.findMany(undefined, { headers: { "X-A": "1" } });
+    expect(env.requests.at(-1)!.headers.get("X-A")).toBe("1");
+    await client.crons.run("a", { headers: { "X-A": "2" } });
+    expect(env.requests.at(-1)!.headers.get("X-A")).toBe("2");
+  });
+
   test("findMany without args sends no query", async () => {
     const { env, client } = setup();
     await client.collections.findMany();

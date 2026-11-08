@@ -77,7 +77,7 @@ export function createClientWith(
     refresh: (collection) =>
       client.send(
         `/api/collections/${encodeURIComponent(collection)}/auth-refresh`,
-        { method: "POST" },
+        { method: "POST", requestKey: null },
       ),
   });
   const sender = createSender({
@@ -89,7 +89,11 @@ export function createClientWith(
     beforeSend: autoRefresh.before,
   });
   const fork = () =>
-    createClientWith(url, { lang, authStore: memoryStore(env.now) }, env);
+    createClientWith(
+      url,
+      { lang, autoCancel: client.autoCancel, authStore: memoryStore(env.now) },
+      env,
+    );
   const realtime = (store = authStore) =>
     createRealtime({
       env,

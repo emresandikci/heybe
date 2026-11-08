@@ -1,26 +1,35 @@
 import { describe, expect, test } from "bun:test";
 import { memoryStore } from "./auth-store.js";
-import { createClientWith } from "./client.js";
+import { createClientWith, type ClientOptions } from "./client.js";
 import { HeybeError } from "./error.js";
 import { fakeEnv, jwt, sseStream } from "./test-env.js";
 
 const USER = { id: "u1", collectionId: "c", collectionName: "users" };
 
-function setup() {
+function setup(opts: ClientOptions = {}) {
   const env = fakeEnv();
-  const authStore = memoryStore();
-  const client = createClientWith("http://a", { authStore }, env);
+  const authStore = memoryStore(env.now);
+  const client = createClientWith("http://a", { ...opts, authStore }, env);
   const streams: ReturnType<typeof sseStream>[] = [];
+  let refreshes = 0;
   env.respond((req) => {
     if (req.method === "GET" && req.url === "http://a/api/realtime") {
       const stream = sseStream();
       streams.push(stream);
       return stream.response;
     }
+    if (req.url.endsWith("/auth-refresh"))
+      return Response.json({
+        token: jwt({ ...USER, type: "auth", exp: 60, n: ++refreshes }),
+        record: USER,
+      });
     return new Response(null, { status: 204 });
   });
   const gets = () => env.requests.filter((r) => r.method === "GET");
-  const posts = () => env.requests.filter((r) => r.method === "POST");
+  const posts = () =>
+    env.requests.filter(
+      (r) => r.method === "POST" && r.url === "http://a/api/realtime",
+    );
   const lastPost = () => JSON.parse(posts().at(-1)!.body as string);
   const stream = () => streams.at(-1)!;
   const connect = async (id: string) => {
@@ -255,6 +264,70 @@ describe("realtime", () => {
     await t.connect("c2");
     expect(t.lastPost()).toEqual({ clientId: "c2", subscriptions: ["a"] });
     expect(t.posts().at(-1)!.headers.get("Authorization")).toBe(second);
+  });
+
+  test("same-record token change keeps the stream and resubmits once", async () => {
+    const t = setup();
+    const second = jwt({ exp: 9e9, type: "auth", n: 2 });
+    t.authStore.save(jwt({ exp: 9e9, type: "auth" }), USER);
+    await t.subscribed(["a"]);
+
+    t.authStore.save(second, USER);
+    await t.env.advance(0);
+    expect(t.gets()).toHaveLength(1);
+    expect(t.streams[0]!.cancelled).toBe(false);
+    expect(t.posts()).toHaveLength(2);
+    expect(t.lastPost()).toEqual({ clientId: "c1", subscriptions: ["a"] });
+    expect(t.posts().at(-1)!.headers.get("Authorization")).toBe(second);
+    expect(t.client.realtime.isConnected).toBe(true);
+  });
+
+  test("tokens of different records saved without a record reconnect", async () => {
+    const t = setup();
+    t.authStore.save(
+      jwt({ exp: 9e9, type: "auth", collectionId: "c", id: "u1" }),
+      null,
+    );
+    await t.subscribed(["a"]);
+    t.authStore.save(
+      jwt({ exp: 9e9, type: "auth", collectionId: "c", id: "u2" }),
+      null,
+    );
+    await t.env.advance(0);
+    expect(t.streams[0]!.cancelled).toBe(true);
+    expect(t.gets()).toHaveLength(2);
+  });
+
+  test("record collectionId change reconnects", async () => {
+    const t = setup();
+    const token = jwt({ exp: 9e9, type: "auth" });
+    t.authStore.save(token, USER);
+    await t.subscribed(["a"]);
+    t.authStore.save(token + "x", { ...USER, collectionId: "other" });
+    await t.env.advance(0);
+    expect(t.streams[0]!.cancelled).toBe(true);
+    expect(t.gets()).toHaveLength(2);
+  });
+
+  test("auto refresh on every submit (token lifetime below the threshold) stays connected", async () => {
+    const t = setup({ autoRefreshThreshold: 300 });
+    t.authStore.save(jwt({ ...USER, type: "auth", exp: 60 }), USER);
+    const refreshes = () =>
+      t.env.requests.filter((r) => r.url.endsWith("/auth-refresh"));
+    await t.subscribed(["a"]);
+    expect(refreshes()).toHaveLength(1);
+    expect(t.posts()).toHaveLength(1);
+
+    await t.client.realtime.subscribe("b", () => {});
+    await t.env.advance(0);
+    expect(refreshes()).toHaveLength(2);
+    expect(t.posts()).toHaveLength(2);
+    expect(t.lastPost()).toEqual({ clientId: "c1", subscriptions: ["a", "b"] });
+    expect(t.posts().at(-1)!.headers.get("Authorization")).toBe(
+      t.authStore.token,
+    );
+    expect(t.gets()).toHaveLength(1);
+    expect(t.client.realtime.isConnected).toBe(true);
   });
 
   test("clear() reconnects without Authorization", async () => {

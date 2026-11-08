@@ -104,6 +104,23 @@ describe("toFilter(toAst())", () => {
     expect(filter({ ok: { eq: true, insensitive: true } })).toBe("ok=true");
   });
 
+  test("insensitive with each lowers the each operand", () => {
+    expect(
+      filter({ tags: { each: { like: "X", eq: 3 }, insensitive: true } }),
+    ).toBe('tags:each=3 && tags:each:lower~"x"');
+    expect(filter({ tags: { each: { like: "X", insensitive: true } } })).toBe(
+      'tags:each:lower~"x"',
+    );
+  });
+
+  test("insensitive skips dates", () => {
+    expect(
+      filter({
+        created: { lt: new Date("2026-12-31T00:00:00Z"), insensitive: true },
+      }),
+    ).toBe('created<"2026-12-31 00:00:00.000Z"');
+  });
+
   test("insensitive never lowers length", () => {
     expect(filter({ tags: { length: { gt: 2 }, insensitive: true } })).toBe(
       "tags:length>2",

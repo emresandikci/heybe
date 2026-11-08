@@ -20,16 +20,17 @@
     "directory": "packages/client"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "prepack": "pnpm build",
     "release": "semantic-release -e semantic-release-monorepo",
     "test": "bun test src --pass-with-no-tests",
     "test:integration": "bun test ./integration/*.integration.ts"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@heybe/query": "workspace:*"
   },
   "devDependencies": {
-    "@heybe/configs": "workspace:*"
+    "@heybe/configs": "workspace:*",
+    "@heybe/query": "workspace:*"
   }
 }

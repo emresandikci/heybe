@@ -36,6 +36,18 @@ describe("auto refresh", () => {
     expect(paths()).toEqual(["/x"]);
   });
 
+  test("cancelling the auth-refresh request key does not abort the auto refresh", async () => {
+    const { env, client } = setup({ autoRefreshThreshold: 60 });
+    client.authStore.save(expiring, user);
+    env.respond((req) => {
+      if (!req.url.endsWith("/auth-refresh")) return Response.json({});
+      client.cancelRequest("POST/api/collections/users/auth-refresh");
+      return Response.json({ token: fresh, record: user });
+    });
+    await client.send("/x");
+    expect(env.requests.at(-1)!.headers.get("Authorization")).toBe(fresh);
+  });
+
   test("token far from expiry, no refresh", async () => {
     const { client, paths } = setup({ autoRefreshThreshold: 60 });
     client.authStore.save(tokenFor(user, 1000), user);
