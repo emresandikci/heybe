@@ -1,9 +1,20 @@
 export { createApp } from "./app";
-export type { App, AppOptions } from "./app";
+export type { App, AppOptions, CommandHandler } from "./app";
+export type {
+  Collection,
+  CollectionType,
+  Field,
+  FieldType,
+} from "./collections/model";
+export type { CronJob } from "./cron/scheduler";
+export type { Db } from "./db";
 export { Cron } from "./extend/cron";
 export { RecordHooks } from "./extend/record-hooks";
 export { Route } from "./extend/route";
 export * from "./hooks/events";
+export { HookEvent } from "./hooks/hook";
+export type { BindOptions, HookHandler } from "./hooks/hook";
+export type { CollectionTag, HookEvents, HookName } from "./hooks/registry";
 export { ApiError } from "./http/errors";
 export {
   BODY_LIMIT_ID,
@@ -47,5 +58,8 @@ export {
 } from "./migrations/automigrate";
 export { Migration, migrate } from "./migrations/migration";
 export type { MigrationDef } from "./migrations/migration";
+export type { MailMessage, Mailer } from "./mail/mailer";
+export type { Client, Message, SubscriptionOptions } from "./realtime/broker";
 export { RecordModel } from "./records/model";
+export type { RecordService } from "./records/service";
 export type { Timers } from "./timers";

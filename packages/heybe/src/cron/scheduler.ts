@@ -20,6 +20,7 @@ export class CronScheduler {
   private startTimer: unknown = null;
   private tickTimer: unknown = null;
   private started = false;
+  private readonly running = new Set<Promise<void>>();
 
   constructor(
     private readonly timers: Timers,
@@ -40,12 +41,17 @@ export class CronScheduler {
       id,
       expression: schedule.expression,
       schedule,
-      run: async () => {
-        try {
-          await fn();
-        } catch (err) {
-          console.warn(`Cron job "${id}" failed`, err);
-        }
+      run: () => {
+        const run = (async () => {
+          try {
+            await fn();
+          } catch (err) {
+            console.warn(`Cron job "${id}" failed`, err);
+          }
+        })();
+        this.running.add(run);
+        void run.then(() => this.running.delete(run));
+        return run;
       },
     });
   }
@@ -81,7 +87,7 @@ export class CronScheduler {
   }
 
   start(): void {
-    this.stop();
+    void this.stop();
     const now = this.now().getTime();
     const first = now + this.interval - (now % this.interval);
     this.startTimer = this.timers.setTimeout(() => {
@@ -91,11 +97,13 @@ export class CronScheduler {
     }, first - now);
   }
 
-  stop(): void {
+  // resolves once the jobs already running have finished
+  async stop(): Promise<void> {
     if (this.startTimer !== null) this.timers.clearTimeout(this.startTimer);
     if (this.tickTimer !== null) this.timers.clearTimeout(this.tickTimer);
     this.startTimer = this.tickTimer = null;
     this.started = false;
+    await Promise.all(this.running);
   }
 
   hasStarted(): boolean {

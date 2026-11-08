@@ -3,12 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App, createApp } from "./app";
+import { testApp } from "./test-app";
 import { SettingsLoadError } from "./settings";
 
 let app: App;
 
 beforeEach(async () => {
-  app = createApp({ dir: ":memory:" });
+  app = testApp();
 });
 
 afterEach(() => app.close());
@@ -58,7 +59,7 @@ describe("settings", () => {
     );
     await app.settings.update(patch);
     const json = JSON.parse(JSON.stringify(app.settings));
-    const fresh = createApp({ dir: ":memory:" });
+    const fresh = testApp();
     const defaults = JSON.parse(JSON.stringify(fresh.settings));
     fresh.close();
     expect(Object.keys(json).sort()).toEqual(Object.keys(defaults).sort());

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
-import { createApp } from "../app";
+import {} from "../app";
+import { testApp } from "../test-app";
 import { FilterError } from "../filter/parse";
 import { RecordRequestEvent } from "../hooks/events";
 import { Hook } from "../hooks/hook";
@@ -15,7 +16,7 @@ import {
 } from "./router";
 import { parseHttpAddr, serve, serveOptions } from "./server";
 
-const app = createApp({ dir: ":memory:" });
+const app = testApp();
 afterAll(() => app.close());
 
 const ok = () => new Response("ok");
@@ -347,7 +348,7 @@ describe("RequestEvent", () => {
 
 describe("app.register", () => {
   test("binds a Route class with its middlewares, rejects other classes", async () => {
-    const reg = createApp({ dir: ":memory:" });
+    const reg = testApp();
     try {
       const log: string[] = [];
       class Hello extends Route {
@@ -373,7 +374,7 @@ describe("app.register", () => {
 
 describe("serve", () => {
   test("onServe can add routes, sees e.server after next(), and must call next()", async () => {
-    const srv = createApp({ dir: ":memory:" });
+    const srv = testApp();
     try {
       let seen: unknown = "unset";
       srv.onServe(async (e) => {
@@ -392,7 +393,7 @@ describe("serve", () => {
       srv.close();
     }
 
-    const broken = createApp({ dir: ":memory:" });
+    const broken = testApp();
     try {
       broken.onServe(() => {});
       await expect(

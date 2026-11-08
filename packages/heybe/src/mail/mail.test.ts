@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import type { Collection } from "../collections/model";
 import { startSmtpCapture } from "../../contract/smtp";
 import { html2text } from "./html2text";
@@ -15,7 +16,7 @@ let app: App;
 let users: Collection;
 
 beforeEach(async () => {
-  app = createApp({ dir: ":memory:" });
+  app = testApp();
   await app.settings.update({
     meta: { appName: "Acme", appURL: "https://app.example" },
   });

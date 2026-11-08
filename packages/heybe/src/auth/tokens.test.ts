@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import { signJwt, verifyJwt } from "./jwt";
 import { authFromToken, newAuthToken, newFileToken } from "./tokens";
 import { internalRecords } from "../records/internal";
@@ -12,7 +13,7 @@ let clock: Date;
 
 beforeEach(() => {
   clock = start;
-  app = createApp({ dir: ":memory:", now: () => clock });
+  app = testApp({ now: () => clock });
 });
 
 afterEach(() => app.close());

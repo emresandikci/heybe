@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createApp } from "../app";
+import {} from "../app";
+import { testApp } from "../test-app";
 import { statementCacheSize } from "../db";
 import { createEvent } from "../http/router";
 import { buildRequestInfo, matchesDraft } from "./rules";
@@ -7,7 +8,7 @@ import { internalRecords } from "./internal";
 
 describe("buildRequestInfo", () => {
   test("snake_case header keys, first query value, auth and context", () => {
-    const app = createApp({ dir: ":memory:" });
+    const app = testApp();
     const req = new Request("http://x/api?a=1&a=2&__proto__=p", {
       method: "PATCH",
       headers: { "X-Api-Key": "k", "content-type": "application/json" },
@@ -30,10 +31,7 @@ describe("buildRequestInfo", () => {
 
 describe("statement cache", () => {
   test("paging and create-rule draft checks reuse the same statements", async () => {
-    const app = createApp({
-      dir: ":memory:",
-      now: () => new Date("2026-01-01T00:00:00.000Z"),
-    });
+    const app = testApp({ now: () => new Date("2026-01-01T00:00:00.000Z") });
     const c = await app.collections.save({
       name: "posts",
       fields: [{ name: "title", type: "text" }] as any,

@@ -11,6 +11,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type App, createApp } from "../app";
+import { testApp } from "../test-app";
+import { fakeClock } from "../test-clock";
 import { superuserCommand } from "./superuser";
 
 let app: App;
@@ -18,7 +20,7 @@ let out: string[];
 let err: string[];
 
 beforeEach(() => {
-  app = createApp({ dir: ":memory:", argv: [] });
+  app = testApp({ argv: [] });
   out = [];
   err = [];
   spyOn(console, "log").mockImplementation((...a) => {
@@ -150,7 +152,7 @@ describe("start", () => {
   test("a custom command runs between onBootstrap and onTerminate", async () => {
     const order: string[] = [];
     const received: string[][] = [];
-    const cli = createApp({ dir: ":memory:", argv: ["hello", "a", "b"] });
+    const cli = testApp({ argv: ["hello", "a", "b"] });
     cli.onBootstrap(async (e) => {
       order.push("bootstrap");
       await e.next();
@@ -176,7 +178,7 @@ describe("start", () => {
 
   test("an unknown or missing command prints the usage and exits 1", async () => {
     for (const argv of [["nope"], []]) {
-      const cli = createApp({ dir: ":memory:", argv });
+      const cli = testApp({ argv });
       expect(await cli.start()).toBe(1);
       expect(err.at(-1)).toContain("serve");
       expect(err.at(-1)).toContain("superuser");
@@ -184,7 +186,7 @@ describe("start", () => {
   });
 
   test("a failing command prints the error and exits 1", async () => {
-    const cli = createApp({ dir: ":memory:", argv: ["boom"] });
+    const cli = testApp({ argv: ["boom"] });
     cli.command("boom", () => {
       throw new Error("bad");
     });
@@ -218,11 +220,7 @@ describe("start", () => {
       expect(flagged.db.get("SELECT 1 AS one")).toEqual({ one: 1 });
       flagged.close();
 
-      const explicit = createApp({
-        dir: ":memory:",
-        dev: false,
-        argv: ["--dev"],
-      });
+      const explicit = testApp({ dev: false, argv: ["--dev"] });
       expect(explicit.dev).toBe(false);
       explicit.close();
     } finally {
@@ -233,7 +231,7 @@ describe("start", () => {
 
 describe("lifecycle", () => {
   test("an onBootstrap handler without next() skips the settings reload and the command still runs", async () => {
-    const cli = createApp({ dir: ":memory:", argv: ["hello"] });
+    const cli = testApp({ argv: ["hello"] });
     const reload = spyOn(cli.settings, "reload");
     cli.onBootstrap(() => {});
     const ran = mock(() => {});
@@ -244,7 +242,7 @@ describe("lifecycle", () => {
   });
 
   test("bootstrap runs once and is skipped for unknown commands", async () => {
-    const cli = createApp({ dir: ":memory:", argv: ["hello"] });
+    const cli = testApp({ argv: ["hello"] });
     const boots = mock(() => {});
     cli.onBootstrap(async (e) => {
       boots();
@@ -255,7 +253,7 @@ describe("lifecycle", () => {
     await cli.start();
     expect(boots).toHaveBeenCalledTimes(1);
 
-    const unknown = createApp({ dir: ":memory:", argv: ["nope"] });
+    const unknown = testApp({ argv: ["nope"] });
     unknown.onBootstrap(async (e) => {
       boots();
       await e.next();
@@ -265,7 +263,7 @@ describe("lifecycle", () => {
   });
 
   test("a throwing onTerminate handler still closes the db and returns 1", async () => {
-    const cli = createApp({ dir: ":memory:", argv: ["hello"] });
+    const cli = testApp({ argv: ["hello"] });
     cli.command("hello", () => {});
     cli.onTerminate(() => {
       throw new Error("terminate failed");
@@ -276,7 +274,7 @@ describe("lifecycle", () => {
   });
 
   test("a throwing onBootstrap handler fails the command, terminates and closes", async () => {
-    const cli = createApp({ dir: ":memory:", argv: ["hello"] });
+    const cli = testApp({ argv: ["hello"] });
     const ran = mock(() => {});
     cli.command("hello", ran);
     cli.onBootstrap(() => {
@@ -289,7 +287,7 @@ describe("lifecycle", () => {
 
   test("the automigrate flag forms", () => {
     const flag = (...argv: string[]) => {
-      const cli = createApp({ dir: ":memory:", argv: ["x", ...argv] });
+      const cli = testApp({ argv: ["x", ...argv] });
       const value = cli.automigrate;
       cli.close();
       return value;
@@ -305,10 +303,7 @@ describe("lifecycle", () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-typegen-"));
     try {
       const out = join(dir, "types.d.ts");
-      const cli = createApp({
-        dir: ":memory:",
-        argv: ["typegen", "--out", out],
-      });
+      const cli = testApp({ argv: ["typegen", "--out", out] });
       expect(await cli.start()).toBe(0);
       expect(await Bun.file(out).text()).toContain(
         'declare module "@heybe/query"',
@@ -323,9 +318,9 @@ describe("lifecycle", () => {
     expect(await failure()).toStartWith("usage: superuser");
   });
 
-  test("serve stops the server inside the terminate chain after a signal", async () => {
-    const cli = createApp({
-      dir: ":memory:",
+  const startServe = async (clock = fakeClock()) => {
+    const cli = testApp({
+      timers: clock.timers,
       argv: ["serve", "--http", "127.0.0.1:0"],
     });
     let url = "";
@@ -338,24 +333,106 @@ describe("lifecycle", () => {
         }
       });
     });
-    const warn = spyOn(console, "warn");
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    cli.get("/slow", async (e) => {
+      entered.resolve();
+      await gate.promise;
+      return e.string(200, "done");
+    });
     const events: string[] = [];
+    const up = () =>
+      fetch(`${url}/api/health`).then(
+        () => "up",
+        () => "down",
+      );
     cli.onTerminate(async (e) => {
-      events.push(`alive:${(await fetch(`${url}/api/health`)).ok}`);
+      events.push(`handler:${await up()}`);
       await e.next();
       events.push("after");
     });
     const done = cli.start();
     await started;
+    return { cli, url: () => url, gate, entered, events, up, done };
+  };
+
+  test("serve stops the server before the user terminate handlers, like PB", async () => {
+    const warn = spyOn(console, "warn");
+    const s = await startServe();
     process.emit("SIGINT");
-    expect(await done).toBe(0);
-    expect(events).toEqual(["alive:true", "after"]);
+    expect(await s.done).toBe(0);
+    expect(s.events).toEqual(["handler:down", "after"]);
     expect(warn).not.toHaveBeenCalled();
-    expect(
-      await fetch(`${url}/api/health`).then(
-        () => "up",
-        () => "down",
-      ),
-    ).toBe("down");
+    expect(await s.up()).toBe("down");
+  });
+
+  test("an in-flight request finishes before the server stops", async () => {
+    const s = await startServe();
+    const slow = fetch(`${s.url()}/slow`).then((r) => r.text());
+    await s.entered.promise;
+    process.emit("SIGINT");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(s.events).toEqual([]);
+    s.gate.resolve();
+    expect(await slow).toBe("done");
+    expect(await s.done).toBe(0);
+    expect(s.events).toEqual(["handler:down", "after"]);
+  });
+
+  test("a request still running after 1 s is closed", async () => {
+    const clock = fakeClock();
+    const s = await startServe(clock);
+    const slow = fetch(`${s.url()}/slow`).then(
+      () => "answered",
+      () => "closed",
+    );
+    await s.entered.promise;
+    const timeout = clock.scheduled();
+    process.emit("SIGINT");
+    await timeout;
+    clock.advance(999);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(s.events).toEqual([]);
+    clock.advance(1);
+    expect(await slow).toBe("closed");
+    expect(await s.done).toBe(0);
+    expect(s.events).toEqual(["handler:down", "after"]);
+    s.gate.resolve();
+  });
+
+  test("serve ends the realtime connections on terminate", async () => {
+    const s = await startServe();
+    const res = await fetch(`${s.url()}/api/realtime`);
+    const reader = res.body!.getReader();
+    await reader.read();
+    expect(s.cli.realtime.clients()).toHaveLength(1);
+    process.emit("SIGINT");
+    for (;;) if ((await reader.read()).done) break;
+    expect(await s.done).toBe(0);
+    expect(s.events).toEqual(["handler:down", "after"]);
+  });
+
+  test("terminate clears the bootstrap through onBootstrapClear", async () => {
+    const cli = testApp({ argv: [] });
+    const cleared = mock(() => {});
+    cli.onBootstrapClear(async (e) => {
+      cleared();
+      await e.next();
+    });
+    await cli.terminate();
+    expect(cleared).not.toHaveBeenCalled();
+    await cli.bootstrap();
+    await cli.terminate();
+    expect(cleared).toHaveBeenCalledTimes(1);
+    expect(() => cli.db.get("SELECT 1")).toThrow();
+  });
+
+  test("an onBootstrapClear handler without next() keeps the db open", async () => {
+    const cli = testApp({ argv: [] });
+    cli.onBootstrapClear(() => {});
+    await cli.bootstrap();
+    await cli.terminate();
+    expect(cli.db.get("SELECT 1 AS one")).toEqual({ one: 1 });
+    cli.close();
   });
 });

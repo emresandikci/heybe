@@ -2,6 +2,7 @@ import type { App } from "../app";
 import { mfaDurationMs } from "../auth/mfa";
 import { otpDurationMs } from "../auth/otp";
 import type { Collection } from "../collections/model";
+import { runExclusive } from "../db";
 import { internalRecords } from "../records/internal";
 import { formatDate } from "../util";
 
@@ -37,22 +38,22 @@ export function registerCronJobs(app: App): void {
     },
     { id: "__pbCronStart__", priority: 999 },
   );
-  app.onTerminate(
-    (e) => {
-      app.scheduler.stop();
+  app.onBootstrapClear(
+    async (e) => {
+      await app.scheduler.stop();
       return e.next();
     },
     { id: "__pbCronStop__", priority: 999 },
   );
 
-  app.scheduler.add("__pbDBOptimize__", "0 0 * * *", () => {
+  app.scheduler.add("__pbDBOptimize__", "0 0 * * *", async () => {
     try {
-      app.db.run("PRAGMA wal_checkpoint(TRUNCATE)");
+      await runExclusive(app.db, "PRAGMA wal_checkpoint(TRUNCATE)");
     } catch (err) {
       console.warn("Failed to run periodic PRAGMA wal_checkpoint", err);
     }
     try {
-      app.db.run("PRAGMA optimize");
+      await runExclusive(app.db, "PRAGMA optimize");
     } catch (err) {
       console.warn("Failed to run periodic PRAGMA optimize", err);
     }

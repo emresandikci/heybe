@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
 import { statementCacheSize } from "../db";
 import type { RequestInfo } from "../filter/compile";
 import { expandRecords } from "./expand";
+import { testApp } from "../test-app";
 
 const now = () => new Date("2026-01-01T00:00:00.000Z");
 
@@ -20,7 +21,7 @@ const guest: RequestInfo = {
 };
 
 beforeEach(async () => {
-  app = createApp({ dir: "", now });
+  app = testApp({ now });
   const authors = await app.collections.save({
     name: "authors",
     viewRule: "",

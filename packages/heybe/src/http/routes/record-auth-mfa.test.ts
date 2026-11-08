@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import type { MailMessage } from "../../mail/mailer";
 import { errorResponse } from "../errors";
 import { createEvent } from "../router";
@@ -22,7 +23,7 @@ const setMfa = async (mfa: object) =>
 
 beforeEach(async () => {
   clock = new Date("2026-01-01T00:00:00Z");
-  app = createApp({ dir: ":memory:", now: () => clock });
+  app = testApp({ now: () => clock });
   sent = [];
   app.mailer = { send: async (msg) => void sent.push(msg) };
   await setMfa({});

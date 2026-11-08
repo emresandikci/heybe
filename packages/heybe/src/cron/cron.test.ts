@@ -1,41 +1,13 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import { otpDurationMs } from "../auth/otp";
 import { mfaDurationMs } from "../auth/mfa";
 import { Cron } from "../extend/cron";
 import { ServeEvent } from "../hooks/events";
 import { Schedule, momentOf } from "./schedule";
 import { CronScheduler } from "./scheduler";
-
-function fakeClock(start: string) {
-  let time = Date.parse(start);
-  let seq = 0;
-  const pending = new Map<number, { at: number; fn: () => void }>();
-  return {
-    now: () => new Date(time),
-    timers: {
-      setTimeout: (fn: () => void, ms: number) => {
-        pending.set(++seq, { at: time + ms, fn });
-        return seq;
-      },
-      clearTimeout: (h: unknown) => void pending.delete(h as number),
-    },
-    pending: () => pending.size,
-    advance(ms: number) {
-      const end = time + ms;
-      for (;;) {
-        const due = [...pending]
-          .filter(([, t]) => t.at <= end)
-          .sort(([, a], [, b]) => a.at - b.at)[0];
-        if (!due) break;
-        pending.delete(due[0]);
-        time = due[1].at;
-        due[1].fn();
-      }
-      time = end;
-    },
-  };
-}
+import { fakeClock } from "../test-clock";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const moment = (
@@ -174,7 +146,7 @@ describe("CronScheduler", () => {
     clock = fakeClock("2026-01-01T12:00:30Z");
     scheduler = new CronScheduler(clock.timers, clock.now);
   });
-  afterEach(() => scheduler.stop());
+  afterEach(() => void scheduler.stop());
 
   test("wraps parse errors", () => {
     expect(() => scheduler.add("a", "nope", () => {})).toThrow(
@@ -344,6 +316,20 @@ describe("CronScheduler", () => {
     clock.advance(10_000);
     expect(runs).toBe(2);
   });
+
+  test("stop waits for the running jobs", async () => {
+    const gate = Promise.withResolvers<void>();
+    scheduler.add("slow", "* * * * *", () => gate.promise);
+    scheduler.start();
+    clock.advance(30_000);
+    let stopped = false;
+    const stopping = scheduler.stop().then(() => (stopped = true));
+    await tick();
+    expect(stopped).toBe(false);
+    gate.resolve();
+    await stopping;
+    expect(stopped).toBe(true);
+  });
 });
 
 describe("app cron", () => {
@@ -352,7 +338,7 @@ describe("app cron", () => {
 
   beforeEach(() => {
     clock = fakeClock("2026-01-01T12:00:30Z");
-    app = createApp({ dir: ":memory:", now: clock.now, timers: clock.timers });
+    app = testApp({ now: clock.now, timers: clock.timers });
   });
   afterEach(() => app.close());
 
@@ -406,7 +392,19 @@ describe("app cron", () => {
     expect(seen).toEqual([app]);
   });
 
+  test("anonymous Cron classes get generated ids like app.cron", () => {
+    const job = () =>
+      class extends Cron {
+        schedule = "* * * * *";
+        run() {}
+      };
+    app.cron("* * * * *", () => {});
+    app.register(job(), job());
+    expect(ids().slice(-3)).toEqual(["cron_1", "cron_2", "cron_3"]);
+  });
+
   test("the scheduler starts on serve and stops on terminate", async () => {
+    await app.bootstrap();
     await app.hooks.onServe.trigger(
       ServeEvent.of({ app, router: app.router, server: null }),
       () => {},
@@ -417,6 +415,41 @@ describe("app cron", () => {
     await app.terminate();
     expect(app.scheduler.hasStarted()).toBe(false);
   });
+
+  test("terminate waits for a running job's write before closing the db", async () => {
+    await app.bootstrap();
+    const gate = Promise.withResolvers<void>();
+    let rows = -1;
+    app.cron("slow", "* * * * *", (a) =>
+      a.db.write(async () => {
+        await gate.promise;
+        a.db.run("CREATE TABLE late (id INTEGER)");
+        rows = a.db.query("SELECT * FROM late").length;
+      }),
+    );
+    void app.scheduler
+      .jobs()
+      .find((j) => j.id === "slow")!
+      .run();
+    let terminated = false;
+    const terminating = app.terminate().then(() => (terminated = true));
+    await tick();
+    expect(terminated).toBe(false);
+    gate.resolve();
+    await terminating;
+    expect(rows).toBe(0);
+    expect(() => app.db.get("SELECT 1")).toThrow();
+  });
+
+  test("__pbDBOptimize__ runs its pragmas outside a transaction", async () => {
+    const warn = spyOn(console, "warn");
+    await app.scheduler
+      .jobs()
+      .find((j) => j.id === "__pbDBOptimize__")!
+      .run();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
 });
 
 describe("OTP and MFA cleanup", () => {
@@ -425,7 +458,7 @@ describe("OTP and MFA cleanup", () => {
 
   beforeEach(() => {
     time = Date.parse("2026-01-01T00:00:00Z");
-    app = createApp({ dir: ":memory:", now: () => new Date(time) });
+    app = testApp({ now: () => new Date(time) });
   });
   afterEach(() => app.close());
 

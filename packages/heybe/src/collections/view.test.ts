@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import { ValidationError } from "../util";
 import {
   dryRunView,
@@ -17,7 +18,7 @@ const autodates = [
 ];
 
 beforeEach(async () => {
-  app = createApp({ dir: ":memory:", now: () => new Date("2026-01-01") });
+  app = testApp({ now: () => new Date("2026-01-01") });
   const demo2 = await app.collections.save({
     name: "demo2",
     fields: [{ name: "text", type: "text" }, ...autodates] as any,
@@ -242,8 +243,8 @@ describe("inferViewFields", () => {
       app.collections.save({ name: "evil", type: "view", viewQuery: hidden }),
     ).rejects.toThrow(ValidationError);
     saveView(app.db, "evil", hidden);
-    app.db.run("DROP VIEW evil");
-    app.db.run("select id from demo2; delete from demo2");
+    app.db.tx(() => app.db.run("DROP VIEW evil"));
+    app.db.tx(() => app.db.run("select id from demo2; delete from demo2"));
 
     expect(rows()).toBe(2);
     expect(objectNames()).toEqual(before);
@@ -373,8 +374,10 @@ describe("view collections", () => {
       viewQuery: "select id, text from demo2",
     });
     // stale stored fields make the delete below resave v2 before v1 fails
-    app.db.run(
-      "UPDATE _collections SET data = json_set(data, '$.fields[1].hidden', json('true')) WHERE name = 'v2'",
+    app.db.tx(() =>
+      app.db.run(
+        "UPDATE _collections SET data = json_set(data, '$.fields[1].hidden', json('true')) WHERE name = 'v2'",
+      ),
     );
     let changes = 0;
     app.collections.onChange = () => changes++;
@@ -424,8 +427,10 @@ describe("view collections", () => {
 
 test("findRecordByViewFile resolves the source record through nested views", async () => {
   const demo1 = app.collections.find("demo1")!;
-  app.db.run(
-    "INSERT INTO demo1 (id, file_one, file_many) VALUES ('r1', 'a.txt', '[\"b.txt\",\"c.txt\"]')",
+  app.db.tx(() =>
+    app.db.run(
+      "INSERT INTO demo1 (id, file_one, file_many) VALUES ('r1', 'a.txt', '[\"b.txt\",\"c.txt\"]')",
+    ),
   );
   const inner = await app.collections.save({
     name: "inner_view",

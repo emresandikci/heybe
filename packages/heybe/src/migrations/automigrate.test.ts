@@ -9,7 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import { newAuthToken } from "../auth/tokens";
 import type { Collection } from "../collections/model";
 import { migrateCommand } from "../commands/migrate";
@@ -45,12 +46,7 @@ function tempDir(): string {
 }
 
 function newApp(migrationsDir = tempDir(), automigrate = true): App {
-  const app = createApp({
-    dir: ":memory:",
-    migrationsDir,
-    now: () => new Date(clock),
-    argv: [],
-  });
+  const app = testApp({ migrationsDir, now: () => new Date(clock), argv: [] });
   apps.push(app);
   if (automigrate) bindAutomigrate(app);
   return app;
@@ -558,8 +554,7 @@ describe("start()", () => {
   for (const automigrate of [true, false])
     test(`automigrate ${automigrate ? "on" : "off"}`, async () => {
       const dir = tempDir();
-      const app = createApp({
-        dir: ":memory:",
+      const app = testApp({
         migrationsDir: dir,
         automigrate,
         now: () => new Date(clock),

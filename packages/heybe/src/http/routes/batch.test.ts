@@ -10,7 +10,7 @@ import {
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
 import { newAuthToken } from "../../auth/tokens";
 import * as mime from "../../files/mime";
 import { RecordServiceImpl } from "../../records/service";
@@ -19,6 +19,7 @@ import { loadAuth } from "../middlewares";
 import { createEvent } from "../router";
 import { createRouter } from "../server";
 import { internalRecords } from "../../records/internal";
+import { cheapPassword, testApp } from "../../test-app";
 
 let app: App;
 let dir: string;
@@ -29,7 +30,7 @@ let step = 0;
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "heybe-batch-"));
   step = 0;
-  app = createApp({ dir, now: () => new Date((time += step)) });
+  app = testApp({ dir, now: () => new Date((time += step)) });
   await app.settings.update({
     batch: { enabled: true, maxRequests: 50, timeout: 3 },
   });
@@ -117,7 +118,7 @@ async function addMember() {
     name: "members",
     type: "auth",
     updateRule: "id = @request.auth.id",
-    fields: [{ name: "name", type: "text" }],
+    fields: [{ name: "name", type: "text" }, cheapPassword],
   } as any);
   const records = internalRecords(app, "members");
   return records

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import { createRouter } from "../server";
 import { createEvent } from "../router";
 import { authTokenFromRequest, loadAuth } from "../middlewares";
@@ -9,7 +10,7 @@ import { internalRecords } from "../../records/internal";
 let app: App;
 
 beforeEach(() => {
-  app = createApp({ dir: ":memory:" });
+  app = testApp();
 });
 
 afterEach(() => app.close());

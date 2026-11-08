@@ -482,7 +482,11 @@ describe("rollbacks never broadcast", () => {
                 url: records("posts"),
                 body: { title: "rolled back" },
               },
-              { method: "POST", url: records("nope"), body: {} },
+              {
+                method: "POST",
+                url: records("posts"),
+                body: { author: "missing00000000" },
+              },
             ],
           }),
         400,

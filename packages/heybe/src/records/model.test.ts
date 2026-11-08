@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
 import type { Collection } from "../collections/model";
 import { RecordModel } from "./model";
 import { internalRecords } from "./internal";
 import { decode } from "./read";
 import { serializeRecord } from "./serialize";
+import { cheapPassword, testApp } from "../test-app";
 
 let app: App;
 
 beforeEach(async () => {
-  app = createApp({ dir: "" });
+  app = testApp();
   await app.collections.save({
     name: "posts",
     fields: [
@@ -40,7 +41,7 @@ beforeEach(async () => {
   await app.collections.save({
     name: "members",
     type: "auth",
-    fields: [{ name: "name", type: "text" }] as any,
+    fields: [{ name: "name", type: "text" }, cheapPassword] as any,
   });
 });
 
@@ -57,6 +58,16 @@ describe("public API", () => {
       "findOne",
       "update",
     ]);
+  });
+
+  test("the service internals are unreachable at runtime", () => {
+    const service = app.records("posts") as unknown as Record<string, unknown>;
+    expect(Object.getPrototypeOf(service)).toBe(Object.prototype);
+    for (const key of ["findRaw", "deleteWhere", "truncate", "deps", "app"])
+      expect(service[key]).toBeUndefined();
+    expect(Object.values(service).every((v) => typeof v === "function")).toBe(
+      true,
+    );
   });
 });
 
@@ -108,6 +119,29 @@ describe("set", () => {
     expect(r.get("custom")).toEqual({ a: 1 });
   });
 
+  test("id is set like any field", () => {
+    const r = new RecordModel(posts());
+    r.set("id", "custom_id");
+    expect(r.id).toBe("custom_id");
+    expect(r.toJSON().id).toBe("custom_id");
+  });
+
+  test("like PB, an autodate field ignores set and its modifier keys stay custom data", () => {
+    const c = {
+      ...posts(),
+      fields: [...posts().fields, { name: "created", type: "autodate" }],
+    } as Collection;
+    const r = new RecordModel(
+      c,
+      { created: "2026-01-01 00:00:00.000Z" },
+      false,
+    );
+    r.set("created", "2030-01-01 00:00:00.000Z");
+    r.set("created+", "x");
+    expect(r.get("created")).toBe("2026-01-01 00:00:00.000Z");
+    expect(r.get("created+")).toBe("x");
+  });
+
   test("a new record starts from the field defaults", () => {
     const r = new RecordModel(posts());
     expect(r.isNew()).toBe(true);
@@ -152,6 +186,23 @@ describe("toJSON", () => {
     expect(r.toJSON()).not.toHaveProperty("@pbInternalX");
     r.hide("extra");
     expect(r.toJSON()).not.toHaveProperty("extra");
+  });
+
+  test("email follows emailVisibility unless hidden", () => {
+    const members = app.collections.find("members")!;
+    const r = new RecordModel(
+      members,
+      { id: "m1", email: "a@b.co", emailVisibility: true },
+      false,
+    );
+    expect(r.toJSON().email).toBe("a@b.co");
+    r.hide("email");
+    expect(r.toJSON()).not.toHaveProperty("email");
+    r.set("emailVisibility", false);
+    r.unhide("email");
+    expect(r.toJSON()).not.toHaveProperty("email");
+    r.ignoreEmailVisibility(true);
+    expect(r.toJSON().email).toBe("a@b.co");
   });
 
   test("equals serializeRecord for an auth record, with and without manage access", async () => {

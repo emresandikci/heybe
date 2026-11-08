@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import { authFromToken } from "../../auth/tokens";
 import { INSTALLER_EMAIL } from "../../util";
 import { runInstaller } from "./installer";
@@ -7,10 +8,7 @@ import { runInstaller } from "./installer";
 let app: App;
 
 beforeEach(() => {
-  app = createApp({
-    dir: ":memory:",
-    now: () => new Date("2026-01-01T00:00:00Z"),
-  });
+  app = testApp({ now: () => new Date("2026-01-01T00:00:00Z") });
 });
 
 afterEach(() => app.close());

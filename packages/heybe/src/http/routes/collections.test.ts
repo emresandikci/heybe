@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import { newAuthToken } from "../../auth/tokens";
 import { internalRecords } from "../../records/internal";
 import { loadAuth } from "../middlewares";
@@ -10,10 +11,7 @@ let app: App;
 let seq = 0;
 
 beforeEach(() => {
-  app = createApp({
-    dir: ":memory:",
-    now: () => new Date("2026-01-01T00:00:00Z"),
-  });
+  app = testApp({ now: () => new Date("2026-01-01T00:00:00Z") });
 });
 
 afterEach(() => app.close());

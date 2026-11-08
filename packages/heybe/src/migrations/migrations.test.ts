@@ -18,7 +18,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import { migrateCommand } from "../commands/migrate";
 import { Migration } from "./migration";
 import type { Io } from "./runner";
@@ -75,12 +76,7 @@ const has = (name: string) => app.collections.find(name) !== null;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "heybe-migrations-"));
   now = NOW;
-  app = createApp({
-    dir: ":memory:",
-    migrationsDir: dir,
-    now: () => now,
-    argv: [],
-  });
+  app = testApp({ migrationsDir: dir, now: () => now, argv: [] });
   lines = [];
   questions = [];
   answer = true;
@@ -156,8 +152,7 @@ describe("migrate up", () => {
 
   test("serve applies pending migrations before onServe", async () => {
     write("1_a.ts", fnStyle("a"));
-    const cli = createApp({
-      dir: ":memory:",
+    const cli = testApp({
       migrationsDir: dir,
       argv: ["serve", "--http", "127.0.0.1:0"],
     });

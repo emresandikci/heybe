@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
 import { type PasswordValue, fields } from "../fields";
 import { NotFoundError, ValidationError } from "../util";
 import { serializeRecord } from "./serialize";
 import { internalRecords } from "./internal";
+import { cheapPassword, testApp } from "../test-app";
 
 const now = () => new Date("2026-01-01T00:00:00.000Z");
 const stamp = "2026-01-01 00:00:00.000Z";
@@ -56,7 +57,7 @@ async function failure(promise: Promise<unknown>): Promise<ValidationError> {
 }
 
 beforeEach(async () => {
-  app = createApp({ dir: "", now });
+  app = testApp({ now });
   await addPosts();
 });
 
@@ -190,7 +191,7 @@ describe("update and delete", () => {
   test("update changes only the given fields and stamps onUpdate", async () => {
     let t = new Date("2026-01-01T00:00:00.000Z");
     app.close();
-    app = createApp({ dir: "", now: () => t });
+    app = testApp({ now: () => t });
     await addPosts();
     const r = await app.records("posts").create({ title: "a", views: 1 });
     t = new Date("2026-02-01T00:00:00.000Z");
@@ -325,7 +326,7 @@ describe("auth records", () => {
     await app.collections.save({
       name: "users",
       type: "auth",
-      fields: [text("name")] as any,
+      fields: [text("name"), cheapPassword] as any,
     });
   });
 
@@ -447,7 +448,7 @@ describe("auth records", () => {
 describe("concurrency", () => {
   test("50 parallel creates on a file-backed db all succeed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-"));
-    const file = createApp({ dir, now });
+    const file = testApp({ dir, now });
     try {
       await file.collections.save({
         name: "items",
@@ -485,7 +486,7 @@ describe("file uploads", () => {
 
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "heybe-"));
-    disk = createApp({ dir, now });
+    disk = testApp({ dir, now });
     await disk.collections.save({
       name: "docs",
       fields: [

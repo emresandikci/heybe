@@ -1,6 +1,6 @@
 import type { App } from "../app";
 import type { Hook, HookEvent } from "../hooks/hook";
-import type { HookEvents } from "../hooks/registry";
+import type { CollectionTag, HookEvents } from "../hooks/registry";
 
 const HOOKS = {
   onValidate: "onRecordValidate",
@@ -34,12 +34,19 @@ const HOOKS = {
   onConfirmEmailChangeRequest: "onRecordConfirmEmailChangeRequest",
   onRequestOTPRequest: "onRecordRequestOTPRequest",
   onAuthWithOTPRequest: "onRecordAuthWithOTPRequest",
+  onMailerAuthAlertSend: "onMailerRecordAuthAlertSend",
+  onMailerPasswordResetSend: "onMailerRecordPasswordResetSend",
+  onMailerVerificationSend: "onMailerRecordVerificationSend",
+  onMailerEmailChangeSend: "onMailerRecordEmailChangeSend",
+  onMailerOTPSend: "onMailerRecordOTPSend",
+  onFileDownloadRequest: "onFileDownloadRequest",
+  onFileTokenRequest: "onFileTokenRequest",
 } as const satisfies Record<string, keyof HookEvents>;
 
 // Class style for the record hooks of one collection: `app.register(MyHooks)`. Each defined
-// handler binds to its `app.onRecord*` hook with the collection as the tag.
+// handler binds to its collection-tagged `app.on*` hook with the collection as the tag.
 export abstract class RecordHooks {
-  abstract collection: string;
+  abstract collection: CollectionTag;
   priority?: number;
 }
 
@@ -92,6 +99,19 @@ export interface RecordHooks {
   ): unknown;
   onRequestOTPRequest?(e: HookEvents["onRecordRequestOTPRequest"]): unknown;
   onAuthWithOTPRequest?(e: HookEvents["onRecordAuthWithOTPRequest"]): unknown;
+  onMailerAuthAlertSend?(e: HookEvents["onMailerRecordAuthAlertSend"]): unknown;
+  onMailerPasswordResetSend?(
+    e: HookEvents["onMailerRecordPasswordResetSend"],
+  ): unknown;
+  onMailerVerificationSend?(
+    e: HookEvents["onMailerRecordVerificationSend"],
+  ): unknown;
+  onMailerEmailChangeSend?(
+    e: HookEvents["onMailerRecordEmailChangeSend"],
+  ): unknown;
+  onMailerOTPSend?(e: HookEvents["onMailerRecordOTPSend"]): unknown;
+  onFileDownloadRequest?(e: HookEvents["onFileDownloadRequest"]): unknown;
+  onFileTokenRequest?(e: HookEvents["onFileTokenRequest"]): unknown;
 }
 
 export function bindRecordHooks(app: App, hooks: RecordHooks): void {

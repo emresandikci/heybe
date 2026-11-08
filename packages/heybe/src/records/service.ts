@@ -391,7 +391,8 @@ export class RecordServiceImpl<T> {
     await this.deps.db.write(() => this.deleteWhere("1 = 1", []));
   }
 
-  // Deletes the matching records one by one through the hooked delete. Call it inside a write.
+  // Deletes the matching records one by one through the hooked delete, each its own write unless
+  // called inside one.
   async deleteWhere(where: string, params: unknown[]): Promise<void> {
     const c = this.collection();
     const { db } = this.deps;

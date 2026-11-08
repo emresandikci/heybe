@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CollectionName, Collections } from "@heybe/query";
@@ -38,6 +38,7 @@ import { internalRecords } from "./records/internal";
 import type { RecordService } from "./records/service";
 import { Settings } from "./settings";
 import { type Timers, realTimers } from "./timers";
+import { formatDate, randomSecret } from "./util";
 
 export interface AppOptions {
   dir?: string;
@@ -66,6 +67,11 @@ type RouterMethods = Pick<
 >;
 
 export interface App extends HookBinders, RouterMethods {
+  /**
+   * `query` and `get` run anywhere. Writes go inside `await app.db.write(() => ...)`, which queues
+   * them behind the other writes in one transaction: `run` outside it always throws, and the
+   * synchronous `tx` throws while another write is open.
+   */
   db: Db;
   router: Router;
   hooks: Hooks;
@@ -123,6 +129,45 @@ function globalFlags(argv: string[]) {
   };
 }
 
+let memoryTemplate: string | null = null;
+const TOKENS = [
+  "authToken",
+  "passwordResetToken",
+  "emailChangeToken",
+  "verificationToken",
+  "fileToken",
+];
+
+// Memory apps copy one bootstrapped data.db made once per process, with their own timestamps and secrets.
+function openMemoryDb(path: string, now: () => Date): Db {
+  if (!memoryTemplate) {
+    const dir = mkdtempSync(join(tmpdir(), "heybe-template-"));
+    process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
+    const db = openDb(join(dir, "data.db"));
+    new CollectionStore(db, now);
+    db.close();
+    memoryTemplate = join(dir, "data.db");
+  }
+  copyFileSync(memoryTemplate, path);
+  const db = openDb(path);
+  db.tx(() => {
+    const date = formatDate(now());
+    db.run("UPDATE _collections SET created = ?, updated = ?", [date, date]);
+    const auth = db.query<{ id: string; data: string }>(
+      "SELECT id, data FROM _collections WHERE type = 'auth'",
+    );
+    for (const { id, data } of auth) {
+      const c = JSON.parse(data);
+      for (const key of TOKENS) c[key].secret = randomSecret(50);
+      db.run("UPDATE _collections SET data = ? WHERE id = ?", [
+        JSON.stringify(c),
+        id,
+      ]);
+    }
+  });
+  return db;
+}
+
 export function createApp(opts: AppOptions = {}): App {
   const argv = opts.argv ?? process.argv.slice(2);
   const flags = globalFlags(argv);
@@ -132,8 +177,10 @@ export function createApp(opts: AppOptions = {}): App {
   const storageRoot = memory
     ? mkdtempSync(join(tmpdir(), "heybe-storage-"))
     : join(dir, "storage");
-  const db = openDb(join(memory ? storageRoot : dir, "data.db"));
   const now = opts.now ?? (() => new Date());
+  const db = memory
+    ? openMemoryDb(join(storageRoot, "data.db"), now)
+    : openDb(join(dir, "data.db"));
   const files = localFilesystem(storageRoot);
   const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
@@ -147,6 +194,19 @@ export function createApp(opts: AppOptions = {}): App {
   let cronCount = 0;
   let closed = false;
   let bootstrapped = false;
+
+  // PB app.ClearBootstrap
+  const clearBootstrap = async () => {
+    if (!bootstrapped) return;
+    await hooks.onBootstrapClear.trigger(
+      BootstrapEvent.of({ app }),
+      async () => {
+        if (!closed) await db.write(() => {});
+        bootstrapped = false;
+        app.close();
+      },
+    );
+  };
 
   const app = {
     ...hookBinders(hooks),
@@ -196,10 +256,9 @@ export function createApp(opts: AppOptions = {}): App {
       );
     },
     terminate: (isRestart = false) =>
-      hooks.onTerminate.trigger(TerminateEvent.of({ app, isRestart }), () => {
-        bootstrapped = false;
-        app.close();
-      }),
+      hooks.onTerminate.trigger(TerminateEvent.of({ app, isRestart }), () =>
+        clearBootstrap(),
+      ),
     command: (name, run, opts) => {
       if (commands.has(name))
         throw new Error(`Command "${name}" is already registered`);
@@ -258,7 +317,10 @@ export function createApp(opts: AppOptions = {}): App {
         }
         if (cls.prototype instanceof Cron) {
           const c = new cls() as Cron;
-          app.cron(c.id ?? cls.name, c.schedule, (a) => c.run(a));
+          const id = c.id || cls.name;
+          const run = (a: App) => c.run(a);
+          if (id) app.cron(id, c.schedule, run);
+          else app.cron(c.schedule, run);
           continue;
         }
         if (cls.prototype instanceof Migration) {

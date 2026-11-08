@@ -95,6 +95,41 @@ describe("Hook", () => {
     expect(calls).toBe("abc");
   });
 
+  test("like PB, a second next() after a later handler stopped resumes at the following one", async () => {
+    let calls = "";
+    const h = new Hook<HookEvent>();
+    h.bind(async (e) => {
+      calls += "a";
+      await e.next();
+      await e.next();
+    });
+    h.bind(() => {
+      calls += "b";
+    });
+    h.bind((e) => ((calls += "c"), e.next()));
+    await h.trigger(new HookEvent(), () => {
+      calls += "d";
+    });
+    expect(calls).toBe("abcd");
+  });
+
+  test("re-triggering an event starts a fresh chain", async () => {
+    let calls = "";
+    const e = new HookEvent();
+    const stopped = new Hook<HookEvent>();
+    stopped.bind(() => {
+      calls += "s";
+    });
+    stopped.bind(() => {
+      calls += "stale";
+    });
+    await stopped.trigger(e);
+    const next = new Hook<HookEvent>();
+    next.bind((e) => ((calls += "x"), e.next()));
+    await next.trigger(e, (e) => ((calls += "y"), e.next()));
+    expect(calls).toBe("sxy");
+  });
+
   test("errors propagate through next()", async () => {
     const err = new Error("test");
     const h = new Hook<HookEvent>();

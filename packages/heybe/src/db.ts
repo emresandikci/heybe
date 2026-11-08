@@ -16,6 +16,8 @@ const CACHE_LIMIT = 200;
 const UNCACHED = /^\s*(CREATE|DROP|ALTER|PRAGMA)\b/i;
 const OUTSIDE_WRITE =
   "heybe: db write outside db.write while a write transaction is open";
+const RUN_OUTSIDE_WRITE =
+  "heybe: db.run must be called inside db.write (or db.tx)";
 
 // One per write. onComplete callbacks move to the parent when the write ends; the outermost runs them.
 interface Context {
@@ -97,6 +99,12 @@ function connection(path: string, readonly: boolean) {
 const cacheSizes = new WeakMap<Db, () => number>();
 
 export const statementCacheSize = (db: Db): number => cacheSizes.get(db)!();
+
+const exclusives = new WeakMap<Db, (sql: string) => Promise<void>>();
+
+// For statements that cannot run in a transaction, like PRAGMA wal_checkpoint: waits for the writer.
+export const runExclusive = (db: Db, sql: string): Promise<void> =>
+  exclusives.get(db)!(sql);
 
 // One writer connection behind a FIFO mutex and a query_only reader connection. Inside `write`
 // (tracked with AsyncLocalStorage) every query goes to the writer; elsewhere reads see only
@@ -230,7 +238,7 @@ export function openDb(path: string): Db {
         (s) => (s.get(...bind(params)) as T | null) ?? null,
       ),
     run: (sql, params) => {
-      if (!onWriter() && mutex.locked()) throw new Error(OUTSIDE_WRITE);
+      if (!onWriter()) throw new Error(RUN_OUTSIDE_WRITE);
       return writer.withStmt(sql, (s) => ({
         changes: s.run(...bind(params)).changes,
       }));
@@ -276,5 +284,14 @@ export function openDb(path: string): Db {
     },
   };
   cacheSizes.set(db, () => writer.cache.size + reader.cache.size);
+  exclusives.set(db, async (sql) => {
+    if (onWriter()) throw new Error("heybe: runExclusive inside db.write");
+    await mutex.acquire();
+    try {
+      exec(sql);
+    } finally {
+      mutex.release();
+    }
+  });
   return db;
 }

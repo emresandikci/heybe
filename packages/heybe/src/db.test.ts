@@ -8,16 +8,18 @@ const ids = (db: ReturnType<typeof tempDb>) =>
 
 function withTable() {
   const db = tempDb();
-  db.run("CREATE TABLE t (id INTEGER PRIMARY KEY)");
+  db.tx(() => db.run("CREATE TABLE t (id INTEGER PRIMARY KEY)"));
   return db;
 }
 
 test("a failing COMMIT rolls back and leaves the db usable", () => {
   const db = tempDb();
-  db.run("CREATE TABLE parent (id INTEGER PRIMARY KEY)");
-  db.run(
-    "CREATE TABLE child (id INTEGER PRIMARY KEY, p INTEGER REFERENCES parent(id))",
-  );
+  db.tx(() => {
+    db.run("CREATE TABLE parent (id INTEGER PRIMARY KEY)");
+    db.run(
+      "CREATE TABLE child (id INTEGER PRIMARY KEY, p INTEGER REFERENCES parent(id))",
+    );
+  });
 
   expect(() =>
     db.tx(() => {
@@ -43,8 +45,10 @@ test("statementCacheSize stays bounded and evicted statements are re-prepared", 
 test("DDL statements are not cached", () => {
   const db = tempDb();
   const before = statementCacheSize(db);
-  db.run("CREATE TABLE t (id INTEGER)");
-  db.run("DROP TABLE t");
+  db.tx(() => {
+    db.run("CREATE TABLE t (id INTEGER)");
+    db.run("DROP TABLE t");
+  });
   expect(statementCacheSize(db)).toBe(before);
   db.close();
 });
@@ -69,8 +73,10 @@ test("reads outside a write never see its uncommitted rows", async () => {
 
 test("concurrent writes are serialized", async () => {
   const db = tempDb();
-  db.run("CREATE TABLE counter (n INTEGER)");
-  db.run("INSERT INTO counter (n) VALUES (0)");
+  db.tx(() => {
+    db.run("CREATE TABLE counter (n INTEGER)");
+    db.run("INSERT INTO counter (n) VALUES (0)");
+  });
   const increment = () =>
     db.write(async () => {
       const { n } = db.get<{ n: number }>("SELECT n FROM counter")!;
@@ -126,7 +132,9 @@ test("write started from a timer after commit runs in its own transaction", asyn
   timer.resolve();
   await late;
   expect(ids(db)).toEqual([1, 2]);
-  expect(() => db.run("INSERT INTO t (id) VALUES (3)")).not.toThrow();
+  expect(() =>
+    db.tx(() => db.run("INSERT INTO t (id) VALUES (3)")),
+  ).not.toThrow();
   db.close();
 });
 
@@ -301,15 +309,23 @@ test("reader is query_only", () => {
   db.close();
 });
 
-test("run outside write throws while a write is open", async () => {
+test("run outside a write context always throws", () => {
+  const db = withTable();
+  expect(() => db.run("INSERT INTO t (id) VALUES (1)")).toThrow(
+    "heybe: db.run must be called inside db.write (or db.tx)",
+  );
+  expect(ids(db)).toEqual([]);
+  db.close();
+});
+
+test("tx outside write throws while a write is open", async () => {
   const db = withTable();
   const gate = deferred();
   const writing = db.write(() => gate.promise);
   await Promise.resolve();
-  const message =
-    "heybe: db write outside db.write while a write transaction is open";
-  expect(() => db.run("INSERT INTO t (id) VALUES (1)")).toThrow(message);
-  expect(() => db.tx(() => 1)).toThrow(message);
+  expect(() => db.tx(() => 1)).toThrow(
+    "heybe: db write outside db.write while a write transaction is open",
+  );
   expect(db.committed(() => ids(db))).toEqual([]);
   gate.resolve();
   await writing;

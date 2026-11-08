@@ -7,10 +7,10 @@ import type { PrepareCtx } from "./shared";
 
 const db = tempDb();
 afterAll(() => db.close());
-db.run("CREATE TABLE targets (id TEXT PRIMARY KEY)");
-db.run("INSERT INTO targets (id) VALUES ('a'), ('b'), ('c')");
-db.run("CREATE TABLE posts (id TEXT PRIMARY KEY)");
-db.run("INSERT INTO posts (id) VALUES ('Taken')");
+db.tx(() => db.run("CREATE TABLE targets (id TEXT PRIMARY KEY)"));
+db.tx(() => db.run("INSERT INTO targets (id) VALUES ('a'), ('b'), ('c')"));
+db.tx(() => db.run("CREATE TABLE posts (id TEXT PRIMARY KEY)"));
+db.tx(() => db.run("INSERT INTO posts (id) VALUES ('Taken')"));
 
 const targets = { id: "pbc_targets", name: "targets" } as Collection;
 const posts = { id: "pbc_posts", name: "posts" } as Collection;

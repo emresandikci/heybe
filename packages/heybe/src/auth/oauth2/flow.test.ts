@@ -12,7 +12,8 @@ import {
   type OAuth2Mock,
   startOAuth2Mock,
 } from "../../../contract/oauth2-mock";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import type { RequestInfo } from "../../filter/compile";
 import { ApiError } from "../../http/errors";
 import { createEvent } from "../../http/router";
@@ -54,7 +55,7 @@ afterAll(() => mock.stop());
 const users = () => app.collections.find("users")!;
 
 beforeEach(async () => {
-  app = createApp({ dir: ":memory:", now: () => clock });
+  app = testApp({ now: () => clock });
   const provider = (name: string, extra: object = {}) => ({
     name,
     clientId: mock.clientId,
@@ -563,9 +564,11 @@ describe("existing record decisions", () => {
     // the record becomes verified while the random password is hashed
     const spy = spyOn(Bun.password, "hash").mockImplementation(
       async (...args: Parameters<typeof hash>) => {
-        app.db.run("UPDATE users SET verified = 1 WHERE id = ?", [
-          user.id as string,
-        ]);
+        app.db.tx(() =>
+          app.db.run("UPDATE users SET verified = 1 WHERE id = ?", [
+            user.id as string,
+          ]),
+        );
         return hash(...args);
       },
     );
@@ -615,9 +618,11 @@ describe("existing record update race", () => {
     const hash = Bun.password.hash;
     const spy = spyOn(Bun.password, "hash").mockImplementation(
       async (...args: Parameters<typeof hash>) => {
-        app.db.run("UPDATE users SET verified = 1 WHERE id = ?", [
-          user.id as string,
-        ]);
+        app.db.tx(() =>
+          app.db.run("UPDATE users SET verified = 1 WHERE id = ?", [
+            user.id as string,
+          ]),
+        );
         return hash(...args);
       },
     );

@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
 import * as model from "../../records/model";
 import { toApiError } from "../errors";
 import { createEvent } from "../router";
 import { createRouter } from "../server";
+import { testApp } from "../../test-app";
 
 let app: App;
 
 beforeEach(async () => {
-  app = createApp({ dir: "" });
+  app = testApp();
   await app.collections.save({
     name: "posts",
     listRule: "",

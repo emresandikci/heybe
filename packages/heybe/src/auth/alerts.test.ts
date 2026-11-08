@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import type { MailMessage } from "../mail/mailer";
 import { recordAuthOrigin } from "./alerts";
 
@@ -19,10 +20,7 @@ const origins = () =>
   ]);
 
 beforeEach(async () => {
-  app = createApp({
-    dir: ":memory:",
-    now: () => new Date("2026-01-01T00:00:00Z"),
-  });
+  app = testApp({ now: () => new Date("2026-01-01T00:00:00Z") });
   sent = [];
   app.mailer = { send: async (msg) => void sent.push(msg) };
   record = await app

@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import { checkSuperuserIp } from "../middlewares";
 
 let app: App;
 
 beforeEach(() => {
-  app = createApp({ dir: ":memory:" });
+  app = testApp();
 });
 
 afterEach(() => app.close());

@@ -70,12 +70,14 @@ const ids = (
 
 function insert(table: string, row: Record<string, unknown>) {
   const keys = Object.keys(row);
-  db.run(
-    `INSERT INTO ${quote(table)} (${keys.map(quote).join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`,
-    Object.values(row).map((v) =>
-      Array.isArray(v) || (v !== null && typeof v === "object")
-        ? JSON.stringify(v)
-        : v,
+  db.tx(() =>
+    db.run(
+      `INSERT INTO ${quote(table)} (${keys.map(quote).join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`,
+      Object.values(row).map((v) =>
+        Array.isArray(v) || (v !== null && typeof v === "object")
+          ? JSON.stringify(v)
+          : v,
+      ),
     ),
   );
 }

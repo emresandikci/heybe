@@ -218,17 +218,17 @@ export class CollectionStore {
     private readonly now: () => Date,
     private readonly files?: Filesystem,
   ) {
-    db.run(
-      "CREATE TABLE IF NOT EXISTS _collections (id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, type TEXT NOT NULL, system INTEGER NOT NULL, data TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL)",
-    );
-    db.run(
-      "CREATE INDEX IF NOT EXISTS idx__collections_type ON _collections (type)",
-    );
-    db.run(
-      "CREATE TABLE IF NOT EXISTS _params (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-    );
-    if (!this.find("_superusers"))
-      db.tx(() => {
+    db.tx(() => {
+      db.run(
+        "CREATE TABLE IF NOT EXISTS _collections (id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, type TEXT NOT NULL, system INTEGER NOT NULL, data TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL)",
+      );
+      db.run(
+        "CREATE INDEX IF NOT EXISTS idx__collections_type ON _collections (type)",
+      );
+      db.run(
+        "CREATE TABLE IF NOT EXISTS _params (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+      );
+      if (!this.find("_superusers"))
         for (const c of bootstrapCollections()) {
           const { old, next } = this.prepare(c);
           this.validate(old, next);
@@ -236,7 +236,7 @@ export class CollectionStore {
           this.syncTable(old, next);
           db.run(...rowInsert(next));
         }
-      });
+    });
   }
 
   all(): Collection[] {

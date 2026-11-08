@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
 import { RecordHooks } from "../extend/record-hooks";
 import type { PasswordValue } from "../fields";
 import { internalRecords } from "../records/internal";
 import { INSTALLER_EMAIL } from "../util";
 import type { HookEvent, HookHandler } from "./hook";
 import type { RecordErrorEvent, RecordEvent } from "./events";
+import { cheapPassword, testApp } from "../test-app";
 
 let app: App;
 const text = (name: string, opts = {}) => ({ name, type: "text", ...opts });
@@ -43,7 +44,7 @@ function logDeletes(): string[] {
 }
 
 beforeEach(async () => {
-  app = createApp({ dir: "" });
+  app = testApp();
   await app.collections.save({ name: "posts", fields: [text("title")] as any });
   await app.collections.save({ name: "audit", fields: [text("note")] as any });
 });
@@ -131,7 +132,7 @@ describe("records", () => {
 
   test("a throw in onRecordCreateExecute leaves no row and no file, and fires the after-error hooks", async () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-"));
-    const disk = createApp({ dir });
+    const disk = testApp({ dir });
     try {
       await disk.collections.save({
         name: "docs",
@@ -346,7 +347,11 @@ describe("auth references", () => {
   });
 
   test("deleting an auth collection deletes its rows", async () => {
-    await app.collections.save({ name: "members", type: "auth" });
+    await app.collections.save({
+      name: "members",
+      type: "auth",
+      fields: [cheapPassword] as any,
+    });
     const m = await app
       .records("members")
       .create({ email: "a@b.co", password: "12345678" });
@@ -456,7 +461,7 @@ describe("short-circuits and errors", () => {
 
   test("a throwing after-success hook keeps the committed row and its files", async () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-"));
-    const disk = createApp({ dir });
+    const disk = testApp({ dir });
     const stored = () =>
       readdirSync(join(dir, "storage"), {
         recursive: true,
@@ -630,7 +635,11 @@ describe("collection import and views", () => {
   });
 
   test("import with deleteMissing of an auth collection deletes its rows", async () => {
-    await app.collections.save({ name: "members", type: "auth" });
+    await app.collections.save({
+      name: "members",
+      type: "auth",
+      fields: [cheapPassword] as any,
+    });
     const m = await app
       .records("members")
       .create({ email: "a@b.co", password: "12345678" });

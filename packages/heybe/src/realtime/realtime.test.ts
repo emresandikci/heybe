@@ -1,48 +1,22 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../app";
+import { type App } from "../app";
+import { testApp } from "../test-app";
 import { takeAppleName } from "../auth/oauth2/flow";
 import { errorResponse } from "../http/errors";
 import type { AuthState } from "../http/router";
 import { createEvent } from "../http/router";
 import { createRouter } from "../http/server";
 import { internalRecords } from "../records/internal";
-import type { Timers } from "../timers";
+import { fakeClock } from "../test-clock";
 import { AUTH_KEY, IP_KEY } from "./broadcast";
 import { Client } from "./broker";
 
-function fakeTimers() {
-  let now = 0;
-  let seq = 0;
-  const pending = new Map<number, { at: number; fn: () => void }>();
-  const timers: Timers & { advance(ms: number): void } = {
-    setTimeout: (fn, ms) => {
-      pending.set(++seq, { at: now + ms, fn });
-      return seq;
-    },
-    clearTimeout: (h) => void pending.delete(h as number),
-    advance: (ms) => {
-      const end = now + ms;
-      for (;;) {
-        const due = [...pending]
-          .filter(([, t]) => t.at <= end)
-          .sort(([, a], [, b]) => a.at - b.at)[0];
-        if (!due) break;
-        pending.delete(due[0]);
-        now = due[1].at;
-        due[1].fn();
-      }
-      now = end;
-    },
-  };
-  return timers;
-}
-
 let app: App;
-let timers: ReturnType<typeof fakeTimers>;
+let clock: ReturnType<typeof fakeClock>;
 
 beforeEach(() => {
-  timers = fakeTimers();
-  app = createApp({ dir: ":memory:", timers });
+  clock = fakeClock();
+  app = testApp({ timers: clock.timers });
 });
 
 afterEach(() => app.close());
@@ -151,13 +125,13 @@ describe("connection", () => {
 
   test("the idle timeout closes after 5 minutes without messages and a message pushes it back", async () => {
     const conn = await connect();
-    timers.advance(299_999);
+    clock.advance(299_999);
     await roundTrip(conn);
-    timers.advance(299_999);
+    clock.advance(299_999);
     await roundTrip(conn);
-    timers.advance(299_999);
+    clock.advance(299_999);
     expect(app.realtime.clientById(conn.id)).not.toBeNull();
-    timers.advance(1);
+    clock.advance(1);
     expect(await conn.frame()).toBeNull();
     expect(app.realtime.clientById(conn.id)).toBeNull();
     expect(conn.client.isDiscarded()).toBe(true);
@@ -166,12 +140,12 @@ describe("connection", () => {
   test("the max timeout closes at 30 minutes despite traffic", async () => {
     const conn = await connect();
     for (let i = 0; i < 7; i++) {
-      timers.advance(240_000);
+      clock.advance(240_000);
       await roundTrip(conn);
     }
-    timers.advance(119_999);
+    clock.advance(119_999);
     expect(app.realtime.clientById(conn.id)).not.toBeNull();
-    timers.advance(1);
+    clock.advance(1);
     expect(await conn.frame()).toBeNull();
     expect(app.realtime.clientById(conn.id)).toBeNull();
   });
@@ -306,12 +280,12 @@ describe("oauth2 redirect", () => {
       data: `{"state":"${client.id}","code":"c1"}`,
     });
     expect(client.hasSubscription("@oauth2")).toBe(false);
-    timers.advance(59_999);
+    clock.advance(59_999);
     expect(takeAppleName(app, "c1")).toBe("Ada Lovelace");
     expect(takeAppleName(app, "c1")).toBeUndefined();
 
     await appleRedirect(oauth2Client().id, "c2");
-    timers.advance(60_000);
+    clock.advance(60_000);
     expect(takeAppleName(app, "c2")).toBeUndefined();
   });
 

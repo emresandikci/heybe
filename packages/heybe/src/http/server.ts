@@ -23,6 +23,8 @@ import { registerRecordAuthOAuth2Routes } from "./routes/record-auth-oauth2";
 import { registerRecordRoutes } from "./routes/records";
 import { registerSettingsRoutes } from "./routes/settings";
 
+const SHUTDOWN_TIMEOUT = 1000;
+
 // `--http` value: "host:port", ":port" (all interfaces), "[ipv6]:port" or a bare port on 127.0.0.1.
 export function parseHttpAddr(addr: string): { host: string; port: number } {
   const match = /^(?:(\[[^\]]*\]|[^:]*):)?(\d{1,5})$/.exec(addr);
@@ -135,7 +137,14 @@ export async function serve(
     );
   return {
     url: `http://${opts.host}:${server.port}`,
+    // like Go's Server.Shutdown: in-flight requests get up to 1 s, then the rest are closed
     stop: async () => {
+      let timer: unknown;
+      const timeout = new Promise<void>((resolve) => {
+        timer = app.timers.setTimeout(resolve, SHUTDOWN_TIMEOUT);
+      });
+      await Promise.race([server.stop(false), timeout]);
+      app.timers.clearTimeout(timer);
       await server.stop(true);
     },
   };

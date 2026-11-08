@@ -3,6 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
+import { testApp } from "../test-app";
 import { mimeExtension, sniffMime } from "./mime";
 import { normalizeFilename } from "./name";
 import { fileKey, localFilesystem } from "./storage";
@@ -313,7 +314,7 @@ describe("sniffMime", () => {
 
 describe("app.files", () => {
   test("a memory app gets a temp storage dir removed on close", async () => {
-    const app = createApp({ dir: ":memory:" });
+    const app = testApp();
     await app.files.write("pbc_1/abc/a.txt", new Uint8Array([1]));
     expect(await app.files.file("pbc_1/abc/a.txt")).not.toBeNull();
     app.close();

@@ -1,3 +1,4 @@
+import type { CollectionName } from "@heybe/query";
 import type * as ev from "./events";
 import { type BindOptions, Hook, type HookHandler } from "./hook";
 
@@ -200,9 +201,16 @@ type BinderOptions = Omit<BindOptions, "tags">;
 
 type Binder<T> = (fn: HookHandler<T>, opts?: BinderOptions) => string;
 
+// a collection name or id; typegen's names are suggested
+export type CollectionTag = CollectionName | (string & {});
+
 interface TaggedBinder<T> {
   (fn: HookHandler<T>, opts?: BinderOptions): string;
-  (tags: string | string[], fn: HookHandler<T>, opts?: BinderOptions): string;
+  (
+    tags: CollectionTag | CollectionTag[],
+    fn: HookHandler<T>,
+    opts?: BinderOptions,
+  ): string;
 }
 
 /**

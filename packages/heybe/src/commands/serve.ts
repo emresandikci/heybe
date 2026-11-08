@@ -31,11 +31,12 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   );
   app.onTerminate(
     async (e) => {
+      for (const client of app.realtime.clients()) client.discard();
       await server.stop().catch((err) => console.warn("Failed to stop", err));
       await installer;
       await e.next();
     },
-    { id: "heybeGracefulShutdown", priority: 999 },
+    { id: "pbGracefulShutdown", priority: -9999 },
   );
   await new Promise<void>((resolve) => {
     const onSignal = () => {

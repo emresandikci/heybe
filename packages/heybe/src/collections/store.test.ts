@@ -121,7 +121,7 @@ describe("save", () => {
 
   test("renaming a field keeps row data", async () => {
     const c = await store.save({ name: "posts", fields: postFields });
-    db.run("INSERT INTO posts (id, title) VALUES ('a', 'hello')");
+    db.tx(() => db.run("INSERT INTO posts (id, title) VALUES ('a', 'hello')"));
     await store.save({
       id: c.id,
       name: "posts",
@@ -138,7 +138,7 @@ describe("save", () => {
       name: "posts",
       fields: [text("a"), text("b")] as any,
     });
-    db.run("INSERT INTO posts (id, a, b) VALUES ('x', '1', '2')");
+    db.tx(() => db.run("INSERT INTO posts (id, a, b) VALUES ('x', '1', '2')"));
     await store.save({
       id: c.id,
       name: "posts",
@@ -159,7 +159,7 @@ describe("save", () => {
       fields: postFields,
       indexes: ["CREATE INDEX `idx_title` ON `posts` (`title`)"],
     });
-    db.run("INSERT INTO posts (id, title) VALUES ('a', 'hello')");
+    db.tx(() => db.run("INSERT INTO posts (id, title) VALUES ('a', 'hello')"));
     const renamed = await store.save({ id: c.id, name: "articles" });
     expect(db.get("SELECT title FROM articles")).toEqual({ title: "hello" });
     expect(

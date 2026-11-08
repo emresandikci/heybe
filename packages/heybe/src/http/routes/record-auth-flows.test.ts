@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type App, createApp } from "../../app";
+import { type App } from "../../app";
+import { testApp } from "../../test-app";
 import { sendAuthAlert } from "../../auth/alerts";
 import { newAuthToken, newMailToken } from "../../auth/tokens";
 import { ApiError } from "../errors";
@@ -17,7 +18,7 @@ let sent: MailMessage[];
 
 beforeEach(() => {
   clock = new Date("2026-01-01T00:00:00Z");
-  app = createApp({ dir: ":memory:", now: () => clock });
+  app = testApp({ now: () => clock });
   sent = [];
   app.mailer = { send: async (msg) => void sent.push(msg) };
 });
