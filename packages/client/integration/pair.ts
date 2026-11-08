@@ -4,6 +4,7 @@ import {
   startTargets,
   type Target,
 } from "../../heybe/contract/harness";
+import { memoryStore } from "../src/auth-store";
 import { createClient, type HeybeClient } from "../src/client";
 import { HeybeError } from "../src/error";
 
@@ -17,14 +18,9 @@ export interface Pair {
 }
 
 function adminClient(target: Target): HeybeClient {
-  return createClient(target.url, {
-    fetch: (input, init) => {
-      const headers = new Headers(init?.headers);
-      if (!headers.has("Authorization"))
-        headers.set("Authorization", target.superToken);
-      return fetch(input, { ...init, headers });
-    },
-  });
+  const authStore = memoryStore();
+  authStore.save(target.superToken, null);
+  return createClient(target.url, { authStore });
 }
 
 export async function startPair(
