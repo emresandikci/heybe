@@ -4,6 +4,7 @@ import { sqliteMessage } from "../../collections/ddl";
 import { DecodeError, withDefaults } from "../../collections/field-settings";
 import { type Collection, type CollectionType } from "../../collections/model";
 import { compileCollectionsQuery } from "../../collections/search";
+import { dryRunView } from "../../collections/view";
 import {
   authSystemFields,
   idField,
@@ -276,6 +277,37 @@ async function importCollections(e: RequestEvent): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
+async function dryRunViewQuery(e: RequestEvent): Promise<Response> {
+  const loadError = "An error occurred while loading the submitted data.";
+  const body = await readBody(e, loadError);
+  const query = body.query ?? "";
+  if (typeof query !== "string") throw new ApiError(400, loadError);
+  const invalid = (data: Record<string, unknown>) =>
+    new ApiError(
+      400,
+      "An error occurred while validating the submitted data.",
+      {
+        query: data,
+      },
+    );
+  if (query === "")
+    throw invalid({ code: "validation_required", message: "Cannot be blank." });
+  if ([...query].length > 5000)
+    throw invalid({
+      code: "validation_length_too_long",
+      message: "The length must be no more than 5000.",
+      params: { max: 5000, min: 0 },
+    });
+  try {
+    return e.json(200, dryRunView(e.app.db, e.app.collections, query, 10));
+  } catch (err) {
+    throw new ApiError(
+      400,
+      `Invalid view query. Raw error: \n${sqliteMessage(err)}`,
+    );
+  }
+}
+
 export function registerCollectionRoutes(router: Router): void {
   router.add("GET", "/api/collections", guarded(list));
   router.add("POST", "/api/collections", guarded(create));
@@ -298,4 +330,9 @@ export function registerCollectionRoutes(router: Router): void {
   );
   router.add("PUT", "/api/collections/import", guarded(importCollections));
   router.add("GET", "/api/collections/meta/scaffolds", guarded(scaffolds));
+  router.add(
+    "POST",
+    "/api/collections/meta/dry-run-view",
+    guarded(dryRunViewQuery),
+  );
 }

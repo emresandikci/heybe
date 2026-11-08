@@ -49,6 +49,14 @@ import {
   idField,
   scaffold,
 } from "./scaffold";
+import {
+  createViewFields,
+  deleteView,
+  dryRunView,
+  inferViewFields,
+  normalizeViewQueryId,
+  saveView,
+} from "./view";
 
 interface Row {
   id: string;
@@ -181,6 +189,7 @@ type Prepared = { old: Collection | null; next: Collection };
 
 export class CollectionStore {
   onChange?: () => void;
+  private depth = 0;
 
   constructor(
     private readonly db: Db,
@@ -231,14 +240,68 @@ export class CollectionStore {
   }
 
   save(input: SaveInput, isNew = false): Collection {
-    const saved = this.db.tx(() => {
-      const { old, next } = this.prepare(input, isNew);
-      this.validate(old, next);
-      this.persist(old, next);
-      return next;
+    return this.changing(() => {
+      const saved = this.db.tx(() => {
+        const { old, next } = this.prepare(input, isNew);
+        this.validate(old, next);
+        this.persist(old, next);
+        return next;
+      });
+      this.resaveViewsLogged([saved.id], saved.name);
+      return saved;
     });
-    this.onChange?.();
-    return saved;
+  }
+
+  // Nested saves (dependent view resaves) can still roll back with their caller,
+  // so onChange fires once the outermost operation has committed.
+  private changing<T>(fn: () => T): T {
+    this.depth++;
+    try {
+      const result = fn();
+      if (this.depth === 1) this.onChange?.();
+      return result;
+    } finally {
+      this.depth--;
+    }
+  }
+
+  // PB only logs these, so the user can fix the view queries afterwards
+  private resaveViewsLogged(excludeIds: string[], name: string) {
+    try {
+      this.resaveViews(excludeIds);
+    } catch (e) {
+      console.warn(
+        `heybe: dependent view collection(s) may need to be updated after ${name} collection change:`,
+        e,
+      );
+    }
+  }
+
+  // Port of PB resaveViewsWithChangedFields.
+  private resaveViews(excludeIds: string[]) {
+    const comparable = (fields: Field[]) =>
+      JSON.stringify(
+        fields.map((f) =>
+          Object.fromEntries(
+            Object.entries({ ...f, id: "" }).sort(([a], [b]) =>
+              a < b ? -1 : 1,
+            ),
+          ),
+        ),
+      ).toLowerCase();
+    this.db.tx(() => {
+      const failures: string[] = [];
+      for (const view of this.all()) {
+        if (view.type !== "view" || excludeIds.includes(view.id)) continue;
+        try {
+          const fields = inferViewFields(this.db, this, String(view.viewQuery));
+          if (comparable(fields) !== comparable(view.fields)) this.save(view);
+        } catch (e) {
+          failures.push(`[${view.name}] ${(e as Error).message}`);
+        }
+      }
+      if (failures.length > 0) throw new Error(failures.join("\n"));
+    });
   }
 
   // PB ImportCollections: all collections are saved first and validated afterwards, in one transaction.
@@ -249,6 +312,21 @@ export class CollectionStore {
   ): Promise<void> {
     if (items.length === 0) throw new Error("no collections to import");
     const removed: string[] = [];
+    this.changing(() => {
+      this.importTx(items, deleteMissing, removed);
+      this.resaveViewsLogged(
+        items.map((i) => String(i.id ?? "")),
+        "imported",
+      );
+    });
+    return this.deleteFiles(removed);
+  }
+
+  private importTx(
+    items: Record<string, unknown>[],
+    deleteMissing: boolean,
+    removed: string[],
+  ) {
     this.db.tx(() => {
       const inputs = items.map((data) => this.importInput(data, deleteMissing));
       const prepared = inputs.map((input) => this.prepare(input));
@@ -287,8 +365,6 @@ export class CollectionStore {
         }
       }
     });
-    this.onChange?.();
-    return this.deleteFiles(removed);
   }
 
   // Errors throw synchronously; the returned promise settles once the collection's files are gone.
@@ -301,8 +377,18 @@ export class CollectionStore {
       throw new Error(
         `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
       );
-    this.db.tx(() => this.remove(c));
-    this.onChange?.();
+    this.changing(() =>
+      this.db.tx(() => {
+        this.remove(c);
+        try {
+          this.resaveViews([c.id]);
+        } catch (e) {
+          throw new Error(
+            `[${c.name}] failed to delete due to existing view dependency: ${(e as Error).message}`,
+          );
+        }
+      }),
+    );
     return this.deleteFiles([c.id]);
   }
 
@@ -434,6 +520,7 @@ export class CollectionStore {
 
   private persist(old: Collection | null, next: Collection) {
     this.enforceSuperusers(next);
+    if (next.type === "view") this.persistView(old, next);
     try {
       syncTable(this.db, old, next);
     } catch (e) {
@@ -456,6 +543,14 @@ export class CollectionStore {
         row.updated,
       ],
     );
+  }
+
+  private persistView(old: Collection | null, next: Collection) {
+    const query = String(next.viewQuery ?? "");
+    const fields = inferViewFields(this.db, this, query);
+    if (old) deleteView(this.db, old.name);
+    saveView(this.db, next.name, normalizeViewQueryId(this.db, query));
+    next.fields = fields;
   }
 
   private require(nameOrId: string): Collection {
@@ -507,13 +602,17 @@ export class CollectionStore {
       ]);
     }
 
+    // view fields are always generated from the query, overwriting any submitted ones
+    if (next.type === "view")
+      next.fields = createViewFields(
+        this.db,
+        this,
+        String(next.viewQuery ?? ""),
+      ).fields;
+
     this.validateName(errors, old, next);
-    this.validateFields(
-      errors,
-      old,
-      next.type === "view" ? { ...next, fields: [] } : next,
-    );
-    if (next.type === "view" && !next.viewQuery) fail("viewQuery", required);
+    this.validateFields(errors, old, next);
+    if (next.type === "view") this.validateViewQuery(errors, next);
 
     const ruleCheck: RuleCheck = (value, oldValue) =>
       this.checkRule(next, value) ??
@@ -543,6 +642,23 @@ export class CollectionStore {
       throw new ValidationError(
         `Failed to ${isNew ? "create" : "update"} collection.`,
         errors,
+      );
+    }
+  }
+
+  private validateViewQuery(errors: Errors, next: Collection) {
+    const query = String(next.viewQuery ?? "");
+    if (query === "") return addError(errors, ["viewQuery"], required);
+    try {
+      dryRunView(this.db, this, query, 10);
+    } catch (e) {
+      addError(
+        errors,
+        ["viewQuery"],
+        [
+          "validation_invalid_view_query",
+          `Invalid query - ${(e as Error).message.slice(0, 500)}`,
+        ],
       );
     }
   }
@@ -634,7 +750,7 @@ export class CollectionStore {
     if (
       isRename &&
       this.db.get(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 COLLATE NOCASE AND NOT EXISTS (SELECT 1 FROM _collections WHERE name = ?1 COLLATE NOCASE)",
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?1 COLLATE NOCASE AND NOT EXISTS (SELECT 1 FROM _collections WHERE name = ?1 COLLATE NOCASE)",
         [name],
       )
     ) {

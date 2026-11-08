@@ -210,8 +210,10 @@ export function syncTable(
 
     for (const oldField of old.fields) {
       if (!next.fields.some((f) => f.id === oldField.id)) {
-        db.run(
+        runOrFail(
+          db,
           `ALTER TABLE ${quote(next.name)} DROP COLUMN ${quote(oldField.name)}`,
+          `failed to drop column ${oldField.name}`,
         );
       }
     }
@@ -221,13 +223,17 @@ export function syncTable(
       const oldField = old.fields.find((f) => f.id === field.id);
       const temp = `_sync_${i}`;
       if (!oldField) {
-        db.run(
+        runOrFail(
+          db,
           `ALTER TABLE ${quote(next.name)} ADD COLUMN ${columnDef({ ...field, name: temp })}`,
+          `failed to add column ${field.name}`,
         );
         renames.push([temp, field.name]);
       } else if (oldField.name !== field.name) {
-        db.run(
+        runOrFail(
+          db,
           `ALTER TABLE ${quote(next.name)} RENAME COLUMN ${quote(oldField.name)} TO ${quote(temp)}`,
+          `failed to rename column ${oldField.name}`,
         );
         renames.push([temp, field.name]);
       }
@@ -243,5 +249,15 @@ export function syncTable(
 }
 
 export function dropTable(db: Db, c: Collection): void {
-  if (c.type !== "view") db.run(`DROP TABLE IF EXISTS ${quote(c.name)}`);
+  db.run(
+    `DROP ${c.type === "view" ? "VIEW" : "TABLE"} IF EXISTS ${quote(c.name)}`,
+  );
+}
+
+function runOrFail(db: Db, sql: string, failure: string) {
+  try {
+    db.run(sql);
+  } catch (e) {
+    throw new Error(`${failure} - ${sqliteMessage(e)}`);
+  }
 }

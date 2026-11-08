@@ -18,6 +18,8 @@ export function openDb(path: string): Db {
   sqlite.run("PRAGMA busy_timeout = 10000");
   sqlite.run("PRAGMA foreign_keys = ON");
   sqlite.run("PRAGMA synchronous = NORMAL");
+  // macOS system SQLite defaults to legacy mode, where renames skip views and dropping a column a view reads is allowed
+  sqlite.run("PRAGMA legacy_alter_table = OFF");
 
   const cache = new Map<string, Statement>();
   const withStmt = <R>(sql: string, fn: (s: Statement) => R): R => {

@@ -70,6 +70,7 @@ const OZZO_CODES = [
   "validation_empty",
   "validation_match_invalid",
   "validation_in_invalid",
+  "validation_not_in_invalid",
   "validation_min_greater_equal_than_required",
   "validation_max_less_equal_than_required",
   "validation_length_out_of_range",

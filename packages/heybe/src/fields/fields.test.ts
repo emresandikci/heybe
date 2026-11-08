@@ -524,7 +524,9 @@ describe("json", () => {
     expect(fields.json.toDb({ a: 1 })).toBe('{"a":1}');
     expect(fields.json.toDb("x")).toBe('"x"');
     expect(fields.json.fromDb(null, field("json"))).toBeNull();
-    expect(fields.json.fromDb("", field("json"))).toBeNull();
+    expect(fields.json.fromDb("", field("json"))).toBe("");
+    expect(fields.json.fromDb("hi", field("json"))).toBe("hi");
+    expect(fields.json.fromDb(2.5, field("json"))).toBe(2.5);
     expect(fields.json.fromDb('{"a":1}', field("json"))).toEqual({ a: 1 });
     expect(fields.json.fromDb("[1]", field("json"))).toEqual([1]);
   });

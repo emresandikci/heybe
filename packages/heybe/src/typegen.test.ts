@@ -107,3 +107,18 @@ test("a failed write is only a warning", () => {
   }
   expect(warnings).toHaveLength(1);
 });
+
+test("includes view collections with their inferred fields", () => {
+  app.collections.save({
+    name: "posts",
+    fields: [{ name: "title", type: "text" }] as any,
+  });
+  app.collections.save({
+    name: "post_stats",
+    type: "view",
+    viewQuery: "select id, title, count(id) as total from posts group by id",
+  });
+  expect(generateTypes(app.collections.all())).toContain(
+    "    post_stats: {\n      id: string;\n      title: string;\n      total: number;\n    };",
+  );
+});

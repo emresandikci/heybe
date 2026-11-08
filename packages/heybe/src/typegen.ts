@@ -50,7 +50,7 @@ function render(c: Collection): string {
 
 export function generateTypes(collections: Collection[]): string {
   const included = collections
-    .filter((c) => !c.name.startsWith("_") && c.type !== "view")
+    .filter((c) => !c.name.startsWith("_"))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const body = included.map(render).join("\n");
   const usesRelation = included.some((c) =>

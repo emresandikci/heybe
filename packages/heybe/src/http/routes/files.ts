@@ -1,5 +1,6 @@
 import { newFileToken, authFromToken } from "../../auth/tokens";
 import type { Collection } from "../../collections/model";
+import { findRecordByViewFile } from "../../collections/view";
 import { uniqueStrings } from "../../fields/shared";
 import { parseFilter } from "../../filter/parse";
 import { sniffMime } from "../../files/mime";
@@ -121,7 +122,25 @@ async function download(e: RequestEvent): Promise<Response> {
   )
     throw new ApiError(404, "");
 
-  const originalKey = fileKey(c.id, record.id as string, filename);
+  let base = { collectionId: c.id, recordId: record.id as string };
+  if (c.type === "view") {
+    let source: ReturnType<typeof findRecordByViewFile>;
+    try {
+      source = findRecordByViewFile(
+        e.app.db,
+        e.app.collections,
+        c,
+        field.name,
+        filename,
+      );
+    } catch {
+      source = null;
+    }
+    if (!source) throw new ApiError(404, "");
+    base = { collectionId: source.collection.id, recordId: source.id };
+  }
+
+  const originalKey = fileKey(base.collectionId, base.recordId, filename);
   let servedName = filename;
   let blob: Blob | null;
   try {
@@ -140,8 +159,8 @@ async function download(e: RequestEvent): Promise<Response> {
   ) {
     const thumbName = `${thumb}_${filename}`;
     const thumbKey = fileKey(
-      c.id,
-      record.id as string,
+      base.collectionId,
+      base.recordId,
       `thumbs_${filename}/${thumbName}`,
     );
     let thumbBlob = await e.app.files.file(thumbKey).catch(() => null);

@@ -38,12 +38,9 @@ export const json: FieldDef = {
   },
   toDb: (value) =>
     value === null || value === undefined ? null : JSON.stringify(value),
+  // view columns can hold any SQLite value, PB reads them as strings
   fromDb(raw) {
-    if (typeof raw !== "string" || raw === "") return null;
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return raw;
-    }
+    if (typeof raw === "number") return raw;
+    return typeof raw === "string" ? parseText(raw) : null;
   },
 };

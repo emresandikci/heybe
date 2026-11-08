@@ -1,5 +1,6 @@
 import type { Collection } from "../collections/model";
 import { ValidationError } from "../util";
+import { tokenize as tokenizeRaw } from "../tokenizer";
 import { excerpt } from "./excerpt";
 
 export interface SerializeOpts {
@@ -50,53 +51,16 @@ type Modifier = ((value: unknown) => unknown) | null;
 // PB answers every picker error with its generic 400
 const invalid = () => new ValidationError("");
 
-const WHITESPACE = "\t\n\v\f\r ";
-
-// Port of PB tools/tokenizer.
 function tokenize(
   input: string,
   separators: string,
   ignoreParenthesis = false,
 ): string[] {
-  const trim = [...WHITESPACE].filter((c) => !separators.includes(c));
-  const strip = (s: string) => {
-    let a = 0;
-    let b = s.length;
-    while (a < b && trim.includes(s[a]!)) a++;
-    while (b > a && trim.includes(s[b - 1]!)) b--;
-    return s.slice(a, b);
-  };
-  const tokens: string[] = [];
-  const chars = [...input];
-  let i = 0;
-  while (i < chars.length) {
-    let buf = "";
-    let parens = 0;
-    let quote = "";
-    let prev = "";
-    for (; i < chars.length; i++) {
-      const ch = chars[i]!;
-      if (prev !== "\\") {
-        if (!ignoreParenthesis && ch === "(" && quote === "") parens++;
-        else if (!ignoreParenthesis && ch === ")" && parens > 0 && quote === "")
-          parens--;
-        else if (ch === "'" || ch === '"' || ch === "`") {
-          if (quote === ch) quote = "";
-          else if (quote === "") quote = ch;
-        }
-      }
-      if (separators.includes(ch) && parens === 0 && quote === "") {
-        i++;
-        break;
-      }
-      prev = ch;
-      buf += ch;
-    }
-    if (parens > 0 || quote !== "") throw invalid();
-    const token = strip(buf);
-    if (token !== "") tokens.push(token);
+  try {
+    return tokenizeRaw(input, { separators, ignoreParenthesis });
+  } catch {
+    throw invalid();
   }
-  return tokens;
 }
 
 function toInt(s: string): number {
