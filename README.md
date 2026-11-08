@@ -71,8 +71,8 @@ const posts = await heybe.records("posts").findMany({
 3. **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
 4. **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
 5. **`@heybe/client`**
-6. **Dashboard**
-7. **Operations:** rate limiting, logs, backups, S3, SQL API.
+6. **Operations:** rate limiting, logs, backups, S3, SQL API.
+7. **Dashboard**
 8. **Distribution:** `heybe import`, single binary, npm package, docs.
 
 ## Development
