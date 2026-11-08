@@ -14,6 +14,7 @@ const DATE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 // Only values in the expected format are replaced, so an empty or malformed value still shows as a difference.
 const PLACEHOLDERS: Record<string, [RegExp, string]> = {
   otpId: [/^[a-z0-9]{15}$/, "<otpId>"],
+  mfaId: [/^[a-z0-9]{15}$/, "<mfaId>"],
   token: [/^[\w-]+\.[\w-]+\.[\w-]+$/, "<token>"],
   created: [DATE, "<created>"],
   updated: [DATE, "<updated>"],

@@ -479,6 +479,7 @@ async function authWithOtp(e: RequestEvent): Promise<Response> {
     newAuthToken(e.app, c, record),
     body,
     "otp",
+    "otp",
   );
 }
 

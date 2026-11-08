@@ -41,6 +41,19 @@ beforeAll(async () => {
         otp: { enabled: true },
       }),
     );
+  for (const [name, rule] of [
+    ["mfausers", ""],
+    ["mfaother", ""],
+    ["mfarule", "email ~ 'secure'"],
+  ])
+    await both((t) =>
+      api(t, "POST", "/api/collections", {
+        name,
+        type: "auth",
+        otp: { enabled: true },
+        mfa: { enabled: true, rule },
+      }),
+    );
   await both((t) =>
     api(t, "POST", "/api/collections", { name: "posts", type: "base" }),
   );
@@ -332,6 +345,149 @@ describe("auth-methods", () => {
     await same(
       (t) =>
         api(t, "GET", "/api/collections/users/auth-methods", undefined, null),
+      200,
+    );
+  });
+});
+
+describe("mfa", () => {
+  const mfa = "/api/collections/mfausers";
+  const password =
+    (email: string, mfaId?: Ids, path = mfa, query = false) =>
+    (t: Target) =>
+      api(
+        t,
+        "POST",
+        `${path}/auth-with-password${query && mfaId ? `?mfaId=${mfaId[t.name]}` : ""}`,
+        {
+          identity: email,
+          password: PASSWORD,
+          ...(mfaId && !query ? { mfaId: mfaId[t.name] } : {}),
+        },
+        null,
+      );
+  const otpWith =
+    (r: Requested, mfaId: Ids, path = mfa) =>
+    (t: Target) =>
+      api(
+        t,
+        "POST",
+        `${path}/auth-with-otp`,
+        {
+          otpId: r.otpId[t.name],
+          password: r.code[t.name],
+          mfaId: mfaId[t.name],
+        },
+        null,
+      );
+
+  test("password then OTP with the mfaId logs in, and the mfaId is single use", async () => {
+    await createUser("pw-otp@example.com", "mfausers");
+    const mfaId = await capture(password("pw-otp@example.com"), "mfaId", 401);
+    expect(mfaId.heybe).toMatch(/^[a-z0-9]{15}$/);
+    const r = await requestOtp("pw-otp@example.com", mfa);
+    await same(otpWith(r, mfaId), 200);
+    await same(password("pw-otp@example.com", mfaId), 400);
+  });
+
+  test("OTP then password with the mfaId in the query logs in", async () => {
+    await createUser("otp-pw@example.com", "mfausers");
+    const r = await requestOtp("otp-pw@example.com", mfa);
+    const mfaId = await capture(authWith(r, mfa), "mfaId", 401);
+    await same(password("otp-pw@example.com", mfaId, mfa, true), 200);
+  });
+
+  test("the same method twice is rejected and the mfaId stays usable", async () => {
+    await createUser("twice@example.com", "mfausers");
+    const mfaId = await capture(password("twice@example.com"), "mfaId", 401);
+    await same(password("twice@example.com", mfaId), 400);
+    const r = await requestOtp("twice@example.com", mfa);
+    await same(otpWith(r, mfaId), 200);
+  });
+
+  test("an mfaId of another user, another collection or unknown fails", async () => {
+    await createUser("owner@example.com", "mfausers");
+    await createUser("intruder@example.com", "mfausers");
+    await createUser("intruder@example.com", "mfaother");
+    const mfaId = await capture(password("owner@example.com"), "mfaId", 401);
+    await same(password("intruder@example.com", mfaId), 400);
+    await same(
+      password("intruder@example.com", mfaId, "/api/collections/mfaother"),
+      400,
+    );
+    await same(
+      password("intruder@example.com", {
+        pocketbase: "missing",
+        heybe: "missing",
+      }),
+      400,
+    );
+    await same(
+      (t) =>
+        api(
+          t,
+          "POST",
+          `${mfa}/auth-with-password`,
+          { identity: "owner@example.com", password: PASSWORD, mfaId: 1 },
+          null,
+        ),
+      400,
+    );
+  });
+
+  test("the rule decides who needs MFA", async () => {
+    const path = "/api/collections/mfarule";
+    await createUser("plain@example.com", "mfarule");
+    await createUser("secure@example.com", "mfarule");
+    await same(password("plain@example.com", undefined, path), 200);
+    await same(password("secure@example.com", undefined, path), 401);
+  });
+
+  test("a password change drops pending MFAs", async () => {
+    const ids = await createUser("mfa-pw@example.com", "mfausers");
+    const mfaId = await capture(password("mfa-pw@example.com"), "mfaId", 401);
+    await same(
+      (t) =>
+        api(t, "PATCH", `${mfa}/records/${ids[t.name]}`, {
+          password: PASSWORD,
+          passwordConfirm: PASSWORD,
+        }),
+      200,
+    );
+    const r = await requestOtp("mfa-pw@example.com", mfa);
+    await same(otpWith(r, mfaId), 400);
+  });
+
+  test("auth-methods reports the mfa config", async () => {
+    await same(
+      (t) => api(t, "GET", `${mfa}/auth-methods`, undefined, null),
+      200,
+    );
+  });
+
+  test("superusers need MFA once OTP is enabled for them", async () => {
+    const su = "/api/collections/_superusers";
+    await same((t) => api(t, "PATCH", su, { otp: { enabled: true } }), 200);
+    const mfaId = await capture(
+      (t) =>
+        api(
+          t,
+          "POST",
+          `${su}/auth-with-password`,
+          { identity: "test@example.com", password: "1234567890" },
+          null,
+        ),
+      "mfaId",
+      401,
+    );
+    const r = await requestOtp("test@example.com", su);
+    await same(otpWith(r, mfaId, su), 200);
+    await same(
+      (t) =>
+        api(t, "PATCH", su, {
+          otp: { enabled: false },
+          mfa: { enabled: false },
+        }),
       200,
     );
   });

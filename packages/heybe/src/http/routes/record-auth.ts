@@ -1,6 +1,7 @@
 import { toAst } from "@heybe/query";
 import type { App } from "../../app";
 import { authTokenFromRequest } from "../middlewares";
+import { type MfaMethod, checkMfa } from "../../auth/mfa";
 import { newAuthToken } from "../../auth/tokens";
 import { parseUnverifiedJwt } from "../../auth/jwt";
 import { quote, findSingleColumnUniqueIndex } from "../../collections/ddl";
@@ -177,19 +178,22 @@ function canAuthenticate(
   }
 }
 
-export function authResponse(
+export async function authResponse(
   e: RequestEvent,
   c: Collection,
   record: Values,
   token: string,
   body: Values,
   context: string,
-): Response {
+  method: MfaMethod,
+): Promise<Response> {
   if (!canAuthenticate(e, c, record, body, context))
     throw new ApiError(
       403,
       "The request doesn't satisfy the collection requirements to authenticate.",
     );
+  const mfaId = await checkMfa(e, c, record, method, body, context);
+  if (mfaId !== null) return e.json(401, { mfaId });
   const serialized = serializeRecord(c, record, {
     isSuperuser: c.name === "_superusers",
     isOwner: true,
@@ -215,6 +219,7 @@ export function registerRecordAuthRoutes(router: Router): void {
     const c = findAuthCollection(e);
     const password = c.passwordAuth as PasswordAuth;
     const otp = c.otp as { enabled: boolean; duration: number };
+    const mfa = c.mfa as { enabled: boolean; duration: number };
     const emailPassword =
       password.enabled && password.identityFields.includes("email");
     const usernamePassword =
@@ -225,7 +230,7 @@ export function registerRecordAuthRoutes(router: Router): void {
         enabled: password.enabled,
       },
       oauth2: { providers: [], enabled: false },
-      mfa: { enabled: false, duration: 0 },
+      mfa: { enabled: mfa.enabled, duration: mfa.enabled ? mfa.duration : 0 },
       otp: {
         enabled: otp.enabled,
         duration: otp.enabled ? otp.duration : 0,
@@ -279,6 +284,7 @@ export function registerRecordAuthRoutes(router: Router): void {
         newAuthToken(e.app, c, record),
         body,
         "password",
+        "password",
       );
     },
   );
@@ -300,6 +306,6 @@ export function registerRecordAuthRoutes(router: Router): void {
     const claims = parseUnverifiedJwt(token, e.app.now);
     if (claims?.refreshable === true)
       token = newAuthToken(e.app, e.auth.collection, e.auth.record);
-    return authResponse(e, c, e.auth.record, token, {}, "default");
+    return authResponse(e, c, e.auth.record, token, {}, "default", "");
   });
 }
