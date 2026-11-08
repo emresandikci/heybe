@@ -1,9 +1,11 @@
+import type { CollectionName, Collections } from "@heybe/query";
 import {
   localStorageStore,
   memoryStore,
   type AuthStore,
 } from "./auth-store.js";
 import { defaultEnv, type Env, type Fetch } from "./env.js";
+import { createRecords, type RecordsClient } from "./records.js";
 import { buildURL, createSender, type SendOptions } from "./send.js";
 
 export interface ClientOptions {
@@ -22,6 +24,8 @@ export interface HeybeClient {
   send<T>(path: string, opts?: SendOptions): Promise<T>;
   cancelRequest(key: string): void;
   cancelAllRequests(): void;
+  records<N extends CollectionName>(name: N): RecordsClient<Collections[N]>;
+  records(name: string): RecordsClient<Record<string, unknown>>;
 }
 
 export function createClient(
@@ -55,7 +59,8 @@ export function createClientWith(
     autoCancel: opts.autoCancel ?? true,
     buildURL: (path) => buildURL(url, path),
     ...sender,
-  };
+    records: (name: string) => createRecords(client, name),
+  } as HeybeClient;
   return client;
 }
 

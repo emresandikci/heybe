@@ -6,3 +6,4 @@ export type { RequestOptions, SendOptions } from "./send.js";
 export { localStorageStore, memoryStore } from "./auth-store.js";
 export type { AuthRecord, AuthStore, StorageLike } from "./auth-store.js";
 export { tokenExpired, tokenPayload } from "./jwt.js";
+export type { BaseFields, Rec, RecordsClient, WriteData } from "./records.js";
