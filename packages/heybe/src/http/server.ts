@@ -60,6 +60,8 @@ export function serve(
     try {
       const path = new URL(req.url).pathname;
       const found = router.match(req.method, path);
+      // downloads may wait up to PB_THUMBS_MAX_WAIT in the thumb queue
+      if (path.startsWith("/api/files/")) server.timeout(req, 0);
       const bodyLimit = resolveBodyLimit(found, app);
       checkBodyLimit(req, bodyLimit);
       if (!found) throw new ApiError(404, "");

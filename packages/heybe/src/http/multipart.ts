@@ -60,8 +60,16 @@ export async function parseMultipart(
     else push(plain, key, inferValue(text));
   }
 
-  let out: Record<string, unknown> = {};
-  for (const [key, values] of plain) out[key] = one(values);
+  const fresh = () => Object.create(null) as Record<string, unknown>;
+  const set = (o: Record<string, unknown>, k: string, v: unknown) =>
+    Object.defineProperty(o, k, {
+      value: v,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  let out = fresh();
+  for (const [key, values] of plain) set(out, key, one(values));
   for (const payload of payloads) {
     let data: unknown;
     try {
@@ -71,19 +79,22 @@ export async function parseMultipart(
     }
     // Go's json.Unmarshal of null into the body map resets it
     if (data === null) {
-      out = {};
+      out = fresh();
       continue;
     }
     if (typeof data !== "object" || Array.isArray(data))
       throw new ApiError(400, "");
-    Object.assign(out, data);
+    for (const [k, v] of Object.entries(data)) set(out, k, v);
   }
   for (const [key, list] of files) {
     const prev = out[key];
-    out[key] =
+    set(
+      out,
+      key,
       prev === undefined
         ? one(list)
-        : [...(Array.isArray(prev) ? prev : [prev]), ...list];
+        : [...(Array.isArray(prev) ? prev : [prev]), ...list],
+    );
   }
   return out;
 }

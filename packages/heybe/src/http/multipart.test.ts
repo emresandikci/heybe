@@ -66,6 +66,21 @@ describe("parseMultipart", () => {
     ]);
   });
 
+  test("__proto__ keys stay own properties and do not replace the prototype", async () => {
+    const body = await parseMultipart(
+      request([
+        ["__proto__", "x"],
+        ["@jsonPayload", '{"__proto__":{"title":"polluted"},"a":1}'],
+      ]),
+      1 << 20,
+    );
+    expect(Object.keys(body).sort()).toEqual(["__proto__", "a"]);
+    expect(body.title).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(body, "__proto__")?.value).toEqual({
+      title: "polluted",
+    });
+  });
+
   test("@jsonPayload overrides plain values and keeps files", async () => {
     const body = await parseMultipart(
       request([

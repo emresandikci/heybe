@@ -52,7 +52,7 @@ interface Item {
 }
 
 const DEFAULT_TIMEOUT = 3;
-const DEFAULT_MAX_BODY_SIZE = 128 << 20;
+const DEFAULT_BATCH_MAX_BODY_SIZE = 128 << 20;
 const MAX_URL_LENGTH = 2000;
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const READ_FAILED = "Failed to read the submitted batch data.";
@@ -395,7 +395,7 @@ async function batch(e: RequestEvent): Promise<Response> {
 function batchBodyLimit(app: App): number {
   const { enabled, maxRequests, maxBodySize } = app.settings.get().batch;
   if (!enabled || maxRequests <= 0) return Number.MAX_SAFE_INTEGER;
-  return maxBodySize > 0 ? maxBodySize : DEFAULT_MAX_BODY_SIZE;
+  return maxBodySize > 0 ? maxBodySize : DEFAULT_BATCH_MAX_BODY_SIZE;
 }
 
 export function registerBatchRoutes(router: Router): void {

@@ -548,6 +548,42 @@ describe("multipart batch", () => {
       ]);
     }
   });
+
+  test("recreating a deleted id with a file loses the file like PB (the old record dir is removed after the commit)", async () => {
+    const id = "multipart000004";
+    for (const t of [targets.pb, targets.hb])
+      await setup(t, "POST", records("notes"), { id, title: "old" });
+    await same(
+      (t) =>
+        batch(
+          t,
+          multipart(
+            [
+              { method: "DELETE", url: records("notes", `/${id}`) },
+              {
+                method: "POST",
+                url: records("notes"),
+                body: { id, title: "new" },
+              },
+            ],
+            [["requests.1.file", fixture("a.txt")]],
+          ),
+        ),
+      200,
+    );
+    for (const t of [targets.pb, targets.hb])
+      expect(stored(t, "notes", id)).toEqual([]);
+    await same(async (t) => {
+      const record = (await (
+        await api(t, "GET", records("notes", `/${id}`))
+      ).json()) as { file: string };
+      return api(
+        t,
+        "GET",
+        `/api/files/${collectionIds[t.name].notes}/${id}/${record.file}`,
+      );
+    }, 404);
+  });
 });
 
 describe("batch auth records", () => {

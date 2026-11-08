@@ -1,5 +1,4 @@
 import { availableParallelism } from "node:os";
-import sharp from "sharp";
 import type { Filesystem } from "./storage";
 
 type Mode = "" | "t" | "b" | "f";
@@ -38,6 +37,7 @@ export async function createThumb(
   if (width === 0 && height === 0)
     throw new Error("thumb width and height cannot be zero at the same time");
 
+  const { default: sharp } = await import("sharp");
   const original = await fs.file(originalKey);
   if (!original) throw new Error(`original ${originalKey} does not exist`);
   const bytes = await original.bytes();

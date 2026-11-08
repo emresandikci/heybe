@@ -2,11 +2,10 @@ import { newFileToken, authFromToken } from "../../auth/tokens";
 import type { Collection } from "../../collections/model";
 import { findRecordByViewFile } from "../../collections/view";
 import { uniqueStrings } from "../../fields/shared";
-import { parseFilter } from "../../filter/parse";
 import { sniffMime } from "../../files/mime";
 import { fileKey } from "../../files/storage";
 import { createThumb, thumbGenerator } from "../../files/thumbs";
-import { buildRequestInfo, matchesRecord } from "../../records/rules";
+import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
 import { checkSuperuserIp, framable } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
@@ -88,11 +87,9 @@ function canView(
     auth: auth?.record ?? null,
     authCollection: auth?.collection.name ?? null,
   };
-  if (auth?.isSuperuser) return true;
-  if (c.viewRule === null) return false;
   try {
-    const rule = c.viewRule === "" ? null : parseFilter(c.viewRule);
-    return matchesRecord(e.app, c, recordId, rule, info);
+    ruleFilter(e.app, c, c.viewRule, "view", info, recordId);
+    return true;
   } catch {
     return false;
   }
@@ -167,8 +164,16 @@ async function download(e: RequestEvent): Promise<Response> {
     if (!thumbBlob) {
       try {
         await generateThumb(e.app.files, originalKey, thumbKey, thumb);
-        thumbBlob = await e.app.files.file(thumbKey);
+        if (await e.app.files.file(originalKey)) {
+          thumbBlob = await e.app.files.file(thumbKey);
+        } else {
+          await e.app.files.deletePrefix(
+            fileKey(base.collectionId, base.recordId, `thumbs_${filename}`),
+          );
+          throw new ApiError(404, "");
+        }
       } catch (err) {
+        if (err instanceof ApiError) throw err;
         console.warn(
           `Fallback to original - failed to create thumb ${thumbName}`,
           err,
