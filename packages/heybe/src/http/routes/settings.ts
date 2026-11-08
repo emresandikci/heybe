@@ -1,3 +1,8 @@
+import {
+  type AppleSecretForm,
+  appleFormErrors,
+  generateAppleClientSecret,
+} from "../../auth/apple";
 import { newMailToken } from "../../auth/tokens";
 import type { Collection } from "../../collections/model";
 import { isEmail } from "../../fields/email";
@@ -158,6 +163,46 @@ async function testEmail(e: RequestEvent): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
+async function appleClientSecret(e: RequestEvent): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = await e.body();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 413) throw err;
+    throw new ApiError(400, LOAD_FAILED);
+  }
+  const form: AppleSecretForm = {
+    clientId: "",
+    teamId: "",
+    keyId: "",
+    privateKey: "",
+    duration: 0,
+  };
+  for (const key of ["clientId", "teamId", "keyId", "privateKey"] as const) {
+    const v = body[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string") throw new ApiError(400, LOAD_FAILED);
+    form[key] = v;
+  }
+  const duration = body.duration ?? 0;
+  if (typeof duration !== "number" || !Number.isInteger(duration))
+    throw new ApiError(400, LOAD_FAILED);
+  form.duration = duration;
+
+  const errors = appleFormErrors(form);
+  if (Object.keys(errors).length > 0)
+    throw new ApiError(400, "Invalid client secret data.", errors);
+  try {
+    const secret = await generateAppleClientSecret(form, e.app.now());
+    return e.json(200, { secret });
+  } catch (err) {
+    throw new ApiError(
+      400,
+      `Failed to generate client secret. Raw error: \n${(err as Error).message}`,
+    );
+  }
+}
+
 export function registerSettingsRoutes(router: Router): void {
   router.add("GET", "/api/settings", (e) => {
     requireSuperuser(e);
@@ -170,5 +215,9 @@ export function registerSettingsRoutes(router: Router): void {
   router.add("POST", "/api/settings/test/email", (e) => {
     requireSuperuser(e);
     return testEmail(e);
+  });
+  router.add("POST", "/api/settings/apple/generate-client-secret", (e) => {
+    requireSuperuser(e);
+    return appleClientSecret(e);
   });
 }

@@ -27,6 +27,7 @@ import { NotFoundError, ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
 import { realIp } from "../middlewares";
 import type { AuthState, RequestEvent, Router } from "../router";
+import { requireSuperuser } from "./collections";
 import {
   authResponse,
   findAuthCollection,
@@ -483,6 +484,41 @@ async function authWithOtp(e: RequestEvent): Promise<Response> {
   );
 }
 
+// PB apis/record_auth_impersonate.go: a static token (non-refreshable, custom duration), and no MFA (method "").
+async function impersonate(e: RequestEvent): Promise<Response> {
+  requireSuperuser(e);
+  const c = e.app.collections.find(e.params.collection!);
+  if (c?.type !== "auth")
+    throw new ApiError(404, "Missing or invalid auth collection context.");
+  let record: Values;
+  try {
+    record = e.app.records(c.name).findRaw(e.params.id!);
+  } catch (error) {
+    if (error instanceof NotFoundError)
+      throw new ApiError(404, "The requested resource wasn't found.");
+    throw error;
+  }
+  const body = await loadBody(e);
+  const duration = body.duration ?? 0;
+  if (typeof duration !== "number" || !Number.isInteger(duration))
+    throw new ApiError(400, LOAD_FAILED);
+  check({
+    duration:
+      duration < 0
+        ? {
+            code: "validation_min_greater_equal_than_required",
+            message: "Must be no less than 0.",
+            params: { threshold: 0 },
+          }
+        : null,
+  });
+  const token = newAuthToken(e.app, c, record, {
+    duration: duration > 0 ? duration : undefined,
+    refreshable: false,
+  });
+  return authResponse(e, c, record, token, {}, "default", "");
+}
+
 export function registerRecordAuthFlowRoutes(router: Router): void {
   const base = "/api/collections/{collection}";
   router.add("POST", `${base}/request-verification`, requestVerification);
@@ -493,4 +529,5 @@ export function registerRecordAuthFlowRoutes(router: Router): void {
   router.add("POST", `${base}/confirm-email-change`, confirmEmailChange);
   router.add("POST", `${base}/request-otp`, requestOtp);
   router.add("POST", `${base}/auth-with-otp`, authWithOtp);
+  router.add("POST", `${base}/impersonate/{id}`, impersonate);
 }
