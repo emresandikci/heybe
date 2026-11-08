@@ -142,3 +142,26 @@ const results = await batch.send(); // [{ status, body }, ...]
 ```
 
 `files.url` returns `""` when the filename, the record id or both collection fields are missing. A batch is sent as one multipart request to `POST /api/batch`, so batch must be enabled in the settings. In a batch, a mixed array of stored names and new files keeps the names in the body and sends the files under `key+`.
+
+## Superuser services
+
+These need a superuser token (`heybe.auth("_superusers").withPassword(...)`).
+
+```ts
+await heybe.collections.create({ name: "posts", type: "base", fields: [...] });
+await heybe.collections.findMany({ where: { name: { like: "post" } } });
+await heybe.collections.update("posts", { listRule: "" });
+await heybe.collections.import(collections, true); // deleteMissing
+await heybe.collections.truncate("posts");
+await heybe.collections.delete("posts");
+await heybe.collections.scaffolds();
+
+await heybe.settings.get();
+await heybe.settings.update({ meta: { appName: "Acme" } });
+await heybe.settings.testEmail("users", "a@b.c", "verification");
+await heybe.settings.generateAppleClientSecret(clientId, teamId, keyId, privateKey, 3600);
+
+await heybe.crons.list();
+await heybe.crons.run("__pbDBOptimize__");
+await heybe.health.check();
+```

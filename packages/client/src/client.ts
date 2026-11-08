@@ -5,6 +5,16 @@ import {
   type AuthStore,
 } from "./auth-store.js";
 import { defaultEnv, type Env, type Fetch } from "./env.js";
+import {
+  createCollections,
+  createCrons,
+  createHealth,
+  createSettings,
+  type CollectionsService,
+  type CronsService,
+  type HealthService,
+  type SettingsService,
+} from "./admin.js";
 import { createAuth, type AuthClient } from "./auth.js";
 import { createBatch, type Batch } from "./batch.js";
 import { createFiles, type Files } from "./files.js";
@@ -27,6 +37,10 @@ export interface HeybeClient {
   readonly authStore: AuthStore;
   readonly realtime: Realtime;
   readonly files: Files;
+  readonly collections: CollectionsService;
+  readonly settings: SettingsService;
+  readonly crons: CronsService;
+  readonly health: HealthService;
   autoCancel: boolean;
   buildURL(path: string): string;
   send<T>(path: string, opts?: SendOptions): Promise<T>;
@@ -96,6 +110,10 @@ export function createClientWith(
       send: sender.send,
       buildURL: (path) => buildURL(url, path),
     }),
+    collections: createCollections(sender),
+    settings: createSettings(sender),
+    crons: createCrons(sender),
+    health: createHealth(sender),
     batch: () => createBatch(client),
     records: (name: string) => createRecords(client, name),
     auth: (name: string) =>
