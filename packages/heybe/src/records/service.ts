@@ -9,9 +9,11 @@ import { quote } from "../collections/ddl";
 import type { Collection, Field } from "../collections/model";
 import type { CollectionStore } from "../collections/store";
 import type { Db } from "../db";
-import { fields } from "../fields";
+import { PasswordValue, fields } from "../fields";
 import type { FieldCtx } from "../fields";
-import { toStr, uniqueStrings } from "../fields/shared";
+import { fileItems } from "../fields/file";
+import { type PrepareCtx, toStr, uniqueStrings } from "../fields/shared";
+import { type Filesystem, fileKey } from "../files/storage";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { parseSort } from "../filter/parse";
 import {
@@ -29,7 +31,7 @@ export interface RecordService<T> {
   create(data: Partial<T>): Promise<T>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
-  truncate(): void;
+  truncate(): Promise<void>;
   findRaw(id: string): Record<string, unknown>;
   query(opts: {
     filter?: Expr | null;
@@ -49,6 +51,7 @@ type Errors = Record<string, { code: string; message: string }>;
 interface Deps {
   db: Db;
   store: CollectionStore;
+  files: Filesystem;
   now: () => Date;
 }
 
@@ -57,6 +60,17 @@ const MAX_PER_PAGE = 1000;
 const CREATE_FAILED = "Failed to create record.";
 const UPDATE_FAILED = "Failed to update record.";
 const LIST_TYPES = ["select", "relation", "file"];
+
+// used when the record id cannot be a storage path segment; such ids never pass validation
+const DISCARD: Filesystem = {
+  write: async () => {},
+  file: async () => null,
+  delete: async () => {},
+  deletePrefix: async () => {},
+};
+
+const storableId = (id: string) =>
+  id !== "" && id !== "." && id !== ".." && !/[/\\\0]/.test(id);
 
 function zeroValues(c: Collection): Values {
   return Object.fromEntries(
@@ -101,8 +115,9 @@ function applyModifier(
     const delta = def.normalize(input, f) as number;
     return (current as number) + (op === "append" ? delta : -delta);
   }
-  const old = uniqueStrings(current);
-  const mod = uniqueStrings(input);
+  const items = f.type === "file" ? fileItems : uniqueStrings;
+  const old: unknown[] = items(current);
+  const mod: unknown[] = items(input);
   if (op === "append") return def.normalize([...old, ...mod], f);
   if (op === "prepend") return def.normalize([...mod, ...old], f);
   return def.normalize(
@@ -191,60 +206,86 @@ export class RecordServiceImpl<T> implements RecordService<T> {
   }
 
   async create(data: Partial<T>): Promise<T> {
-    const prepared = await this.prepareInput(data as Values);
-    const { c, saved } = this.deps.db.tx(() => {
-      const c = this.writable();
-      const values = zeroValues(c);
-      assign(c, values, data as Values);
-      autogenerate(c, values);
-      this.check(c, values, null, CREATE_FAILED, prepared);
-      this.stamp(c, values, "onCreate");
-      if (c.name === "_superusers") values.verified = true;
-      this.checkAuthId(c, values, CREATE_FAILED);
-      this.write(c, values, CREATE_FAILED, () => {
-        const cols = c.fields.map((f) => f.name);
-        this.deps.db.run(insertSql(c, cols), dbValues(c, values));
+    // the final id (given, `id:autogenerate` or generated) is fixed first: it names the storage dir
+    const collection = this.writable();
+    const input = { ...(data as Values) };
+    let id = toStr(draftValues(collection, null, input).id);
+    const pattern = collection.fields.find(
+      (f) => f.name === "id",
+    )?.autogeneratePattern;
+    if (id === "" && typeof pattern === "string" && pattern !== "")
+      id = randomByPattern(pattern);
+    delete input["id:autogenerate"];
+    input.id = id;
+
+    const ctx = this.prepareCtx(collection, id);
+    const { c, saved } = await this.saveFiles(ctx, async () => {
+      const prepared = await this.prepareInput(ctx.collection, input, ctx);
+      return this.deps.db.tx(() => {
+        const c = this.writable();
+        const values = zeroValues(c);
+        assign(c, values, prepared);
+        autogenerate(c, values);
+        this.check(c, values, null, CREATE_FAILED);
+        this.stamp(c, values, "onCreate");
+        if (c.name === "_superusers") values.verified = true;
+        this.checkAuthId(c, values, CREATE_FAILED);
+        this.write(c, values, CREATE_FAILED, () => {
+          const cols = c.fields.map((f) => f.name);
+          this.deps.db.run(insertSql(c, cols), dbValues(c, values));
+        });
+        if (c.name === "_superusers" && values.email !== INSTALLER_EMAIL)
+          this.deps.db.run("DELETE FROM _superusers WHERE email = ?", [
+            INSTALLER_EMAIL,
+          ]);
+        return { c, saved: values, original: null };
       });
-      if (c.name === "_superusers" && values.email !== INSTALLER_EMAIL)
-        this.deps.db.run("DELETE FROM _superusers WHERE email = ?", [
-          INSTALLER_EMAIL,
-        ]);
-      return { c, saved: values };
     });
     return this.output(c, saved);
   }
 
   async update(id: string, data: Partial<T>): Promise<T> {
-    const prepared = await this.prepareInput(data as Values);
-    const { c, saved } = this.deps.db.tx(() => {
-      const c = this.writable();
-      const original = this.load(c, id);
-      const values = { ...original };
-      assign(c, values, data as Values);
-      this.check(c, values, original, UPDATE_FAILED, prepared);
-      this.stamp(c, values, "onUpdate");
-      if (c.name === "_superusers") values.verified = true;
-      if (c.type === "auth") this.refreshTokenKey(c, values, original);
-      this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
-      return { c, saved: values };
+    const ctx = this.prepareCtx(this.writable(), id);
+    const { c, saved } = await this.saveFiles(ctx, async () => {
+      const prepared = await this.prepareInput(
+        ctx.collection,
+        data as Values,
+        ctx,
+      );
+      return this.deps.db.tx(() => {
+        const c = this.writable();
+        const original = this.load(c, id);
+        const values = { ...original };
+        assign(c, values, prepared);
+        this.check(c, values, original, UPDATE_FAILED);
+        this.stamp(c, values, "onUpdate");
+        if (c.name === "_superusers") values.verified = true;
+        if (c.type === "auth") this.refreshTokenKey(c, values, original);
+        this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
+        return { c, saved: values, original };
+      });
     });
     return this.output(c, saved);
   }
 
   async delete(id: string): Promise<void> {
     const c = this.writable();
-    this.deps.db.tx(() => this.remove(c, this.load(c, id)));
+    const removed: string[] = [];
+    this.deps.db.tx(() => this.remove(c, this.load(c, id), removed));
+    await this.deleteDirs(removed);
   }
 
-  truncate(): void {
+  async truncate(): Promise<void> {
     const c = this.writable();
     const { db } = this.deps;
+    const removed: string[] = [];
     db.tx(() => {
       for (const { id } of db.query<{ id: string }>(
         `SELECT id FROM ${quote(c.name)}`,
       ))
-        this.remove(c, this.load(c, id));
+        this.remove(c, this.load(c, id), removed);
     });
+    await this.deleteDirs(removed);
   }
 
   query(opts: Parameters<RecordService<T>["query"]>[0]): ListResult<T> {
@@ -363,18 +404,79 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     );
   }
 
-  private async prepareInput(data: Values): Promise<Values> {
-    const prepared: Values = {};
-    const c = this.collection();
-    for (const f of c.fields) {
-      const prepare = fields[f.type].prepare;
-      if (prepare && f.name in data)
-        prepared[f.name] = await prepare(
-          fields[f.type].normalize(data[f.name], f),
-          f,
-        );
+  private prepareCtx(collection: Collection, recordId: string): PrepareCtx {
+    return {
+      collection,
+      recordId,
+      files: storableId(recordId) ? this.deps.files : DISCARD,
+      written: [],
+    };
+  }
+
+  private async prepareInput(
+    c: Collection,
+    data: Values,
+    ctx: PrepareCtx,
+  ): Promise<Values> {
+    const prepared = { ...data };
+    for (const key of Object.keys(data)) {
+      const f = c.fields.find((f) => modifier(f, key));
+      const prepare = f && fields[f.type].prepare;
+      if (prepare && modifier(f, key) !== "subtract")
+        prepared[key] = await prepare(data[key], f, ctx);
     }
     return prepared;
+  }
+
+  // Files written while preparing are deleted when the save fails. After the commit, uploads the
+  // record does not keep and files the update dropped (with their thumbs) are deleted.
+  private async saveFiles<R extends { saved: Values; original: Values | null }>(
+    ctx: PrepareCtx,
+    run: () => Promise<R>,
+  ): Promise<R> {
+    let result: R;
+    try {
+      result = await run();
+    } catch (e) {
+      for (const key of ctx.written) await this.quietly(ctx.files.delete(key));
+      throw e;
+    }
+
+    const { saved, original } = result;
+    const { collection, recordId } = ctx;
+    const { id } = collection;
+    const kept = new Set<string>();
+    const dropped: string[] = [];
+    for (const f of collection.fields) {
+      if (f.type !== "file") continue;
+      const names = uniqueStrings(saved[f.name]);
+      for (const name of names) kept.add(fileKey(id, recordId, name));
+      for (const name of uniqueStrings(original?.[f.name]))
+        if (!names.includes(name)) dropped.push(name);
+    }
+    for (const key of ctx.written)
+      if (!kept.has(key)) await this.quietly(ctx.files.delete(key));
+    for (const name of dropped) {
+      await this.quietly(ctx.files.delete(fileKey(id, recordId, name)));
+      await this.quietly(
+        ctx.files.deletePrefix(fileKey(id, recordId, `thumbs_${name}`)),
+      );
+    }
+    return result;
+  }
+
+  private async deleteDirs(dirs: string[]): Promise<void> {
+    for (const dir of dirs)
+      await this.quietly(this.deps.files.deletePrefix(dir));
+  }
+
+  // storage cleanup is best effort, like PB which only logs these failures
+  private async quietly(op: Promise<void>): Promise<void> {
+    try {
+      await op;
+    } catch (e) {
+      console.warn("heybe: storage cleanup failed:", e);
+    }
   }
 
   private check(
@@ -382,7 +484,6 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     values: Values,
     original: Values | null,
     message: string,
-    prepared: Values,
   ): void {
     const { db, store, now } = this.deps;
     const ctx: FieldCtx = {
@@ -401,7 +502,14 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     }
     if (Object.keys(errors).length > 0)
       throw new ValidationError(message, errors);
-    Object.assign(values, prepared);
+    // only names and hashes outlive validation: no uploads, no plain passwords
+    for (const f of c.fields) {
+      const v = values[f.name];
+      if (f.type === "file")
+        values[f.name] = fields.file.fromDb(fields.file.toDb(v), f);
+      if (v instanceof PasswordValue)
+        values[f.name] = new PasswordValue(v.hash);
+    }
   }
 
   private stamp(
@@ -477,9 +585,11 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     }
   }
 
-  private remove(c: Collection, values: Values): void {
+  // `removed` collects the storage dirs of every deleted record, cascades included
+  private remove(c: Collection, values: Values, removed: string[]): void {
     const { db, store } = this.deps;
     db.run(`DELETE FROM ${quote(c.name)} WHERE id = ?`, [values.id]);
+    removed.push(`${c.id}/${values.id}`);
 
     const refs = store
       .all()
@@ -505,7 +615,8 @@ export class RecordServiceImpl<T> implements RecordService<T> {
           [values.id],
         )
         .map((r) => r.id);
-      for (const id of ids) this.unlink(other, f, id, String(values.id));
+      for (const id of ids)
+        this.unlink(other, f, id, String(values.id), removed);
     }
   }
 
@@ -513,7 +624,8 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     other: Collection,
     f: Field,
     id: string,
-    removed: string,
+    removedId: string,
+    removed: string[],
   ): void {
     const row = this.deps.db.get<Values>(
       `SELECT * FROM ${quote(other.name)} WHERE id = ?`,
@@ -521,10 +633,10 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     );
     if (!row) return;
     const refValues = decode(other, row);
-    const ids = uniqueStrings(refValues[f.name]).filter((v) => v !== removed);
+    const ids = uniqueStrings(refValues[f.name]).filter((v) => v !== removedId);
 
     if (f.cascadeDelete === true && ids.length === 0) {
-      this.remove(other, refValues);
+      this.remove(other, refValues, removed);
       return;
     }
     if (f.required === true && ids.length === 0)

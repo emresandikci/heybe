@@ -2,6 +2,7 @@ import type { App } from "../app";
 import type { Collection } from "../collections/model";
 import { ApiError } from "./errors";
 import { DEFAULT_MAX_BODY_SIZE, readLimited } from "./middlewares";
+import { parseMultipart } from "./multipart";
 
 export interface AuthState {
   record: Record<string, unknown>;
@@ -19,8 +20,11 @@ export interface RequestEvent {
   body(): Promise<Record<string, unknown>>;
 }
 
+export type BodyLimit =
+  number | ((app: App, params: Record<string, string>) => number);
+
 export interface RouteOptions {
-  bodyLimit?: number;
+  bodyLimit?: BodyLimit;
 }
 
 export type Handler = (e: RequestEvent) => Response | Promise<Response>;
@@ -36,7 +40,7 @@ interface Route {
 interface Match {
   h: Handler;
   params: Record<string, string>;
-  bodyLimit: number;
+  bodyLimit: BodyLimit;
 }
 
 const segmentsOf = (path: string) => path.split("/").slice(1);
@@ -66,6 +70,14 @@ export class Router {
       bodyLimit: best.route.opts.bodyLimit ?? DEFAULT_MAX_BODY_SIZE,
     };
   }
+}
+
+export function resolveBodyLimit(match: Match | null, app: App): number {
+  if (!match) return DEFAULT_MAX_BODY_SIZE;
+  const { bodyLimit } = match;
+  return typeof bodyLimit === "number"
+    ? bodyLimit
+    : bodyLimit(app, match.params);
 }
 
 function rankOf(segment: string): number {
@@ -135,6 +147,7 @@ async function readBody(
   limit: number,
 ): Promise<Record<string, unknown>> {
   const type = req.headers.get("content-type") ?? "";
+  if (type.startsWith("multipart/form-data")) return parseMultipart(req, limit);
   const bytes = await readLimited(req, limit);
   if (bytes.length === 0) return {};
   try {
@@ -144,20 +157,16 @@ async function readBody(
         return data as Record<string, unknown>;
       throw new Error("not an object");
     }
-    if (
-      type.startsWith("multipart/form-data") ||
-      type.startsWith("application/x-www-form-urlencoded")
-    ) {
+    if (type.startsWith("application/x-www-form-urlencoded")) {
       const form = await new Response(bytes, {
         headers: { "content-type": type },
       }).formData();
       const out: Record<string, unknown> = {};
       for (const [key, value] of form.entries()) {
         const prev = out[key];
-        out[key] =
-          prev === undefined
-            ? value
-            : [...(Array.isArray(prev) ? prev : [prev]), value];
+        if (prev === undefined) out[key] = value;
+        else if (Array.isArray(prev)) prev.push(value);
+        else out[key] = [prev, value];
       }
       return out;
     }

@@ -1,5 +1,8 @@
 import { toAst } from "@heybe/query";
+import type { App } from "../../app";
 import type { Collection } from "../../collections/model";
+import { fields } from "../../fields";
+import { uniqueStrings } from "../../fields/shared";
 import { FilterError, parseFilter, parseSort } from "../../filter/parse";
 import type { RequestInfo } from "../../filter/compile";
 import {
@@ -14,6 +17,7 @@ import { pickFields, pickItems } from "../../records/serialize";
 import { replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
 import { ApiError, logUnexpected } from "../errors";
+import { DEFAULT_MAX_BODY_SIZE } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
 
 type Values = Record<string, unknown>;
@@ -97,13 +101,64 @@ function serialize(
   return pickFields(items[0]!, info.query.fields);
 }
 
-// Port of PB recordDataFromRequest: modifiers resolved, hidden fields dropped for non-superusers.
+// Port of PB dynamicCollectionBodyLimit.
+function collectionBodyLimit(app: App, params: Record<string, string>): number {
+  const c = app.collections.find(params.collection!);
+  if (!c) throw new ApiError(404, "Missing or invalid collection context.");
+  if (c.type === "view") return DEFAULT_MAX_BODY_SIZE;
+  return c.fields.reduce(
+    (sum, f) => sum + (fields[f.type].maxBodySize?.(f) ?? 0),
+    DEFAULT_MAX_BODY_SIZE,
+  );
+}
+
+// Splits uploaded `File` values from the plain body values (multipart bodies have both).
+function splitUploads(body: Values): {
+  plain: Values;
+  uploads: Map<string, File[]>;
+} {
+  const plain: Values = {};
+  const uploads = new Map<string, File[]>();
+  for (const [key, value] of Object.entries(body)) {
+    const list = Array.isArray(value) ? value : [value];
+    const files = list.filter((v): v is File => v instanceof File);
+    if (files.length === 0) {
+      plain[key] = value;
+      continue;
+    }
+    uploads.set(key, files);
+    const rest = list.filter((v) => !(v instanceof File));
+    if (rest.length > 0) plain[key] = rest.length === 1 ? rest[0] : rest;
+  }
+  return { plain, uploads };
+}
+
+// Port of PB recordDataFromRequest: modifiers resolved, uploads merged, hidden fields dropped for non-superusers.
 function recordData(
   c: Collection,
   info: RequestInfo,
   original: Values | null,
 ): Values {
-  const data = replaceModifiers(c, original, info.body);
+  const { plain, uploads } = splitUploads(info.body);
+  let data = replaceModifiers(c, original, plain);
+
+  const uploaded: Values = {};
+  for (const f of c.fields) {
+    if (f.type !== "file") continue;
+    for (const key of [f.name, `+${f.name}`, `${f.name}+`]) {
+      const files = uploads.get(key);
+      if (!files) continue;
+      // a plain key keeps the submitted names, so existing files are not dropped by accident
+      const kept =
+        key === f.name && plain[key] !== undefined && plain[key] !== null
+          ? uniqueStrings(plain[key])
+          : [];
+      uploaded[key] = [...kept, ...files];
+    }
+  }
+  if (Object.keys(uploaded).length > 0)
+    data = replaceModifiers(c, original, { ...data, ...uploaded });
+
   if (!isSuperuser(info)) {
     for (const f of c.fields) {
       if (f.hidden && !(c.type === "auth" && f.name === "password"))
@@ -314,7 +369,9 @@ export function registerRecordRoutes(router: Router): void {
   const base = "/api/collections/{collection}/records";
   router.add("GET", base, list);
   router.add("GET", `${base}/{id}`, view);
-  router.add("POST", base, create);
-  router.add("PATCH", `${base}/{id}`, update);
+  router.add("POST", base, create, { bodyLimit: collectionBodyLimit });
+  router.add("PATCH", `${base}/{id}`, update, {
+    bodyLimit: collectionBodyLimit,
+  });
   router.add("DELETE", `${base}/{id}`, remove);
 }

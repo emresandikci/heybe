@@ -20,10 +20,11 @@ export const json: FieldDef = {
   sqlType: sqlType("json"),
   normalize: (value) =>
     typeof value === "string" ? parseText(value) : (value ?? null),
+  maxBodySize: (field) =>
+    Number(field.maxSize) > 0 ? Number(field.maxSize) : DEFAULT_MAX_SIZE,
   validate(value, field) {
     const serialized = JSON.stringify(value) ?? "null";
-    const maxSize =
-      Number(field.maxSize) > 0 ? Number(field.maxSize) : DEFAULT_MAX_SIZE;
+    const maxSize = json.maxBodySize!(field);
     if (encoder.encode(serialized).length > maxSize) {
       return fail(
         "validation_json_size_limit",

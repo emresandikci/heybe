@@ -174,10 +174,11 @@ async function update(e: RequestEvent): Promise<Response> {
   );
 }
 
-function remove(e: RequestEvent): Response {
+async function remove(e: RequestEvent): Promise<Response> {
   const c = findOr404(e.app, e.params.collection!);
+  let cleanup: Promise<void>;
   try {
-    e.app.collections.delete(c.id);
+    cleanup = e.app.collections.delete(c.id);
   } catch {
     const refs = e.app.collections.references(c);
     const suffix =
@@ -186,10 +187,11 @@ function remove(e: RequestEvent): Response {
         : "";
     throw new ApiError(400, `Failed to delete collection${suffix}`);
   }
+  await cleanup;
   return new Response(null, { status: 204 });
 }
 
-function truncate(e: RequestEvent): Response {
+async function truncate(e: RequestEvent): Promise<Response> {
   const c = findOr404(e.app, e.params.collection!);
   if (c.type === "view")
     throw new ApiError(
@@ -197,7 +199,7 @@ function truncate(e: RequestEvent): Response {
       "View collections cannot be truncated since they don't store their own records.",
     );
   try {
-    e.app.records(c.name).truncate();
+    await e.app.records(c.name).truncate();
   } catch {
     throw new ApiError(
       400,
@@ -251,8 +253,12 @@ async function importCollections(e: RequestEvent): Promise<Response> {
       },
     );
 
+  let cleanup: Promise<void>;
   try {
-    e.app.collections.import(items as Record<string, unknown>[], deleteMissing);
+    cleanup = e.app.collections.import(
+      items as Record<string, unknown>[],
+      deleteMissing,
+    );
   } catch (err) {
     if (err instanceof ValidationError)
       throw new ApiError(400, "Failed to import collections.", err.data);
@@ -266,6 +272,7 @@ async function importCollections(e: RequestEvent): Promise<Response> {
       },
     });
   }
+  await cleanup;
   return new Response(null, { status: 204 });
 }
 

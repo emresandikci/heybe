@@ -42,6 +42,21 @@ describe("auth-with-password", () => {
   });
 });
 
+describe("auth-with-password multipart", () => {
+  test("number-like values are read as the submitted strings", async () => {
+    await app
+      .records("_superusers")
+      .create({ email: "a@example.com", password: "1234567890" });
+    const body = new FormData();
+    body.append("identity", "a@example.com");
+    body.append("password", "1234567890");
+    const res = (await call("/api/collections/_superusers/auth-with-password", {
+      body,
+    })) as Response;
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("auth-refresh guard order", () => {
   test("unknown collection is 404 before the auth check", async () => {
     const res = (await call("/api/collections/nope/auth-refresh")) as {

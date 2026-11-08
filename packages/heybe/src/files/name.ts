@@ -25,12 +25,13 @@ function snakecase(s: string): string {
     .toLowerCase();
 }
 
-export function normalizeFilename(original: string): string {
+// `detectedExt` (with the leading dot) is used when the name has no usable extension.
+export function normalizeFilename(original: string, detectedExt = ""): string {
   const name = original.length > 300 ? original.slice(-300) : original;
 
   const ext = extractExtension(name);
   let cleanExt = `.${trimDots(ext.replace(EXT_INVALID, ""))}`;
-  if (cleanExt === ".") cleanExt = "";
+  if (cleanExt === ".") cleanExt = detectedExt;
   if (cleanExt.length > 20) cleanExt = `.${trimDots(cleanExt.slice(-20))}`;
 
   const base = name.endsWith(ext)

@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { type App, createApp } from "../app";
+import { type PasswordValue, fields } from "../fields";
 import { NotFoundError, ValidationError } from "../util";
 import { serializeRecord } from "./serialize";
 
@@ -313,6 +314,23 @@ describe("auth records", () => {
     expect(raw.tokenKey).toHaveLength(50);
   });
 
+  test("the plain password does not outlive validation", async () => {
+    const toDb = spyOn(fields.password, "toDb");
+    try {
+      const users = app.records("users") as any;
+      const r = await users.create({ email: "a@b.co", password: "12345678" });
+      await users.update(r.id, { password: "87654321" });
+      const written = toDb.mock.calls.map(([v]) => v as PasswordValue);
+      expect(written).toHaveLength(2);
+      for (const v of written) {
+        expect(v.plain).toBe("");
+        expect(v.hash).toMatch(/^\$2/);
+      }
+    } finally {
+      toDb.mockRestore();
+    }
+  });
+
   test("a password or email change refreshes the tokenKey", async () => {
     const users = app.records("users") as any;
     const r = await users.create({ email: "a@b.co", password: "12345678" });
@@ -449,5 +467,141 @@ describe("concurrency", () => {
       file.close();
       rmSync(dir, { recursive: true });
     }
+  });
+});
+
+describe("file uploads", () => {
+  let dir: string;
+  let disk: App;
+  const txt = (name = "doc.txt", body = "hello") => new File([body], name);
+  const storage = () => join(dir, "storage");
+  const stored = (): string[] =>
+    existsSync(storage())
+      ? readdirSync(storage(), { recursive: true, withFileTypes: true })
+          .filter((d) => d.isFile())
+          .map((d) => relative(storage(), join(d.parentPath, d.name)))
+          .sort()
+      : [];
+  const keysOf = (c: string, r: Record<string, unknown>, names: string[]) =>
+    names.map((n) => join(disk.collections.find(c)!.id, r.id as string, n));
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "heybe-"));
+    disk = createApp({ dir, now });
+    disk.collections.save({
+      name: "docs",
+      fields: [
+        text("title", { required: true }),
+        { name: "file", type: "file", maxSelect: 1 },
+        { name: "files", type: "file", maxSelect: 3, maxSize: 10 },
+      ] as any,
+      indexes: ["CREATE UNIQUE INDEX idx_docs_title ON docs (title)"],
+    } as any);
+  });
+
+  afterEach(() => {
+    disk.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("create stores new files under the record dir", async () => {
+    const r = await disk
+      .records("docs")
+      .create({ title: "a", file: txt(), files: [txt("b.txt")] } as any);
+    expect(r.file).toMatch(/^doc_[a-z0-9]{10}\.txt$/);
+    expect(stored()).toEqual(
+      keysOf("docs", r, [r.file as string, ...(r.files as string[])]).sort(),
+    );
+  });
+
+  test("a create failing validation leaves no files", async () => {
+    await failure(disk.records("docs").create({ file: txt() } as any));
+    await failure(
+      disk
+        .records("docs")
+        .create({ title: "a", files: [txt("b", "x".repeat(11))] } as any),
+    );
+    expect(stored()).toEqual([]);
+    expect(existsSync(storage()) ? readdirSync(storage()) : []).toEqual([]);
+  });
+
+  test("a create failing in the write leaves no files", async () => {
+    await disk.records("docs").create({ title: "a" });
+    const e = await failure(
+      disk.records("docs").create({ title: "a", file: txt() } as any),
+    );
+    expect(e.data).toHaveProperty("title.code", "validation_not_unique");
+    expect(stored()).toEqual([]);
+  });
+
+  test("an unusable record id writes nothing outside the record dir", async () => {
+    await failure(
+      disk
+        .records("docs")
+        .create({ id: "a/b", title: "a", file: txt() } as any),
+    );
+    expect(stored()).toEqual([]);
+  });
+
+  test("a failed update keeps the old files and drops the new ones", async () => {
+    const docs = disk.records("docs");
+    const r = await docs.create({ title: "a", file: txt() } as any);
+    await docs.create({ title: "b" });
+    await failure(
+      docs.update(r.id as string, { title: "b", file: txt() } as any),
+    );
+    expect(stored()).toEqual(keysOf("docs", r, [r.file as string]));
+  });
+
+  test("update deletes replaced files only after the commit", async () => {
+    const docs = disk.records("docs");
+    const r = await docs.create({ title: "a", file: txt() } as any);
+    const u = await docs.update(
+      r.id as string,
+      { file: txt("new.txt") } as any,
+    );
+    expect(u.file).toMatch(/^new_/);
+    expect(stored()).toEqual(keysOf("docs", u, [u.file as string]));
+  });
+
+  test("uploads the final value does not keep are removed", async () => {
+    const r = await disk
+      .records("docs")
+      .create({ title: "a", file: [txt("one.txt"), txt("two.txt")] } as any);
+    expect(r.file).toMatch(/^two_/);
+    expect(stored()).toEqual(keysOf("docs", r, [r.file as string]));
+  });
+
+  test("id:autogenerate stores files under the final record id", async () => {
+    const r = await disk
+      .records("docs")
+      .create({ "id:autogenerate": "", title: "a", file: txt() } as any);
+    expect(stored()).toEqual(keysOf("docs", r, [r.file as string]));
+  });
+
+  test("Files nested in the input are uploaded, never stored by client name", async () => {
+    const r = await disk
+      .records("docs")
+      .create({ title: "a", files: [[txt("nested.txt", "x")]] } as any);
+    expect((r.files as string[])[0]).toMatch(/^nested_[a-z0-9]{10}\.txt$/);
+    expect(stored()).toEqual(keysOf("docs", r, r.files as string[]));
+  });
+
+  test("collection delete removes the collection storage dir", async () => {
+    await disk.records("docs").create({ title: "a", file: txt() } as any);
+    const id = disk.collections.find("docs")!.id;
+    expect(existsSync(join(storage(), id))).toBe(true);
+    await disk.collections.delete("docs");
+    expect(existsSync(join(storage(), id))).toBe(false);
+  });
+
+  test("delete and truncate remove the record dirs", async () => {
+    const docs = disk.records("docs");
+    const a = await docs.create({ title: "a", file: txt() } as any);
+    await docs.create({ title: "b", file: txt() } as any);
+    await docs.delete(a.id as string);
+    expect(stored()).toHaveLength(1);
+    await docs.truncate();
+    expect(stored()).toEqual([]);
   });
 });

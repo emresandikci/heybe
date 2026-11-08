@@ -55,11 +55,10 @@ describe("settings", () => {
     );
     app.settings.update(patch);
     const json = JSON.parse(JSON.stringify(app.settings));
-    expect(Object.keys(json).sort()).toEqual(
-      Object.keys(
-        JSON.parse(JSON.stringify(createApp({ dir: ":memory:" }).settings)),
-      ).sort(),
-    );
+    const fresh = createApp({ dir: ":memory:" });
+    const defaults = JSON.parse(JSON.stringify(fresh.settings));
+    fresh.close();
+    expect(Object.keys(json).sort()).toEqual(Object.keys(defaults).sort());
     expect(json.meta.appName).toBe("P");
     expect(Object.hasOwn(json.meta, "valueOf")).toBe(false);
   });

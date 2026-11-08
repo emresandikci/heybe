@@ -7,7 +7,7 @@ import {
   loadAuth,
   securityHeaders,
 } from "./middlewares";
-import { Router, createEvent } from "./router";
+import { Router, createEvent, resolveBodyLimit } from "./router";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
@@ -55,9 +55,10 @@ export function serve(
     try {
       const path = new URL(req.url).pathname;
       const found = router.match(req.method, path);
-      checkBodyLimit(req, found?.bodyLimit);
+      const bodyLimit = resolveBodyLimit(found, app);
+      checkBodyLimit(req, bodyLimit);
       if (!found) throw new ApiError(404, "");
-      const event = createEvent(app, req, found.params, found.bodyLimit);
+      const event = createEvent(app, req, found.params, bodyLimit);
       event.auth = loadAuth(app, req);
       if (event.auth?.isSuperuser)
         checkSuperuserIp(app, req, server.requestIP(req)?.address ?? "");

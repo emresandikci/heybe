@@ -3,7 +3,7 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
-import { sniffMime } from "./mime";
+import { mimeExtension, sniffMime } from "./mime";
 import { normalizeFilename } from "./name";
 import { fileKey, localFilesystem } from "./storage";
 
@@ -24,6 +24,19 @@ describe("localFilesystem", () => {
     await fs.delete("pbc_1/abc/a.txt");
     expect(await fs.file("pbc_1/abc/a.txt")).toBeNull();
     await fs.delete("pbc_1/abc/missing.txt");
+  });
+
+  test("delete removes the directories it leaves empty", async () => {
+    const fs = localFilesystem(root);
+    await fs.write("pbc_1/abc/a.txt", new Uint8Array([1]));
+    await fs.write("pbc_1/abc/b.txt", new Uint8Array([1]));
+    await fs.write("pbc_1/def/a.txt", new Uint8Array([1]));
+    await fs.delete("pbc_1/abc/a.txt");
+    expect(await readdir(join(root, "pbc_1/abc"))).toEqual(["b.txt"]);
+    await fs.delete("pbc_1/abc/b.txt");
+    expect(await readdir(join(root, "pbc_1"))).toEqual(["def"]);
+    await fs.delete("pbc_1/def/a.txt");
+    expect(await readdir(root)).toEqual([]);
   });
 
   test("a directory is not a file", async () => {
@@ -110,6 +123,16 @@ describe("normalizeFilename", () => {
     expect(normalizeFilename("README")).toMatch(/^readme_[a-z0-9]{10}$/);
   });
 
+  test("a detected extension is used only when the name has none", () => {
+    expect(normalizeFilename("README", ".txt")).toMatch(
+      /^readme_[a-z0-9]{10}\.txt$/,
+    );
+    expect(normalizeFilename("image.", ".png")).toMatch(
+      /^image_[a-z0-9]{10}\.png$/,
+    );
+    expect(normalizeFilename("a.pdf", ".png")).toMatch(/\.pdf$/);
+  });
+
   test("long names are cut to 100 characters and extensions to 20", () => {
     const long = normalizeFilename(`${"a".repeat(250)}.${"b".repeat(30)}`);
     expect(long).toMatch(/^a{100}_[a-z0-9]{10}\.b{20}$/);
@@ -129,6 +152,17 @@ describe("normalizeFilename", () => {
 
   test("two calls differ", () => {
     expect(normalizeFilename("a.txt")).not.toBe(normalizeFilename("a.txt"));
+  });
+});
+
+describe("mimeExtension", () => {
+  test.each([
+    ["text/plain; charset=utf-8", ".txt"],
+    ["image/png", ".png"],
+    ["image/jpeg", ".jpg"],
+    ["application/octet-stream", ""],
+  ])("%s is %p", (mime, ext) => {
+    expect(mimeExtension(mime)).toBe(ext);
   });
 });
 

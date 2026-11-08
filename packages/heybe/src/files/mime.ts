@@ -186,3 +186,20 @@ export async function sniffMime(data: Blob | Uint8Array): Promise<string> {
   const charset = charsetOf(head);
   return charset ? `text/plain; charset=${charset}` : "text/plain";
 }
+
+// Extensions PB's mimetype library reports for the common sniffed types; others get none.
+const EXTENSIONS: Record<string, string> = {
+  "text/plain": ".txt",
+  "application/json": ".json",
+  "image/svg+xml": ".svg",
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "application/pdf": ".pdf",
+  "application/zip": ".zip",
+};
+
+export function mimeExtension(mime: string): string {
+  return EXTENSIONS[mime.split(";")[0]!.trim()] ?? "";
+}

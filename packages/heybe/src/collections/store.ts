@@ -1,4 +1,5 @@
 import type { Db } from "../db";
+import type { Filesystem } from "../files/storage";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { filterSyntaxError } from "../filter/fexpr";
 import { FilterError, parseFilter } from "../filter/parse";
@@ -184,6 +185,7 @@ export class CollectionStore {
   constructor(
     private readonly db: Db,
     private readonly now: () => Date,
+    private readonly files?: Filesystem,
   ) {
     db.run(
       "CREATE TABLE IF NOT EXISTS _collections (id TEXT PRIMARY KEY, name TEXT UNIQUE NOT NULL, type TEXT NOT NULL, system INTEGER NOT NULL, data TEXT NOT NULL, created TEXT NOT NULL, updated TEXT NOT NULL)",
@@ -240,8 +242,13 @@ export class CollectionStore {
   }
 
   // PB ImportCollections: all collections are saved first and validated afterwards, in one transaction.
-  import(items: Record<string, unknown>[], deleteMissing: boolean): void {
+  // Errors throw synchronously; the returned promise settles once deleted collections' files are gone.
+  import(
+    items: Record<string, unknown>[],
+    deleteMissing: boolean,
+  ): Promise<void> {
     if (items.length === 0) throw new Error("no collections to import");
+    const removed: string[] = [];
     this.db.tx(() => {
       const inputs = items.map((data) => this.importInput(data, deleteMissing));
       const prepared = inputs.map((input) => this.prepare(input));
@@ -252,7 +259,10 @@ export class CollectionStore {
       if (deleteMissing) {
         const keep = new Set(prepared.map((p) => p.next.id));
         for (const existing of this.all()) {
-          if (!keep.has(existing.id) && !existing.system) this.remove(existing);
+          if (!keep.has(existing.id) && !existing.system) {
+            this.remove(existing);
+            removed.push(existing.id);
+          }
         }
       }
 
@@ -278,9 +288,11 @@ export class CollectionStore {
       }
     });
     this.onChange?.();
+    return this.deleteFiles(removed);
   }
 
-  delete(nameOrId: string): void {
+  // Errors throw synchronously; the returned promise settles once the collection's files are gone.
+  delete(nameOrId: string): Promise<void> {
     const c = this.require(nameOrId);
     if (c.system)
       throw new Error(`[${c.name}] system collections cannot be deleted`);
@@ -291,6 +303,18 @@ export class CollectionStore {
       );
     this.db.tx(() => this.remove(c));
     this.onChange?.();
+    return this.deleteFiles([c.id]);
+  }
+
+  // like PB the storage dir goes after the commit, and a failure is only logged
+  private async deleteFiles(collectionIds: string[]): Promise<void> {
+    for (const id of collectionIds) {
+      try {
+        await this.files?.deletePrefix(id);
+      } catch (e) {
+        console.warn("heybe: storage cleanup failed:", e);
+      }
+    }
   }
 
   references(c: Collection): Collection[] {

@@ -1,5 +1,6 @@
 import type { Db } from "../db";
 import type { Collection, Field } from "../collections/model";
+import type { Filesystem } from "../files/storage";
 
 export interface FieldError {
   code: string;
@@ -17,11 +18,21 @@ export interface FieldCtx {
   findCollection: (idOrName: string) => Collection | null;
 }
 
+export interface PrepareCtx {
+  collection: Collection;
+  recordId: string;
+  files: Filesystem;
+  // storage keys written while preparing, deleted again when the save fails
+  written: string[];
+}
+
 export interface FieldDef {
   sqlType: "TEXT" | "REAL" | "INTEGER";
   normalize(value: unknown, field: Field): unknown;
   validate(value: unknown, field: Field, ctx: FieldCtx): FieldError | null;
-  prepare?(value: unknown, field: Field): Promise<unknown>;
+  prepare?(value: unknown, field: Field, ctx: PrepareCtx): Promise<unknown>;
+  // PB MaxBodySizeCalculator: bytes this field adds to the create/update body limit
+  maxBodySize?(field: Field): number;
   toDb(value: unknown): unknown;
   fromDb(raw: unknown, field: Field): unknown;
 }

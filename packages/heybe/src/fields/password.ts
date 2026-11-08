@@ -25,11 +25,14 @@ export const password: FieldDef = {
     value instanceof PasswordValue
       ? value
       : new PasswordValue("", toStr(value)),
+  // the plain text stays so validation still sees it; only the hash is stored
   async prepare(value, field) {
-    if (!(value instanceof PasswordValue) || value.plain === "") return value;
+    const v = password.normalize(value, field) as PasswordValue;
+    if (v.plain === "") return v;
     const cost = Number(field.cost) > 0 ? Number(field.cost) : DEFAULT_COST;
     return new PasswordValue(
-      await Bun.password.hash(value.plain, { algorithm: "bcrypt", cost }),
+      await Bun.password.hash(v.plain, { algorithm: "bcrypt", cost }),
+      v.plain,
     );
   },
   validate(value, field) {

@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, rmdir } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
 export interface Filesystem {
@@ -48,8 +48,17 @@ export function localFilesystem(root: string): Filesystem {
       const blob = Bun.file(pathOf(key));
       return (await blob.exists()) ? blob : null;
     },
+    // empty parent dirs are removed too, so storage holds no leftovers of failed uploads
     async delete(key) {
-      await rm(pathOf(key), { force: true });
+      const path = pathOf(key);
+      await rm(path, { force: true });
+      for (let dir = dirname(path); dir !== base; dir = dirname(dir)) {
+        try {
+          await rmdir(dir);
+        } catch {
+          break;
+        }
+      }
     },
     async deletePrefix(prefix) {
       await rm(pathOf(prefix), { recursive: true, force: true });

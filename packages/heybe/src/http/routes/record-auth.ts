@@ -40,11 +40,19 @@ function fieldError(
 function validate(
   body: Values,
   identityFields: string[],
+  multipart: boolean,
 ): { identity: string; password: string; identityField: string } {
   const errors: Record<string, ReturnType<typeof fieldError>> = {};
   const text = (key: string, allowed?: string[]) => {
     const v = body[key];
-    const s = typeof v === "string" ? v : "";
+    // multipart values come inferred (PB RequestInfo.Body) but PB binds this form from the
+    // raw strings; inference only applies when String() gives the raw value back
+    const s =
+      typeof v === "string"
+        ? v
+        : multipart && (typeof v === "number" || typeof v === "boolean")
+          ? String(v)
+          : "";
     if (s === "") {
       if (!allowed)
         errors[key] = fieldError("validation_required", "Cannot be blank.");
@@ -230,7 +238,13 @@ export function registerRecordAuthRoutes(router: Router): void {
           "An error occurred while loading the submitted data.",
         );
       });
-      const form = validate(body, password.identityFields);
+      const form = validate(
+        body,
+        password.identityFields,
+        (e.req.headers.get("content-type") ?? "").startsWith(
+          "multipart/form-data",
+        ),
+      );
       const record = findRecord(
         e.app,
         c,

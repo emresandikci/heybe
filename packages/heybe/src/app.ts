@@ -27,17 +27,18 @@ export function createApp(opts: { dir: string; now?: () => Date }): App {
     : join(opts.dir, "storage");
   const db = openDb(memory ? ":memory:" : join(opts.dir, "data.db"));
   const now = opts.now ?? (() => new Date());
-  const collections = new CollectionStore(db, now);
+  const files = localFilesystem(storageRoot);
+  const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
 
   return {
     db,
     collections,
     settings,
-    files: localFilesystem(storageRoot),
+    files,
     now,
     records: (name: string) =>
-      new RecordServiceImpl({ db, store: collections, now }, name),
+      new RecordServiceImpl({ db, store: collections, files, now }, name),
     close: () => {
       db.close();
       if (memory) rmSync(storageRoot, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { createApp } from "../app";
 import { FilterError } from "../filter/parse";
 import { NotFoundError, ValidationError } from "../util";
@@ -39,6 +39,10 @@ describe("body limit", () => {
   });
   const app = createApp({ dir: ":memory:" });
   const server = serve(app, { host: "127.0.0.1", port: 0, router });
+  afterAll(async () => {
+    await server.stop();
+    app.close();
+  });
 
   const chunked = (size: number) =>
     new ReadableStream({

@@ -23,6 +23,7 @@ export interface Target {
   name: "pocketbase" | "heybe";
   url: string;
   superToken: string;
+  dir: string;
 }
 
 export interface Snapshot {
@@ -152,7 +153,7 @@ async function startOne(
     await stop();
     throw err;
   }
-  return { target: { name, url, superToken }, stop };
+  return { target: { name, url, superToken, dir }, stop };
 }
 
 export async function startTargets(): Promise<Started> {

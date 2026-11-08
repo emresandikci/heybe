@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { openDb } from "../db";
 import type { Collection, Field, FieldType } from "../collections/model";
 import { type FieldCtx, PasswordValue, fields } from "./index";
+import { UploadedFile } from "./file";
+import type { PrepareCtx } from "./shared";
 
 const db = openDb(":memory:");
 db.run("CREATE TABLE targets (id TEXT PRIMARY KEY)");
@@ -666,6 +668,112 @@ describe("file", () => {
     expect(fields.file.fromDb("", multi)).toEqual([]);
     expect(fields.file.fromDb("", field("file", { maxSelect: 1 }))).toBe("");
   });
+
+  const upload = (
+    name: string,
+    size = 10,
+    type = "text/plain; charset=utf-8",
+  ) => new UploadedFile(name, `original ${name}`, size, type);
+
+  test("normalize keeps uploads next to names", () => {
+    const file = new File(["x"], "x.txt");
+    const up = upload("u.txt");
+    expect(stored("file", { maxSelect: 3 }, ["a", file, up, "a"])).toEqual([
+      "a",
+      file,
+      up,
+    ]);
+    expect(stored("file", { maxSelect: 1 }, ["a", up])).toBe(up);
+    expect(stored("file", { maxSelect: 1 }, file)).toBe(file);
+  });
+
+  test("a File that skipped prepare is rejected", () => {
+    expect(code("file", { maxSelect: 2 }, [new File(["x"], "x.txt")])).toBe(
+      "validation_unsupported_value_type",
+    );
+  });
+
+  test("prepare uploads Files nested in arrays", async () => {
+    const ctx: PrepareCtx = {
+      collection: { id: "pbc_1" } as Collection,
+      recordId: "rec1",
+      files: { write: async () => {} } as unknown as PrepareCtx["files"],
+      written: [],
+    };
+    const value = (await fields.file.prepare!(
+      [[new File(["x"], "nested.txt")]],
+      field("file", { maxSelect: 2 }),
+      ctx,
+    )) as unknown[][];
+    expect(value[0]![0]).toBeInstanceOf(UploadedFile);
+    expect(ctx.written).toHaveLength(1);
+  });
+
+  test("uploads are not invalid new files", () => {
+    expect(code("file", { maxSelect: 2 }, [upload("u.txt")])).toBeNull();
+  });
+
+  test("an upload over maxSize", () => {
+    expect(check("file", { maxSize: 5 }, upload("u.txt", 6))).toEqual({
+      code: "validation_file_size_limit",
+      message:
+        "Failed to upload original u.txt - the maximum allowed file size is 5 bytes.",
+      params: { file: "original u.txt", maxSize: 5 },
+    });
+    expect(code("file", {}, upload("u.txt", 5 << 20))).toBeNull();
+    expect(code("file", {}, upload("u.txt", (5 << 20) + 1))).toBe(
+      "validation_file_size_limit",
+    );
+  });
+
+  test("an upload with a mime type outside mimeTypes", () => {
+    const opts = { mimeTypes: ["image/png", "text/plain"] };
+    expect(code("file", opts, upload("u.txt"))).toBeNull();
+    expect(check("file", opts, upload("u.png", 10, "application/pdf"))).toEqual(
+      {
+        code: "validation_invalid_mime_type",
+        message: '"u.png" mime type must be one of: image/png, text/plain.',
+      },
+    );
+  });
+
+  test("toDb stores upload names", () => {
+    expect(fields.file.toDb(["a", upload("u.txt")])).toBe('["a","u.txt"]');
+    expect(fields.file.toDb(upload("u.txt"))).toBe("u.txt");
+  });
+
+  test("prepare writes new files under the record and returns uploads", async () => {
+    const writes: string[] = [];
+    const ctx: PrepareCtx = {
+      collection: { id: "pbc_1" } as Collection,
+      recordId: "rec1",
+      files: {
+        write: async (key: string) => void writes.push(key),
+      } as unknown as PrepareCtx["files"],
+      written: [],
+    };
+    const png = Bun.file(new URL("../files/fixtures/a.png", import.meta.url));
+    const value = (await fields.file.prepare!(
+      [
+        "kept.txt",
+        new File([await png.bytes()], "image"),
+        new File(["hi"], "Hello World.txt"),
+      ],
+      field("file", { maxSelect: 3 }),
+      ctx,
+    )) as unknown[];
+    expect(value[0]).toBe("kept.txt");
+    const [image, text] = value.slice(1) as UploadedFile[];
+    expect(image).toBeInstanceOf(UploadedFile);
+    expect(image!.name).toMatch(/^image_[a-z0-9]{10}\.png$/);
+    expect(image!.type).toBe("image/png");
+    expect(text!.name).toMatch(/^hello_world_[a-z0-9]{10}\.txt$/);
+    expect(text!.originalName).toBe("Hello World.txt");
+    expect(text!.size).toBe(2);
+    const keys = [image!.name, text!.name].map((n) => `pbc_1/rec1/${n}`);
+    expect(writes).toEqual(keys);
+    expect(ctx.written).toEqual(keys);
+  });
 });
 
 describe("password", () => {
@@ -674,8 +782,9 @@ describe("password", () => {
   const prepared = async (opts: Record<string, unknown>, input: unknown) => {
     const f = field("password", { ...cheap, ...opts });
     return (await fields.password.prepare!(
-      fields.password.normalize(input, f),
+      input,
       f,
+      {} as PrepareCtx,
     )) as PasswordValue;
   };
 
@@ -710,9 +819,9 @@ describe("password", () => {
     expect(fields.password.normalize(v, pw)).toBe(v);
   });
 
-  test("prepare hashes plain with bcrypt and clears it", async () => {
+  test("prepare hashes plain with bcrypt and keeps it for validation", async () => {
     const v = await prepared({}, "secret123");
-    expect(v.plain).toBe("");
+    expect(v.plain).toBe("secret123");
     expect(v.hash).toMatch(/^\$2[ab]\$04\$/);
     expect(await Bun.password.verify("secret123", v.hash)).toBe(true);
     expect(fields.password.toDb(v)).toBe(v.hash);
@@ -721,17 +830,19 @@ describe("password", () => {
   test("prepare default cost is 10", async () => {
     const f = field("password");
     const v = (await fields.password.prepare!(
-      fields.password.normalize("secret123", f),
+      "secret123",
       f,
+      {} as PrepareCtx,
     )) as PasswordValue;
     expect(v.hash).toMatch(/^\$2[ab]\$10\$/);
   });
 
   test("prepare leaves empty and loaded values alone", async () => {
     const empty = fields.password.normalize("", pw);
-    expect(await fields.password.prepare!(empty, pw)).toBe(empty);
+    const ctx = {} as PrepareCtx;
+    expect(await fields.password.prepare!(empty, pw, ctx)).toBe(empty);
     const loaded = fields.password.fromDb("$2b$04$abc", pw);
-    expect(await fields.password.prepare!(loaded, pw)).toBe(loaded);
+    expect(await fields.password.prepare!(loaded, pw, ctx)).toBe(loaded);
   });
 
   const plain = (opts: Record<string, unknown>, input: string) =>
