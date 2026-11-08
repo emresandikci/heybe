@@ -41,7 +41,7 @@ function numericDate(claims: Claims, key: string): number | null {
 export interface ClaimRules {
   now: Date;
   leewayMs: number;
-  audience: string;
+  audience?: string;
   issuer?: string;
   expirationRequired?: boolean;
 }
@@ -60,9 +60,11 @@ export function validateClaims(claims: Claims, rules: ClaimRules): void {
   const iat = numericDate(claims, "iat");
   if (iat !== null && now + rules.leewayMs < iat)
     throw new Error("token used before issued");
-  const aud = typeof claims.aud === "string" ? [claims.aud] : claims.aud;
-  if (!Array.isArray(aud) || !aud.includes(rules.audience))
-    throw new Error("token has invalid audience");
+  if (rules.audience !== undefined) {
+    const aud = typeof claims.aud === "string" ? [claims.aud] : claims.aud;
+    if (!Array.isArray(aud) || !aud.includes(rules.audience))
+      throw new Error("token has invalid audience");
+  }
   if (rules.issuer !== undefined && claims.iss !== rules.issuer)
     throw new Error("token has invalid issuer");
 }

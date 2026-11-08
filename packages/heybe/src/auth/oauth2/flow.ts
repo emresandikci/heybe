@@ -17,6 +17,7 @@ import { ValidationError, formatDate, randomSecret } from "../../util";
 import { findAuthRecordByEmail, randomPassword } from "../flows";
 import { readText } from "./http";
 import { parseUnverified, validateClaims, validateTokenSignature } from "./jwk";
+import { mappers } from "./mappers";
 import { type ProviderInfo, providers } from "./providers";
 
 type Values = Record<string, unknown>;
@@ -53,7 +54,7 @@ export interface FetchCtx {
   signal: AbortSignal;
 }
 
-// Loads the provider's user; Task 6 adds the mappers of the other providers here.
+// Loads the provider's user.
 export type UserFetcher = (
   p: Provider,
   token: OAuth2Token,
@@ -75,7 +76,7 @@ const AVATAR_TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 10;
 const ID_TOKEN_LEEWAY_MS = 5 * 60_000;
 
-const isObject = (v: unknown): v is Values =>
+export const isObject = (v: unknown): v is Values =>
   v !== null && typeof v === "object" && !Array.isArray(v);
 
 export function providerConfigs(c: Collection): Values[] {
@@ -104,8 +105,20 @@ export function initProvider(config: Values): Provider | null {
       p[key] = config[key];
   if (typeof config.pkce === "boolean") p.pkce = config.pkce;
   if (isObject(config.extra)) p.extra = config.extra;
+  if (
+    p.name === "microsoft" &&
+    castString(p.extra.idTokenEmailClaim) !== "" &&
+    !p.scopes.includes("openid")
+  )
+    p.scopes.push("openid");
   return p;
 }
+
+// cast.ToString for the scalar types
+export const castString = (v: unknown) =>
+  typeof v === "string" || typeof v === "number" || typeof v === "boolean"
+    ? String(v)
+    : "";
 
 // Go url.QueryEscape
 const queryEscape = (s: string) =>
@@ -176,11 +189,11 @@ export function authMethodsProviders(c: Collection): Values[] {
   return out;
 }
 
-function typed(raw: Values, key: string, type: "string"): string;
-function typed(raw: Values, key: string, type: "number"): number;
-function typed(raw: Values, key: string, type: "boolean"): boolean;
+export function typed(raw: Values, key: string, type: "string"): string;
+export function typed(raw: Values, key: string, type: "number"): number;
+export function typed(raw: Values, key: string, type: "boolean"): boolean;
 // Go json.Unmarshal into a typed struct field: null or missing is the zero value, another type fails.
-function typed(
+export function typed(
   raw: Values,
   key: string,
   type: "string" | "number" | "boolean",
@@ -192,7 +205,7 @@ function typed(
   return v;
 }
 
-function parseObject(text: string): Values {
+export function parseObject(text: string): Values {
   const v = JSON.parse(text);
   if (v === null) return {};
   if (!isObject(v)) throw new Error("expected a JSON object");
@@ -200,7 +213,7 @@ function parseObject(text: string): Values {
 }
 
 // cast.ToBool
-function castBool(v: unknown): boolean {
+export function castBool(v: unknown): boolean {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v !== 0;
   if (typeof v === "string")
@@ -209,7 +222,7 @@ function castBool(v: unknown): boolean {
 }
 
 // x/oauth2 Token.Type
-function authorization(token: OAuth2Token): string {
+export function authorization(token: OAuth2Token): string {
   const t = token.tokenType;
   const type =
     t.toLowerCase() === "bearer" || t === ""
@@ -329,9 +342,15 @@ export async function fetchRawUserInfo(
   url: string,
   token: OAuth2Token,
   signal: AbortSignal,
+  init: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  } = {},
 ): Promise<string> {
   const res = await fetch(url, {
-    headers: { authorization: authorization(token) },
+    ...init,
+    headers: { ...init.headers, authorization: authorization(token) },
     signal,
   });
   const text = await readText(res, DEFAULT_MAX_BODY_SIZE);
@@ -342,7 +361,7 @@ export async function fetchRawUserInfo(
   return text;
 }
 
-function newAuthUser(
+export function newAuthUser(
   token: OAuth2Token,
   rawUser: Values,
   fields: Partial<AuthUser>,
@@ -706,7 +725,7 @@ export async function authWithOAuth2(
   const config = providerConfigs(c).find((p) => p.name === input.provider);
   const p = config && initProvider(config);
   if (!p) throw new ApiError(500, "Missing or invalid provider config.");
-  const fetchUser = userFetchers[p.name];
+  const fetchUser = userFetchers[p.name] ?? mappers[p.name];
   if (!fetchUser) throw new ApiError(500, `Failed to init provider ${p.name}.`);
 
   const signal = AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
