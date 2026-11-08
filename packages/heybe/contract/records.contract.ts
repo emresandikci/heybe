@@ -1163,3 +1163,92 @@ describe("filter string escapes", () => {
     }
   });
 });
+
+describe("unique indexes", () => {
+  beforeAll(async () => {
+    for (const t of [targets.pb, targets.hb]) {
+      const res = await api(t, "POST", "/api/collections", {
+        name: "slots",
+        type: "base",
+        fields: [
+          { name: "room", type: "text" },
+          { name: "day", type: "text" },
+          { name: "owner", type: "relation", collectionId: "_pb_users_auth_" },
+          { name: "code", type: "text" },
+        ],
+        indexes: [
+          "CREATE UNIQUE INDEX idx_slots_room_day ON slots (room, day)",
+          "CREATE UNIQUE INDEX idx_slots_owner ON slots (owner) WHERE owner != ''",
+          "CREATE UNIQUE INDEX idx_slots_code ON slots (code COLLATE NOCASE) WHERE code != ''",
+        ],
+      });
+      if (!res.ok) throw new Error(`${t.name}: ${await res.text()}`);
+      const user = await api(t, "POST", records("users"), {
+        id: "slotuser0000001",
+        email: `slot-${t.name}@example.com`,
+        password: "password123",
+        passwordConfirm: "password123",
+      });
+      await remember(t, "slotUser", user);
+    }
+  });
+
+  const slots = (t: Target, body: Json) =>
+    api(t, "POST", records("slots"), body);
+
+  test("multiple columns", async () => {
+    await same((t) => slots(t, { room: "a", day: "mon" }), 200);
+    await same((t) => slots(t, { room: "a", day: "mon" }), 400);
+    await same((t) => slots(t, { room: "a", day: "tue" }), 200);
+  });
+
+  test("relation field", async () => {
+    await same(
+      (t) => slots(t, { room: "b", day: "x", owner: "slotuser0000001" }),
+      200,
+    );
+    await same(
+      (t) => slots(t, { room: "c", day: "x", owner: "slotuser0000001" }),
+      400,
+    );
+  });
+
+  test("NOCASE column", async () => {
+    await same((t) => slots(t, { room: "d", day: "x", code: "Abc" }), 200);
+    await same((t) => slots(t, { room: "e", day: "x", code: "aBC" }), 400);
+  });
+
+  test("update", async () => {
+    await same(
+      async (t) =>
+        remember(
+          t,
+          "slotF",
+          await slots(t, { room: "f", day: "x", code: "Zed" }),
+        ),
+      200,
+    );
+    await same(
+      (t) =>
+        api(t, "PATCH", records("slots", `/${id(t, "slotF")}`), {
+          room: "a",
+          day: "mon",
+        }),
+      400,
+    );
+    await same(
+      (t) =>
+        api(t, "PATCH", records("slots", `/${id(t, "slotF")}`), {
+          code: "ABC",
+        }),
+      400,
+    );
+    await same(
+      (t) =>
+        api(t, "PATCH", records("slots", `/${id(t, "slotF")}`), {
+          owner: "slotuser0000001",
+        }),
+      400,
+    );
+  });
+});

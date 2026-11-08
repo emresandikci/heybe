@@ -348,8 +348,13 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     db.tx(() => {
       for (const { id } of db.query<{ id: string }>(
         `SELECT id FROM ${quote(c.name)}`,
-      ))
-        this.remove(c, this.load(c, id), removed);
+      )) {
+        const raw = db.get<Values>(
+          `SELECT * FROM ${quote(c.name)} WHERE id = ?`,
+          [id],
+        );
+        if (raw) this.remove(c, decode(c, raw), removed);
+      }
     });
     await this.deleteDirs(removed);
   }

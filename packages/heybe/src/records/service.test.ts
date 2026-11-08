@@ -288,6 +288,34 @@ describe("update and delete", () => {
       (await app.records("links").findOne(link.id as string)).posts,
     ).toEqual([b.id]);
   });
+
+  test("truncate succeeds when a cascade already removed later records", async () => {
+    app.collections.save({
+      name: "nodes",
+      fields: [text("name")] as any,
+    });
+    const nodes = app.collections.find("nodes")!;
+    app.collections.save({
+      ...nodes,
+      fields: [
+        ...nodes.fields,
+        {
+          name: "parent",
+          type: "relation",
+          collectionId: nodes.id,
+          maxSelect: 1,
+          cascadeDelete: true,
+        },
+      ] as any,
+    });
+    const root = await app.records("nodes").create({ name: "root" });
+    await app.records("nodes").create({ name: "a", parent: root.id });
+    await app.records("nodes").create({ name: "b", parent: root.id });
+
+    await app.records("nodes").truncate();
+
+    expect((await app.records("nodes").findMany()).totalItems).toBe(0);
+  });
 });
 
 describe("auth records", () => {
