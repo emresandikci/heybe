@@ -37,6 +37,13 @@ export interface RecordService<T> {
   delete(id: string): Promise<void>;
   truncate(): Promise<void>;
   findRaw(id: string): Record<string, unknown>;
+  // Writes in parts, for batches: `prepare` (async) before the transaction, the `*Prepared` writes
+  // inside it, `settle` after it.
+  prepare(data: Partial<T>, id?: string): Promise<PreparedWrite>;
+  createPrepared(p: PreparedWrite, data: Partial<T>): T;
+  updatePrepared(p: PreparedWrite, id: string, data: Partial<T>): T;
+  deletePrepared(p: PreparedWrite, id: string): void;
+  settle(p: PreparedWrite, committed: boolean): Promise<void>;
   query(opts: {
     filter?: Expr | null;
     sort?: string;
@@ -51,6 +58,15 @@ export interface RecordService<T> {
 
 type Values = Record<string, unknown>;
 type Errors = Record<string, { code: string; message: string }>;
+
+export interface PreparedWrite {
+  ctx: PrepareCtx;
+  // per field: submitted values (Files, plain passwords) and what they became (uploads, hashes)
+  resolved: Map<string, Map<unknown, unknown>>;
+  saved?: { saved: Values; original: Values | null };
+  // storage dirs of deleted records
+  removed: string[];
+}
 
 interface Deps {
   db: Db;
@@ -178,6 +194,20 @@ function autogenerate(c: Collection, values: Values): void {
   }
 }
 
+// records what each submitted leaf became; prepare keeps the shape of arrays
+function pair(pairs: Map<unknown, unknown>, input: unknown, output: unknown) {
+  if (Array.isArray(input) && Array.isArray(output))
+    input.forEach((v, i) => pair(pairs, v, output[i]));
+  else if (input !== output) pairs.set(input, output);
+}
+
+const swap = (pairs: Map<unknown, unknown>, value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map((v) => swap(pairs, v))
+    : pairs.has(value)
+      ? pairs.get(value)
+      : value;
+
 function insertSql(c: Collection, cols: string[]): string {
   return `INSERT INTO ${quote(c.name)} (${cols.map(quote).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
 }
@@ -221,73 +251,94 @@ export class RecordServiceImpl<T> implements RecordService<T> {
   }
 
   async create(data: Partial<T>): Promise<T> {
-    // the final id (given, `id:autogenerate` or generated) is fixed first: it names the storage dir
-    const collection = this.writable();
-    const input = { ...(data as Values) };
-    let id = toStr(draftValues(collection, null, input).id);
-    const pattern = collection.fields.find(
-      (f) => f.name === "id",
-    )?.autogeneratePattern;
-    if (id === "" && typeof pattern === "string" && pattern !== "")
-      id = randomByPattern(pattern);
-    delete input["id:autogenerate"];
-    input.id = id;
-
-    const ctx = this.prepareCtx(collection, id);
-    const { c, saved } = await this.saveFiles(ctx, async () => {
-      const prepared = await this.prepareInput(ctx.collection, input, ctx);
-      return this.deps.db.tx(() => {
-        const c = this.writable();
-        const values = zeroValues(c);
-        assign(c, values, prepared);
-        autogenerate(c, values);
-        this.check(c, values, null, CREATE_FAILED);
-        this.stamp(c, values, "onCreate");
-        if (c.name === "_superusers") values.verified = true;
-        this.checkAuthId(c, values, CREATE_FAILED);
-        this.write(c, values, CREATE_FAILED, () => {
-          const cols = c.fields.map((f) => f.name);
-          this.deps.db.run(insertSql(c, cols), dbValues(c, values));
-        });
-        if (c.name === "_superusers" && values.email !== INSTALLER_EMAIL)
-          this.deps.db.run("DELETE FROM _superusers WHERE email = ?", [
-            INSTALLER_EMAIL,
-          ]);
-        return { c, saved: values, original: null };
-      });
-    });
-    return this.output(c, saved);
+    const p = await this.prepare(data);
+    return this.commit(p, () => this.createPrepared(p, data));
   }
 
   async update(id: string, data: Partial<T>): Promise<T> {
-    const ctx = this.prepareCtx(this.writable(), id);
-    const { c, saved } = await this.saveFiles(ctx, async () => {
-      const prepared = await this.prepareInput(
-        ctx.collection,
-        data as Values,
-        ctx,
-      );
-      return this.deps.db.tx(() => {
-        const c = this.writable();
-        const original = this.load(c, id);
-        const values = { ...original };
-        assign(c, values, prepared);
-        this.check(c, values, original, UPDATE_FAILED);
-        this.stamp(c, values, "onUpdate");
-        if (c.name === "_superusers") values.verified = true;
-        if (c.type === "auth") this.refreshTokenKey(c, values, original);
-        this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
-        return { c, saved: values, original };
-      });
-    });
-    return this.output(c, saved);
+    const p = await this.prepare(data, id);
+    return this.commit(p, () => this.updatePrepared(p, id, data));
   }
 
   async delete(id: string): Promise<void> {
+    const p = await this.prepare({}, id);
+    await this.commit(p, () => this.deletePrepared(p, id));
+  }
+
+  // The record id (given, `id:autogenerate` or generated) is fixed first: it names the storage dir.
+  async prepare(data: Partial<T>, id?: string): Promise<PreparedWrite> {
     const c = this.writable();
-    const removed: string[] = [];
-    this.deps.db.tx(() => this.remove(c, this.load(c, id), removed));
-    await this.deleteDirs(removed);
+    const input = data as Values;
+    const p: PreparedWrite = {
+      ctx: this.prepareCtx(c, id ?? this.newId(c, input)),
+      resolved: new Map(),
+      removed: [],
+    };
+    try {
+      for (const key of Object.keys(input)) {
+        const f = c.fields.find((f) => modifier(f, key));
+        const prepare = f && fields[f.type].prepare;
+        if (!prepare || modifier(f, key) === "subtract") continue;
+        const out = await prepare(input[key], f, p.ctx);
+        let pairs = p.resolved.get(f.name);
+        if (!pairs) p.resolved.set(f.name, (pairs = new Map()));
+        pair(pairs, input[key], out);
+      }
+    } catch (e) {
+      await this.settle(p, false);
+      throw e;
+    }
+    return p;
+  }
+
+  createPrepared(p: PreparedWrite, data: Partial<T>): T {
+    const input = this.resolve(p, data as Values);
+    delete input["id:autogenerate"];
+    input.id = p.ctx.recordId;
+    const { c, saved } = this.deps.db.tx(() => {
+      const c = this.writable();
+      const values = zeroValues(c);
+      assign(c, values, input);
+      autogenerate(c, values);
+      this.check(c, values, null, CREATE_FAILED);
+      this.stamp(c, values, "onCreate");
+      if (c.name === "_superusers") values.verified = true;
+      this.checkAuthId(c, values, CREATE_FAILED);
+      this.write(c, values, CREATE_FAILED, () => {
+        const cols = c.fields.map((f) => f.name);
+        this.deps.db.run(insertSql(c, cols), dbValues(c, values));
+      });
+      if (c.name === "_superusers" && values.email !== INSTALLER_EMAIL)
+        this.deps.db.run("DELETE FROM _superusers WHERE email = ?", [
+          INSTALLER_EMAIL,
+        ]);
+      return { c, saved: values };
+    });
+    p.saved = { saved, original: null };
+    return this.output(c, saved);
+  }
+
+  updatePrepared(p: PreparedWrite, id: string, data: Partial<T>): T {
+    const input = this.resolve(p, data as Values);
+    const { c, saved, original } = this.deps.db.tx(() => {
+      const c = this.writable();
+      const original = this.load(c, id);
+      const values = { ...original };
+      assign(c, values, input);
+      this.check(c, values, original, UPDATE_FAILED);
+      this.stamp(c, values, "onUpdate");
+      if (c.name === "_superusers") values.verified = true;
+      if (c.type === "auth") this.refreshTokenKey(c, values, original);
+      this.write(c, values, UPDATE_FAILED, () => this.updateRow(c, values));
+      return { c, saved: values, original };
+    });
+    p.saved = { saved, original };
+    return this.output(c, saved);
+  }
+
+  deletePrepared(p: PreparedWrite, id: string): void {
+    const c = this.writable();
+    this.deps.db.tx(() => this.remove(c, this.load(c, id), p.removed));
   }
 
   async truncate(): Promise<void> {
@@ -413,37 +464,47 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     };
   }
 
-  private async prepareInput(
-    c: Collection,
-    data: Values,
-    ctx: PrepareCtx,
-  ): Promise<Values> {
-    const prepared = { ...data };
-    for (const key of Object.keys(data)) {
-      const f = c.fields.find((f) => modifier(f, key));
-      const prepare = f && fields[f.type].prepare;
-      if (prepare && modifier(f, key) !== "subtract")
-        prepared[key] = await prepare(data[key], f, ctx);
-    }
-    return prepared;
+  private newId(c: Collection, data: Values): string {
+    const id = toStr(draftValues(c, null, data).id);
+    const pattern = c.fields.find((f) => f.name === "id")?.autogeneratePattern;
+    return id === "" && typeof pattern === "string" && pattern !== ""
+      ? randomByPattern(pattern)
+      : id;
   }
 
-  // Files written while preparing are deleted when the save fails. After the commit, uploads the
-  // record does not keep and files the update dropped (with their thumbs) are deleted.
-  private async saveFiles<R extends { saved: Values; original: Values | null }>(
-    ctx: PrepareCtx,
-    run: () => Promise<R>,
-  ): Promise<R> {
+  // the submitted values with the uploads and hashes `prepare` made for them
+  private resolve(p: PreparedWrite, data: Values): Values {
+    const out = { ...data };
+    for (const key of Object.keys(data)) {
+      const f = p.ctx.collection.fields.find((f) => modifier(f, key));
+      const pairs = f && p.resolved.get(f.name);
+      if (pairs && modifier(f, key) !== "subtract")
+        out[key] = swap(pairs, data[key]);
+    }
+    return out;
+  }
+
+  private async commit<R>(p: PreparedWrite, write: () => R): Promise<R> {
     let result: R;
     try {
-      result = await run();
+      result = write();
     } catch (e) {
-      for (const key of ctx.written) await this.quietly(ctx.files.delete(key));
+      await this.settle(p, false);
       throw e;
     }
+    await this.settle(p, true);
+    return result;
+  }
 
-    const { saved, original } = result;
-    const { collection, recordId } = ctx;
+  // Files written while preparing are deleted when the write is not committed. After the commit,
+  // uploads the record does not keep, files the update dropped (with their thumbs) and the dirs of
+  // deleted records are deleted.
+  async settle(p: PreparedWrite, committed: boolean): Promise<void> {
+    const { collection, recordId, files, written } = p.ctx;
+    const { saved, original } = (committed && p.saved) || {
+      saved: {},
+      original: null,
+    };
     const { id } = collection;
     const kept = new Set<string>();
     const dropped: string[] = [];
@@ -454,15 +515,15 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       for (const name of uniqueStrings(original?.[f.name]))
         if (!names.includes(name)) dropped.push(name);
     }
-    for (const key of ctx.written)
-      if (!kept.has(key)) await this.quietly(ctx.files.delete(key));
+    for (const key of written)
+      if (!kept.has(key)) await this.quietly(files.delete(key));
     for (const name of dropped) {
-      await this.quietly(ctx.files.delete(fileKey(id, recordId, name)));
+      await this.quietly(files.delete(fileKey(id, recordId, name)));
       await this.quietly(
-        ctx.files.deletePrefix(fileKey(id, recordId, `thumbs_${name}`)),
+        files.deletePrefix(fileKey(id, recordId, `thumbs_${name}`)),
       );
     }
-    return result;
+    if (committed) await this.deleteDirs(p.removed);
   }
 
   private async deleteDirs(dirs: string[]): Promise<void> {

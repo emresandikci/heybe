@@ -87,3 +87,24 @@ export async function parseMultipart(
   }
   return out;
 }
+
+const REQUEST_FILE = /^requests(?:\.(0|[1-9]\d*)\.|\[(0|[1-9]\d*)\]\.)/;
+
+// Port of PB extractPrefixedFiles for all batch requests in one pass: the files under
+// `requests.N.key` or `requests[N].key`, by N and key.
+export function requestFiles(
+  form: Record<string, unknown>,
+): Map<number, Map<string, File[]>> {
+  const out = new Map<number, Map<string, File[]>>();
+  for (const [key, value] of Object.entries(form)) {
+    const m = REQUEST_FILE.exec(key);
+    if (!m) continue;
+    const index = Number(m[1] ?? m[2]);
+    for (const v of Array.isArray(value) ? value : [value]) {
+      if (!(v instanceof File)) continue;
+      if (!out.has(index)) out.set(index, new Map());
+      push(out.get(index)!, key.slice(m[0].length), v);
+    }
+  }
+  return out;
+}

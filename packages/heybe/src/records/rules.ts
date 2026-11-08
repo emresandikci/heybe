@@ -18,7 +18,7 @@ const infos = new WeakMap<RequestEvent, RequestInfo>();
 const FORBIDDEN = "Only superusers can perform this action.";
 
 // PB inflector.Snakecase on the canonical header key ("X-Api-Key" -> "x_api_key")
-const headerKey = (name: string) =>
+export const headerKey = (name: string) =>
   name
     .split(/[\W_]+/)
     .filter((w) => w !== "")
@@ -73,7 +73,24 @@ export async function checkRule(
   e: RequestEvent,
   recordId?: string,
 ): Promise<Expr | null> {
-  const info = await requestInfo(e);
+  return ruleFilter(
+    app,
+    collection,
+    rule,
+    action,
+    await requestInfo(e),
+    recordId,
+  );
+}
+
+export function ruleFilter(
+  app: App,
+  collection: Collection,
+  rule: string | null,
+  action: RuleAction,
+  info: RequestInfo,
+  recordId?: string,
+): Expr | null {
   if (!isSuperuser(info) && rule === null) throw new ApiError(403, FORBIDDEN);
   let expr: Expr | null = null;
   try {

@@ -10,11 +10,12 @@ import {
   checkRule,
   hasManageAccess,
   requestInfo,
+  ruleFilter,
 } from "../../records/rules";
 import { isSuperuser, manageRuleOf } from "../../records/read";
 import { expandRecords } from "../../records/expand";
 import { pickFields, pickItems } from "../../records/serialize";
-import { replaceModifiers } from "../../records/service";
+import { type PreparedWrite, replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
 import { ApiError, logUnexpected } from "../errors";
 import { DEFAULT_MAX_BODY_SIZE } from "../middlewares";
@@ -33,26 +34,31 @@ const UPDATE_FAILED = "Failed to update record.";
 const DELETE_FAILED =
   "Failed to delete record. Make sure that the record is not part of a required relation reference.";
 
-function findCollection(
-  e: RequestEvent,
-  message = "Missing collection context.",
-): Collection {
+function findCollection(e: RequestEvent): Collection {
   const c = e.app.collections.find(e.params.collection!);
-  if (!c) throw new ApiError(404, message);
+  if (!c) throw new ApiError(404, "Missing collection context.");
   return c;
 }
 
-// create and update resolve the collection first in PB's dynamic body limit middleware
-function writable(e: RequestEvent, withBody = true): Collection {
-  const c = withBody
-    ? findCollection(e, "Missing or invalid collection context.")
-    : findCollection(e);
+// Outside batches, create and update resolve the collection first in PB's dynamic body limit middleware.
+const BODY_LIMIT_MISSING = "Missing or invalid collection context.";
+
+export function writable(
+  app: App,
+  name: string,
+  message = "Missing collection context.",
+): Collection {
+  const c = app.collections.find(name);
+  if (!c) throw new ApiError(404, message);
   if (c.type === "view")
     throw new ApiError(400, "Unsupported collection type.");
   return c;
 }
 
-function forbidUnlessSuperuser(info: RequestInfo, rule: string | null) {
+export function forbidUnlessSuperuser(
+  info: RequestInfo,
+  rule: string | null,
+): void {
   if (rule === null && !isSuperuser(info))
     throw new ApiError(403, "Only superusers can perform this action.");
 }
@@ -86,13 +92,8 @@ function bool(value: string | undefined): boolean {
 
 const expandPaths = (info: RequestInfo) => (info.query.expand ?? "").split(",");
 
-function serialize(
-  e: RequestEvent,
-  c: Collection,
-  info: RequestInfo,
-  id: string,
-) {
-  const { items } = e.app.records(c.name).query({
+function serialize(app: App, c: Collection, info: RequestInfo, id: string) {
+  const { items } = app.records(c.name).query({
     filter: toAst({ id }),
     perPage: 1,
     skipTotal: true,
@@ -100,7 +101,7 @@ function serialize(
     manageRule: manageRuleOf(c),
   });
   if (items.length === 0) throw new ApiError(404, "");
-  const [record] = expandRecords(e.app, c, items, expandPaths(info), info);
+  const [record] = expandRecords(app, c, items, expandPaths(info), info);
   return pickFields(record!, info.query.fields);
 }
 
@@ -180,14 +181,56 @@ const asString = (v: unknown): string =>
         ? ""
         : String(v);
 
+// A submitted old password checked against a password hash before the save, so validation can stay synchronous.
+export interface OldPassword {
+  hash: string;
+  plain: string;
+  ok: boolean;
+}
+
+export const hashOf = (record: Values) =>
+  (record.password as { hash?: string } | undefined)?.hash ?? "";
+
+// Checks the old password only when validateAuthForm needs it: an update of an auth record by
+// a non-manager that changes the password.
+export async function checkOldPassword(
+  c: Collection,
+  hash: string | null,
+  data: Values,
+  manager: boolean,
+): Promise<OldPassword | null> {
+  const plain = asString(data.oldPassword);
+  const changes =
+    asString(data.password) !== "" || asString(data.passwordConfirm) !== "";
+  if (c.type !== "auth" || hash === null || manager || !changes || plain === "")
+    return null;
+  let ok = false;
+  try {
+    ok = await Bun.password.verify(plain, hash);
+  } catch {}
+  return { hash, plain, ok };
+}
+
+// fails closed when the check is missing or was made against another hash (a concurrent change)
+const oldPasswordOk = (
+  original: Values,
+  plain: string,
+  old: OldPassword | null,
+) =>
+  old !== null &&
+  old.plain === plain &&
+  old.hash === hashOf(original) &&
+  old.ok;
+
 // Port of PB forms.RecordUpsert validateFormFields (auth collections only).
-async function validateAuthForm(
+function validateAuthForm(
   c: Collection,
   data: Values,
   original: Values | null,
   access: Access,
   message: string,
-): Promise<void> {
+  old: OldPassword | null,
+): void {
   if (c.type !== "auth") return;
   const isNew = original === null;
   const manage = access !== "default";
@@ -216,7 +259,7 @@ async function validateAuthForm(
 
   if (!isNew && !manage && (password !== "" || confirm !== "")) {
     if (oldPassword === "") errors.oldPassword = required;
-    else if (!(await verifyPassword(original, oldPassword)))
+    else if (!oldPasswordOk(original!, oldPassword, old))
       errors.oldPassword = {
         code: "validation_invalid_old_password",
         message: "Missing or invalid old password.",
@@ -227,28 +270,48 @@ async function validateAuthForm(
     throw new ValidationError(message, errors);
 }
 
-async function verifyPassword(
-  record: Values | null,
-  plain: string,
-): Promise<boolean> {
-  try {
-    return await Bun.password.verify(
-      plain,
-      (record!.password as { hash: string }).hash,
-    );
-  } catch {
-    return false;
-  }
+function saveFailed(message: string, err: unknown): never {
+  if (err instanceof ValidationError || err instanceof ApiError) throw err;
+  logUnexpected(err);
+  throw new ApiError(400, message);
 }
 
-async function save<T>(message: string, run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (err) {
-    if (err instanceof ValidationError || err instanceof ApiError) throw err;
-    logUnexpected(err);
-    throw new ApiError(400, message);
+export function createChecks(
+  app: App,
+  c: Collection,
+  info: RequestInfo,
+): { data: Values; access: Access } {
+  forbidUnlessSuperuser(info, c.createRule);
+  const data = recordData(c, info, null);
+  info.body = data;
+  let access: Access = isSuperuser(info) ? "superuser" : "default";
+  if (access === "default") {
+    checkCreateRule(app, c, data, info);
+    if (hasManageAccess(app, c, info, { draft: data })) access = "manager";
   }
+  return { data, access };
+}
+
+export function updateChecks(
+  app: App,
+  c: Collection,
+  id: string,
+  info: RequestInfo,
+): { data: Values; original: Values; access: Access } {
+  forbidUnlessSuperuser(info, c.updateRule);
+  let original: Values;
+  try {
+    original = app.records(c.name).findRaw(id);
+  } catch {
+    throw new ApiError(404, "");
+  }
+  const data = recordData(c, info, original);
+  info.body = data;
+  ruleFilter(app, c, c.updateRule, "update", info, id);
+  let access: Access = isSuperuser(info) ? "superuser" : "default";
+  if (access === "default" && hasManageAccess(app, c, info, { id }))
+    access = "manager";
+  return { data, original, access };
 }
 
 async function list(e: RequestEvent): Promise<Response> {
@@ -310,62 +373,43 @@ async function view(e: RequestEvent): Promise<Response> {
   const id = e.params.id!;
   const info = await requestInfo(e);
   await checkRule(e.app, c, c.viewRule, "view", e, id);
-  return e.json(200, serialize(e, c, info, id));
+  return e.json(200, serialize(e.app, c, info, id));
 }
 
 async function create(e: RequestEvent): Promise<Response> {
-  const c = writable(e);
+  const c = writable(e.app, e.params.collection!, BODY_LIMIT_MISSING);
   const info = await requestInfo(e);
-  forbidUnlessSuperuser(info, c.createRule);
-  const data = recordData(c, info, null);
-  info.body = data;
-
-  let access: Access = isSuperuser(info) ? "superuser" : "default";
-  if (access === "default") {
-    checkCreateRule(e.app, c, data, info);
-    if (hasManageAccess(e.app, c, info, { draft: data })) access = "manager";
+  const { data, access } = createChecks(e.app, c, info);
+  let saved: Values;
+  try {
+    validateAuthForm(c, data, null, access, CREATE_FAILED, null);
+    saved = await e.app.records(c.name).create(data);
+  } catch (err) {
+    saveFailed(CREATE_FAILED, err);
   }
-
-  const records = e.app.records(c.name);
-  const saved = await save(CREATE_FAILED, async () => {
-    await validateAuthForm(c, data, null, access, CREATE_FAILED);
-    return records.create(data);
-  });
-  return e.json(200, serialize(e, c, info, saved.id as string));
+  return e.json(200, serialize(e.app, c, info, saved.id as string));
 }
 
 async function update(e: RequestEvent): Promise<Response> {
-  const c = writable(e);
+  const c = writable(e.app, e.params.collection!, BODY_LIMIT_MISSING);
   const id = e.params.id!;
   const info = await requestInfo(e);
-  forbidUnlessSuperuser(info, c.updateRule);
-
-  const records = e.app.records(c.name);
-  let original: Values;
+  const { data, original, access } = updateChecks(e.app, c, id, info);
   try {
-    original = records.findRaw(id);
-  } catch {
-    throw new ApiError(404, "");
+    const manager = access !== "default";
+    const old = await checkOldPassword(c, hashOf(original), data, manager);
+    validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
+    await e.app.records(c.name).update(id, data);
+  } catch (err) {
+    saveFailed(UPDATE_FAILED, err);
   }
-  const data = recordData(c, info, original);
-  info.body = data;
-  await checkRule(e.app, c, c.updateRule, "update", e, id);
-
-  let access: Access = isSuperuser(info) ? "superuser" : "default";
-  if (access === "default" && hasManageAccess(e.app, c, info, { id }))
-    access = "manager";
-
-  await save(UPDATE_FAILED, async () => {
-    await validateAuthForm(c, data, original, access, UPDATE_FAILED);
-    return records.update(id, data);
-  });
-  return e.json(200, serialize(e, c, info, id));
+  return e.json(200, serialize(e.app, c, info, id));
 }
 
 async function remove(e: RequestEvent): Promise<Response> {
-  const c = writable(e, false);
+  const c = writable(e.app, e.params.collection!);
   const id = e.params.id!;
-  await checkRule(e.app, c, c.deleteRule, "delete", e, id);
+  ruleFilter(e.app, c, c.deleteRule, "delete", await requestInfo(e), id);
   try {
     await e.app.records(c.name).delete(id);
   } catch (err) {
@@ -373,6 +417,65 @@ async function remove(e: RequestEvent): Promise<Response> {
     throw new ApiError(400, DELETE_FAILED);
   }
   return new Response(null, { status: 204 });
+}
+
+// Batch versions of the write routes: the same checks, written synchronously inside the batch
+// transaction with the uploads and hashes prepared before it.
+export interface BatchResult {
+  body: unknown;
+  status: number;
+}
+
+export function batchCreate(
+  app: App,
+  c: Collection,
+  info: RequestInfo,
+  p: PreparedWrite,
+): BatchResult {
+  const { data, access } = createChecks(app, c, info);
+  let saved: Values;
+  try {
+    validateAuthForm(c, data, null, access, CREATE_FAILED, null);
+    saved = app.records(c.name).createPrepared(p, data);
+  } catch (err) {
+    saveFailed(CREATE_FAILED, err);
+  }
+  return { body: serialize(app, c, info, saved.id as string), status: 200 };
+}
+
+export function batchUpdate(
+  app: App,
+  c: Collection,
+  id: string,
+  info: RequestInfo,
+  p: PreparedWrite,
+  old: OldPassword | null,
+): BatchResult {
+  const { data, original, access } = updateChecks(app, c, id, info);
+  try {
+    validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
+    app.records(c.name).updatePrepared(p, id, data);
+  } catch (err) {
+    saveFailed(UPDATE_FAILED, err);
+  }
+  return { body: serialize(app, c, info, id), status: 200 };
+}
+
+export function batchDelete(
+  app: App,
+  c: Collection,
+  id: string,
+  info: RequestInfo,
+  p: PreparedWrite,
+): BatchResult {
+  ruleFilter(app, c, c.deleteRule, "delete", info, id);
+  try {
+    app.records(c.name).deletePrepared(p, id);
+  } catch (err) {
+    logUnexpected(err);
+    throw new ApiError(400, DELETE_FAILED);
+  }
+  return { body: null, status: 204 };
 }
 
 export function registerRecordRoutes(router: Router): void {

@@ -9,6 +9,7 @@ import {
   securityHeaders,
 } from "./middlewares";
 import { Router, createEvent, resolveBodyLimit } from "./router";
+import { registerBatchRoutes } from "./routes/batch";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
@@ -37,6 +38,7 @@ export function createRouter(): Router {
   registerCollectionRoutes(router);
   registerRecordRoutes(router);
   registerFileRoutes(router);
+  registerBatchRoutes(router);
   registerSettingsRoutes(router);
   return router;
 }
