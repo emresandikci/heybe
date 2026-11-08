@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CollectionName, Collections } from "@heybe/query";
 import { parseCommandArgs } from "./commands/args";
+import { migrateCommand } from "./commands/migrate";
 import { serveCommand } from "./commands/serve";
 import { superuserCommand } from "./commands/superuser";
 import { typegenCommand } from "./commands/typegen";
@@ -23,6 +24,11 @@ import {
 } from "./hooks/registry";
 import { registerSystemHooks } from "./hooks/system";
 import { Broker } from "./realtime/broker";
+import {
+  Migration,
+  type MigrationDef,
+  migrationDef,
+} from "./migrations/migration";
 import { registerRealtimeHooks } from "./realtime/broadcast";
 import type { Router } from "./http/router";
 import { createRouter } from "./http/server";
@@ -73,6 +79,7 @@ export interface App extends HookBinders, RouterMethods {
   dev: boolean;
   migrationsDir: string;
   automigrate: boolean;
+  migrations: MigrationDef[];
   records<N extends CollectionName>(name: N): RecordService<Collections[N]>;
   records(name: string): RecordService<Record<string, unknown>>;
   bootstrap(): Promise<void>;
@@ -169,6 +176,7 @@ export function createApp(opts: AppOptions = {}): App {
       flags.migrationsDir ??
       join(memory ? storageRoot : dir, "..", "heybe_migrations"),
     automigrate: opts.automigrate ?? flags.automigrate ?? true,
+    migrations: [],
     records: (name: string): RecordService<Record<string, unknown>> => {
       const r = internalRecords(app, name);
       return {
@@ -251,6 +259,13 @@ export function createApp(opts: AppOptions = {}): App {
           app.cron(c.id ?? cls.name, c.schedule, (a) => c.run(a));
           continue;
         }
+        if (cls.prototype instanceof Migration) {
+          const m = new cls() as Migration;
+          if (!m.file)
+            throw new Error(`Migration ${cls.name} requires a file name`);
+          app.migrations.push(migrationDef(m.file, m));
+          continue;
+        }
         if (!(cls.prototype instanceof Route))
           throw new Error(`Unsupported extension class ${cls.name}`);
         const r = new cls() as Route;
@@ -278,6 +293,9 @@ export function createApp(opts: AppOptions = {}): App {
   app.command("serve", serveCommand, { description: "Starts the web server" });
   app.command("superuser", superuserCommand, {
     description: "Manage superusers",
+  });
+  app.command("migrate", (args, a) => migrateCommand(args, a), {
+    description: "Executes app DB migration scripts",
   });
   app.command("typegen", typegenCommand, {
     description: "Generates TypeScript types for the collections",

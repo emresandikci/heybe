@@ -38,5 +38,7 @@ export type {
   RouteAction,
   RouteHandle,
 } from "./http/router";
+export { Migration, migrate } from "./migrations/migration";
+export type { MigrationDef } from "./migrations/migration";
 export { RecordModel } from "./records/model";
 export type { Timers } from "./timers";

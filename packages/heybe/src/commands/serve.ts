@@ -1,6 +1,8 @@
 import type { App } from "../app";
 import { runInstaller } from "../http/routes/installer";
 import { parseHttpAddr, serve } from "../http/server";
+import { migrationsList } from "../migrations/loader";
+import { MigrationsRunner } from "../migrations/runner";
 import { writeTypesSafely } from "../typegen";
 import { parseCommandArgs } from "./args";
 
@@ -17,6 +19,7 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   const origins = (
     Array.isArray(values.origins) ? values.origins.map(String) : ["*"]
   ).flatMap((o) => o.split(","));
+  await new MigrationsRunner(app, await migrationsList(app)).up();
   if (app.dev) {
     app.collections.onChange = () => writeTypesSafely(app, DEFAULT_TYPES_FILE);
     writeTypesSafely(app, DEFAULT_TYPES_FILE);
