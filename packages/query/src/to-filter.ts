@@ -1,4 +1,4 @@
-import type { Expr, Operand } from "./ast";
+import type { Expr, Operand } from "./ast.js";
 
 const ESCAPES: Record<string, string> = {
   "\\": "\\\\",

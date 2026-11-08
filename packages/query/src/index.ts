@@ -1,4 +1,4 @@
-export type { Expr, Op, Operand } from "./ast";
+export type { Expr, Op, Operand } from "./ast.js";
 export type {
   CollectionName,
   Collections,
@@ -8,8 +8,8 @@ export type {
   OrderBy,
   Relation,
   Where,
-} from "./types";
-export { toAst } from "./to-ast";
-export { toExpand } from "./to-expand";
-export { toFilter } from "./to-filter";
-export { toSort } from "./to-sort";
+} from "./types.js";
+export { toAst } from "./to-ast.js";
+export { toExpand } from "./to-expand.js";
+export { toFilter } from "./to-filter.js";
+export { toSort } from "./to-sort.js";

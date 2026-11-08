@@ -1,4 +1,4 @@
-import type { OrderBy } from "./types";
+import type { OrderBy } from "./types.js";
 
 export function toSort<T = Record<string, unknown>>(
   orderBy: OrderBy<NoInfer<T>> | undefined,

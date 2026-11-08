@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { toAst, toExpand, toFilter, toSort } from "./index";
-import type { Expand, Relation, Where } from "./index";
+import { toAst, toExpand, toFilter, toSort } from "./index.js";
+import type { Expand, Relation, Where } from "./index.js";
 
 const filter = (where: Where<Record<string, unknown>>) =>
   toFilter(toAst(where));

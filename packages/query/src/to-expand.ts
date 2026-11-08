@@ -1,4 +1,4 @@
-import type { Expand } from "./types";
+import type { Expand } from "./types.js";
 
 // { author: true, comments_via_post: { user: true } } -> "author,comments_via_post.user"
 export function toExpand(expand: Expand<unknown> | undefined): string {

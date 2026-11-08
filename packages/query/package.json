@@ -3,7 +3,16 @@
   "version": "0.0.0",
   "type": "module",
   "license": "MIT",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
   "author": "emresandikci",
   "repository": {
     "type": "git",
@@ -11,6 +20,8 @@
     "directory": "packages/query"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "release": "semantic-release -e semantic-release-monorepo",
     "test": "bun test src"
   },

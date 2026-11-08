@@ -1,5 +1,5 @@
-import type { Expr, Op, Operand } from "./ast";
-import type { Where } from "./types";
+import type { Expr, Op, Operand } from "./ast.js";
+import type { Where } from "./types.js";
 
 export const MACROS: ReadonlySet<string> = new Set([
   "@now",
