@@ -39,7 +39,6 @@ export interface RecordService<T> {
     skipTotal?: boolean;
     request?: RequestInfo | null;
     ruleFilter?: Expr | null;
-    fields?: string;
     manageRule?: Expr | null;
   }): ListResult<T>;
 }
@@ -272,9 +271,10 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     const table = quote(c.name);
     const from = `FROM ${table} ${built.joins.join(" ")} WHERE ${built.sql}`;
 
+    const n = built.params.length;
     const rows = db.query<Values>(
-      `SELECT DISTINCT ${table}.* ${from}${built.orderBy ? ` ORDER BY ${built.orderBy}` : ""} LIMIT ${perPage} OFFSET ${perPage * (page - 1)}`,
-      built.params,
+      `SELECT DISTINCT ${table}.* ${from}${built.orderBy ? ` ORDER BY ${built.orderBy}` : ""} LIMIT ?${n + 1} OFFSET ?${n + 2}`,
+      [...built.params, perPage, perPage * (page - 1)],
     );
 
     let totalItems = -1;
@@ -296,7 +296,6 @@ export class RecordServiceImpl<T> implements RecordService<T> {
         isOwner:
           (request?.auth?.id === values.id && c.type === "auth") ||
           managed.has(values.id as string),
-        fields: opts.fields,
       });
     });
     return { page, perPage, totalItems, totalPages, items: items as T[] };
@@ -529,7 +528,7 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       return;
     }
     if (f.required === true && ids.length === 0)
-      throw new Error(
+      throw new ValidationError(
         `the record cannot be deleted because it is part of a required reference in record ${id} (${other.name} collection)`,
       );
 

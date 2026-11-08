@@ -20,3 +20,20 @@ test("a failing COMMIT rolls back and leaves the db usable", () => {
   expect(db.query("SELECT * FROM parent")).toEqual([{ id: 1 }]);
   db.close();
 });
+
+test("the statement cache stays bounded and evicted statements are re-prepared", () => {
+  const db = openDb(":memory:");
+  for (let i = 0; i < 1000; i++) db.get(`SELECT ${i} AS n`);
+  expect(db.cacheSize()).toBeLessThanOrEqual(200);
+  expect(db.get("SELECT 0 AS n")).toEqual({ n: 0 });
+  db.close();
+});
+
+test("DDL statements are not cached", () => {
+  const db = openDb(":memory:");
+  const before = db.cacheSize();
+  db.run("CREATE TABLE t (id INTEGER)");
+  db.run("DROP TABLE t");
+  expect(db.cacheSize()).toBe(before);
+  db.close();
+});

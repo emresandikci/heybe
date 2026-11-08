@@ -13,7 +13,7 @@ import {
 import { pickFields, pickItems } from "../../records/serialize";
 import { replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
-import { ApiError } from "../errors";
+import { ApiError, logUnexpected } from "../errors";
 import type { RequestEvent, Router } from "../router";
 
 type Values = Record<string, unknown>;
@@ -188,6 +188,7 @@ async function save<T>(message: string, run: () => Promise<T>): Promise<T> {
     return await run();
   } catch (err) {
     if (err instanceof ValidationError || err instanceof ApiError) throw err;
+    logUnexpected(err);
     throw new ApiError(400, message);
   }
 }
@@ -234,6 +235,7 @@ async function list(e: RequestEvent): Promise<Response> {
     });
   } catch (err) {
     if (err instanceof ApiError) throw err;
+    logUnexpected(err);
     throw new ApiError(400, "");
   }
 }
@@ -301,7 +303,8 @@ async function remove(e: RequestEvent): Promise<Response> {
   await checkRule(e.app, c, c.deleteRule, "delete", e, id);
   try {
     await e.app.records(c.name).delete(id);
-  } catch {
+  } catch (err) {
+    logUnexpected(err);
     throw new ApiError(400, DELETE_FAILED);
   }
   return new Response(null, { status: 204 });

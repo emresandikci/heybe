@@ -1,3 +1,4 @@
+import { FilterError } from "../filter/parse";
 import { NotFoundError, ValidationError } from "../util";
 
 const DEFAULT_MESSAGES: Record<number, string> = {
@@ -48,6 +49,17 @@ export class ApiError extends Error {
     );
     this.data = sentenizeData(data) as Record<string, unknown>;
   }
+}
+
+// Expected failures turn into a status silently; anything else is a bug and is logged before conversion.
+export function logUnexpected(err: unknown): void {
+  if (
+    !(err instanceof ApiError) &&
+    !(err instanceof ValidationError) &&
+    !(err instanceof FilterError) &&
+    !(err instanceof NotFoundError)
+  )
+    console.error(err);
 }
 
 export function toApiError(err: unknown): ApiError {

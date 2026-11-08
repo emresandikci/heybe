@@ -4,7 +4,7 @@ import { quote } from "../collections/ddl";
 import type { Collection } from "../collections/model";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { parseFilter } from "../filter/parse";
-import { ApiError } from "../http/errors";
+import { ApiError, logUnexpected } from "../http/errors";
 import type { RequestEvent } from "../http/router";
 import { randomSecret } from "../util";
 import { dbValues, draftValues } from "./service";
@@ -53,6 +53,7 @@ export async function requestInfo(e: RequestEvent): Promise<RequestInfo> {
       body = await e.body();
     } catch (err) {
       if (err instanceof ApiError && err.status === 413) throw err;
+      logUnexpected(err);
       throw new ApiError(400, "");
     }
     info = buildRequestInfo(e, body);
@@ -85,6 +86,7 @@ export async function checkRule(
     }
   } catch (err) {
     if (err instanceof ApiError) throw err;
+    logUnexpected(err);
     throw new ApiError(action === "list" ? 400 : 404, "");
   }
   return expr;
@@ -115,10 +117,11 @@ export function matchesDraft(
   rule: string,
   info: RequestInfo,
 ): boolean {
-  const suffix = "__pb_create__" + randomSecret(6);
+  // Fixed name: the draft table only exists inside this query, and a stable SQL text keeps the statement cache bounded.
+  const suffix = "__pb_create__";
   const draft = { ...c, id: c.id + suffix, name: c.name + suffix };
   const row = { ...values };
-  if (row.id === "") row.id = "__temp_id__" + suffix;
+  if (row.id === "") row.id = "__temp_id__" + suffix + randomSecret(6);
   if (c.type === "auth") row.verified = false;
 
   const built = new QueryCompiler({
@@ -152,7 +155,9 @@ export function checkCreateRule(
   let ok = false;
   try {
     ok = matchesDraft(app, c, draftValues(c, null, data), c.createRule, info);
-  } catch {}
+  } catch (err) {
+    logUnexpected(err);
+  }
   if (!ok) throw new ApiError(400, "Failed to create record.");
 }
 
@@ -171,7 +176,8 @@ export function hasManageAccess(
     return "id" in target
       ? matchesRecord(app, c, target.id, parseFilter(rule), info)
       : matchesDraft(app, c, draftValues(c, null, target.draft), rule, info);
-  } catch {
+  } catch (err) {
+    logUnexpected(err);
     return false;
   }
 }

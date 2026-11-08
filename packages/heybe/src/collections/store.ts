@@ -207,8 +207,8 @@ export class CollectionStore {
   search(q: CollectionsQuery, limit: number, offset: number): Collection[] {
     return this.db
       .query<Row>(
-        `SELECT * FROM _collections WHERE ${q.where}${q.orderBy ? ` ORDER BY ${q.orderBy}` : ""} LIMIT ${limit} OFFSET ${offset}`,
-        q.params,
+        `SELECT * FROM _collections WHERE ${q.where}${q.orderBy ? ` ORDER BY ${q.orderBy}` : ""} LIMIT ?${q.params.length + 1} OFFSET ?${q.params.length + 2}`,
+        [...q.params, limit, offset],
       )
       .map(fromRow);
   }
@@ -301,13 +301,6 @@ export class CollectionStore {
           (f) => f.type === "relation" && f.collectionId === c.id,
         ),
     );
-  }
-
-  truncate(nameOrId: string): void {
-    const c = this.require(nameOrId);
-    if (c.type === "view")
-      throw new ValidationError("Failed to truncate collection.");
-    this.db.run(`DELETE FROM ${quote(c.name)}`);
   }
 
   private remove(c: Collection) {

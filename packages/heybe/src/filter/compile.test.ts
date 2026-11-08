@@ -2,15 +2,10 @@ import { beforeAll, describe, expect, test } from "bun:test";
 import { quote } from "../collections/ddl";
 import { CollectionStore } from "../collections/store";
 import { type Db, openDb } from "../db";
-import {
-  type CompileCtx,
-  QueryCompiler,
-  type RequestInfo,
-  compileFilter,
-  compileSort,
-} from "./compile";
+import { type CompileCtx, QueryCompiler, type RequestInfo } from "./compile";
 import { macroValue } from "./macros";
 import { FilterError, parseFilter, parseSort } from "./parse";
+import type { Expr } from "@heybe/query";
 
 const now = () => new Date("2026-01-15T10:00:00.000Z");
 
@@ -46,6 +41,11 @@ const ctx = (
   now,
 });
 
+const compile = (expr: Expr | null, c: CompileCtx) =>
+  new QueryCompiler(c).filter(expr).build();
+const orderBy = (sort: string) =>
+  new QueryCompiler(ctx()).sort(parseSort(sort)).build().orderBy;
+
 function run(
   collection: string,
   c: { sql: string; params: unknown[]; joins: string[] },
@@ -65,7 +65,7 @@ const ids = (
   filter: string,
   collection = "posts",
   req: RequestInfo | null = superuser,
-) => run(collection, compileFilter(parseFilter(filter), ctx(collection, req)));
+) => run(collection, compile(parseFilter(filter), ctx(collection, req)));
 
 function insert(table: string, row: Record<string, unknown>) {
   const keys = Object.keys(row);
@@ -190,7 +190,7 @@ beforeAll(() => {
   });
 });
 
-describe("compileFilter", () => {
+describe("QueryCompiler filter", () => {
   test("plain field equality returns only matching ids", () => {
     expect(ids(`title="a"`)).toBe("p1");
   });
@@ -241,10 +241,7 @@ describe("compileFilter", () => {
 
   test("values never reach the sql text", () => {
     const value = `x" OR 1=1 --`;
-    const compiled = compileFilter(
-      parseFilter(`title="x\\" OR 1=1 --"`),
-      ctx(),
-    );
+    const compiled = compile(parseFilter(`title="x\\" OR 1=1 --"`), ctx());
     expect(run("posts", compiled)).toBe("");
     expect(compiled.sql).not.toContain("1=1");
     expect(compiled.sql).not.toContain("OR 1");
@@ -265,11 +262,11 @@ describe("compileFilter", () => {
   });
 
   test("the same shape with different values compiles to the same sql", () => {
-    const a = compileFilter(
+    const a = compile(
       parseFilter(`title = "a" && author.name ~ "x" && created > @now`),
       ctx(),
     );
-    const b = compileFilter(
+    const b = compile(
       parseFilter(`title = "b" && author.name ~ "y" && created > @now`),
       ctx(),
     );
@@ -285,7 +282,7 @@ describe("compileFilter", () => {
   });
 
   test("null expression matches everything", () => {
-    expect(run("posts", compileFilter(null, ctx()))).toBe("p1,p2,p3,p4");
+    expect(run("posts", compile(null, ctx()))).toBe("p1,p2,p3,p4");
   });
 
   test("more than 200 expressions throw", () => {
@@ -504,31 +501,25 @@ describe("client filters without hidden field access", () => {
   });
 });
 
-describe("compileSort", () => {
+describe("QueryCompiler sort", () => {
   test("builds an ORDER BY list", () => {
-    expect(compileSort(parseSort("-views,title"), ctx())).toBe(
+    expect(orderBy("-views,title")).toBe(
       "`posts`.`views` DESC, `posts`.`title` ASC",
     );
-    expect(compileSort(parseSort("@random,-@rowid"), ctx())).toBe(
-      "RANDOM(), `posts`.`_rowid_` DESC",
-    );
+    expect(orderBy("@random,-@rowid")).toBe("RANDOM(), `posts`.`_rowid_` DESC");
   });
 
   test("rejects unknown and non-column fields", () => {
-    expect(() => compileSort(parseSort("nope"), ctx())).toThrow(FilterError);
-    expect(() => compileSort(parseSort("@request.method"), ctx())).toThrow(
-      FilterError,
-    );
+    expect(() => orderBy("nope")).toThrow(FilterError);
+    expect(() => orderBy("@request.method")).toThrow(FilterError);
   });
 
-  test("relation sorts need the joins from QueryCompiler", () => {
-    expect(() => compileSort(parseSort("author.name"), ctx())).toThrow(
-      FilterError,
-    );
+  test("relation sorts add joins", () => {
     const compiled = new QueryCompiler(ctx())
       .filter(parseFilter("views > 0"))
       .sort(parseSort("-author.name,views"))
       .build();
+    expect(compiled.joins.length).toBeGreaterThan(0);
     expect(run("posts", compiled, compiled.orderBy)).toBe("p2,p1,p4");
   });
 });

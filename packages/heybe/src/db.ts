@@ -1,12 +1,16 @@
-import { Database, type SQLQueryBindings } from "bun:sqlite";
+import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
 
 export interface Db {
   query<T>(sql: string, params?: unknown[]): T[];
   get<T>(sql: string, params?: unknown[]): T | null;
   run(sql: string, params?: unknown[]): { changes: number };
   tx<T>(fn: () => T): T;
+  cacheSize(): number;
   close(): void;
 }
+
+const CACHE_LIMIT = 200;
+const UNCACHED = /^\s*(CREATE|DROP|ALTER|PRAGMA)\b/i;
 
 export function openDb(path: string): Db {
   const sqlite = new Database(path, { create: true, strict: true });
@@ -15,14 +19,28 @@ export function openDb(path: string): Db {
   sqlite.run("PRAGMA foreign_keys = ON");
   sqlite.run("PRAGMA synchronous = NORMAL");
 
-  const cache = new Map<string, ReturnType<Database["query"]>>();
-  const stmt = (sql: string) => {
-    let s = cache.get(sql);
-    if (!s) {
-      s = sqlite.query(sql);
-      cache.set(sql, s);
+  const cache = new Map<string, Statement>();
+  const withStmt = <R>(sql: string, fn: (s: Statement) => R): R => {
+    if (UNCACHED.test(sql)) {
+      const s = sqlite.prepare(sql);
+      try {
+        return fn(s);
+      } finally {
+        s.finalize();
+      }
     }
-    return s;
+    let s = cache.get(sql);
+    if (s) cache.delete(sql);
+    else {
+      s = sqlite.prepare(sql);
+      if (cache.size >= CACHE_LIMIT) {
+        const [oldest, evicted] = cache.entries().next().value!;
+        cache.delete(oldest);
+        evicted.finalize();
+      }
+    }
+    cache.set(sql, s);
+    return fn(s);
   };
   const bind = (params?: unknown[]) => (params ?? []) as SQLQueryBindings[];
 
@@ -30,10 +48,11 @@ export function openDb(path: string): Db {
 
   return {
     query: <T>(sql: string, params?: unknown[]) =>
-      stmt(sql).all(...bind(params)) as T[],
+      withStmt(sql, (s) => s.all(...bind(params)) as T[]),
     get: <T>(sql: string, params?: unknown[]) =>
-      (stmt(sql).get(...bind(params)) as T | null) ?? null,
-    run: (sql, params) => ({ changes: stmt(sql).run(...bind(params)).changes }),
+      withStmt(sql, (s) => (s.get(...bind(params)) as T | null) ?? null),
+    run: (sql, params) =>
+      withStmt(sql, (s) => ({ changes: s.run(...bind(params)).changes })),
     tx<T>(fn: () => T): T {
       const outer = depth === 0;
       const savepoint = `sp_${depth}`;
@@ -54,6 +73,11 @@ export function openDb(path: string): Db {
         depth--;
       }
     },
-    close: () => sqlite.close(),
+    cacheSize: () => cache.size,
+    close: () => {
+      for (const s of cache.values()) s.finalize();
+      cache.clear();
+      sqlite.close();
+    },
   };
 }

@@ -146,21 +146,6 @@ export class QueryCompiler {
   }
 }
 
-export function compileFilter(expr: Expr | null, ctx: CompileCtx): Compiled {
-  const { sql, params, joins } = new QueryCompiler(ctx).filter(expr).build();
-  return { sql, params, joins };
-}
-
-export function compileSort(sort: SortField[], ctx: CompileCtx): string {
-  const compiled = new QueryCompiler(ctx).sort(sort).build();
-  if (compiled.joins.length > 0) {
-    throw new FilterError(
-      "sorting by a relation field needs the joins from QueryCompiler",
-    );
-  }
-  return compiled.orderBy;
-}
-
 const countExpressions = (e: Expr): number =>
   e.kind === "cmp"
     ? 1

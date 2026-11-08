@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../app";
 import { createEvent } from "../http/router";
-import { buildRequestInfo } from "./rules";
+import { buildRequestInfo, matchesDraft } from "./rules";
 
 describe("buildRequestInfo", () => {
   test("snake_case header keys, first query value, auth and context", () => {
@@ -22,6 +22,33 @@ describe("buildRequestInfo", () => {
       context: "password",
     });
     expect(Object.hasOwn(info.query, "__proto__")).toBe(true);
+    app.close();
+  });
+});
+
+describe("statement cache", () => {
+  test("paging and create-rule draft checks reuse the same statements", () => {
+    const app = createApp({
+      dir: ":memory:",
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+    });
+    const c = app.collections.save({
+      name: "posts",
+      fields: [{ name: "title", type: "text" }] as any,
+      createRule: "title != ''",
+    });
+    const info = buildRequestInfo(
+      createEvent(app, new Request("http://x/api"), {}),
+      {},
+    );
+    const run = (i: number) => {
+      app.records("posts").query({ page: i + 1, perPage: (i % 50) + 1 });
+      matchesDraft(app, c, { id: "", title: "t" }, c.createRule!, info);
+    };
+    run(0);
+    const size = app.db.cacheSize();
+    for (let i = 1; i < 300; i++) run(i);
+    expect(app.db.cacheSize()).toBe(size);
     app.close();
   });
 });

@@ -281,14 +281,6 @@ describe("delete and truncate", () => {
     );
     expect(store.find("_superusers")).not.toBeNull();
   });
-
-  test("truncate removes the rows only", () => {
-    store.save({ name: "posts" });
-    db.run("INSERT INTO posts (id) VALUES ('a')");
-    store.truncate("posts");
-    expect(db.query("SELECT * FROM posts")).toEqual([]);
-    expect(store.find("posts")).not.toBeNull();
-  });
 });
 
 describe("validation parity with PocketBase", () => {
