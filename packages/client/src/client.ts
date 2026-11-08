@@ -6,6 +6,7 @@ import {
 } from "./auth-store.js";
 import { defaultEnv, type Env, type Fetch } from "./env.js";
 import { createAuth, type AuthClient } from "./auth.js";
+import { createRealtime, type Realtime } from "./realtime.js";
 import { createRecords, type RecordsClient } from "./records.js";
 import { createAutoRefresh } from "./refresh.js";
 import { buildURL, createSender, type SendOptions } from "./send.js";
@@ -22,6 +23,7 @@ export interface HeybeClient {
   readonly url: string;
   readonly lang: string;
   readonly authStore: AuthStore;
+  readonly realtime: Realtime;
   autoCancel: boolean;
   buildURL(path: string): string;
   send<T>(path: string, opts?: SendOptions): Promise<T>;
@@ -77,6 +79,13 @@ export function createClientWith(
     autoCancel: opts.autoCancel ?? true,
     buildURL: (path) => buildURL(url, path),
     ...sender,
+    realtime: createRealtime({
+      env,
+      authStore,
+      buildURL: (path) => buildURL(url, path),
+      send: sender.send,
+      cancelRequest: sender.cancelRequest,
+    }),
     records: (name: string) => createRecords(client, name),
     auth: (name: string) => createAuth(client, name, { autoRefresh, fork }),
   } as HeybeClient;

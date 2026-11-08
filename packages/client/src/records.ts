@@ -8,6 +8,7 @@ import {
   type FindManyArgs,
   type ListResult,
   type NoExtraExpand,
+  type Where,
   type WithExpand,
 } from "@heybe/query";
 import type { AuthRecord } from "./auth-store.js";
@@ -69,6 +70,19 @@ export interface RecordsClient<T> {
     opts?: RequestOptions,
   ): Promise<Rec<T, E>>;
   delete(id: string, opts?: RequestOptions): Promise<void>;
+  subscribe<E extends Expand<T> | undefined = undefined>(
+    topic: "*" | (string & {}),
+    fn: (e: {
+      action: "create" | "update" | "delete";
+      record: Rec<T, E>;
+    }) => void,
+    args?: {
+      where?: Where<T>;
+      expand?: E & NoExtraExpand<T, E>;
+      headers?: Record<string, string>;
+    },
+  ): Promise<() => Promise<void>>;
+  unsubscribe(topic?: string): Promise<void>;
 }
 
 type Args = FindManyArgs<unknown>;
@@ -94,7 +108,7 @@ const notFound = (message: string, data = {}) =>
   new HeybeError({ status: 404, response: { code: 404, message, data } });
 
 export function createRecords<T>(
-  client: Pick<HeybeClient, "send" | "authStore">,
+  client: Pick<HeybeClient, "send" | "authStore" | "realtime">,
   collection: string,
 ): RecordsClient<T> {
   const basePath = `/api/collections/${encodeURIComponent(collection)}/records`;
@@ -167,6 +181,23 @@ export function createRecords<T>(
     async delete(id, opts) {
       await client.send(recordPath(id), { ...opts, method: "DELETE" });
       if (isAuthRecord(id)) client.authStore.clear();
+    },
+    subscribe(topic, fn, args) {
+      const query = compact({
+        filter: args?.where ? toFilter(toAst(args.where)) : "",
+        expand: toExpand(args?.expand as Expand<unknown>),
+      });
+      const hasQuery = Object.keys(query).length > 0;
+      const opts =
+        hasQuery || args?.headers
+          ? { query: hasQuery ? query : undefined, headers: args?.headers }
+          : undefined;
+      return client.realtime.subscribe(`${collection}/${topic}`, fn, opts);
+    },
+    unsubscribe(topic) {
+      return topic
+        ? client.realtime.unsubscribe(`${collection}/${topic}`)
+        : client.realtime.unsubscribeByPrefix(`${collection}/`);
     },
   };
 }

@@ -73,3 +73,24 @@ try {
 Also available: `withOAuth2Code`, `impersonate(recordId, seconds)` (returns a new client holding the impersonated auth, the caller's store is untouched), `requestVerification`/`confirmVerification`, `requestPasswordReset`/`confirmPasswordReset`, `requestEmailChange`/`confirmEmailChange`.
 
 `autoRefreshThreshold` (seconds): before each request, when the stored token expires within the threshold, the client runs one shared `auth-refresh` and sends the request with the new token. A failed refresh leaves the store as it is. For superusers, `withPassword(identity, password, { autoRefreshThreshold })` also logs in again with the same credentials when the token is invalid or the refresh fails, until the store is cleared or holds another record.
+
+## Realtime
+
+```ts
+const unsubscribe = await heybe
+  .records("posts")
+  .subscribe("*", ({ action, record }) => {}, {
+    where: { status: "published" },
+    expand: { author: true },
+  });
+await heybe.records("posts").subscribe("RECORD_ID", (e) => {});
+
+await unsubscribe();
+await heybe.records("posts").unsubscribe("RECORD_ID");
+await heybe.records("posts").unsubscribe(); // every topic of the collection
+
+await heybe.realtime.subscribe("PB_CONNECT", ({ clientId }) => {});
+heybe.realtime.onDisconnect = (activeTopics) => {};
+```
+
+Realtime reads the SSE stream with `fetch`, so it works in browsers, Bun and Node without `EventSource`. The first subscription opens the connection and the last unsubscribe closes it. A lost connection reconnects after 200, 300, 500, 1000, 1200, 1500, then every 2000 ms, and every topic is subscribed again. When the auth store's token changes (a new login or `clear()`), an open connection reconnects so events follow the new auth.

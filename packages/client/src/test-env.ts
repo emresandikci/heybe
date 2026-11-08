@@ -83,3 +83,34 @@ export function jwt(payload: unknown): string {
   const b64 = (s: string) => Buffer.from(s).toString("base64url");
   return `${b64('{"alg":"HS256"}')}.${b64(JSON.stringify(payload))}.sig`;
 }
+
+export function sseStream(): {
+  response: Response;
+  push(text: string): void;
+  end(): void;
+  fail(): void;
+  readonly cancelled: boolean;
+} {
+  const encoder = new TextEncoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c;
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return {
+    response: new Response(body, {
+      headers: { "Content-Type": "text/event-stream" },
+    }),
+    push: (text) => controller.enqueue(encoder.encode(text)),
+    end: () => controller.close(),
+    fail: () => controller.error(new Error("stream failed")),
+    get cancelled() {
+      return cancelled;
+    },
+  };
+}
