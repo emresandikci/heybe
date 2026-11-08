@@ -8,6 +8,8 @@ declare module "@heybe/query" {
       views: number;
       tags: ("a" | "b")[];
       author: Relation;
+      body: string;
+      location: { lon: number; lat: number };
       created: string;
       updated: string;
     };

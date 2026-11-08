@@ -35,6 +35,8 @@ test("generates the augmentation for base and auth collections", async () => {
         collectionId: users.id,
         maxSelect: 1,
       },
+      { name: "body", type: "editor" },
+      { name: "location", type: "geoPoint" },
       ...autodates,
     ],
   });
@@ -60,6 +62,8 @@ test("maps every field type", () => {
       { name: "f", type: "select", values: ["x", "y"], maxSelect: 1 },
       { name: "g", type: "file", maxSelect: 3 },
       { name: "h", type: "file", maxSelect: 1 },
+      { name: "i", type: "editor" },
+      { name: "j", type: "geoPoint" },
     ] as any,
   });
   const out = generateTypes(app.collections.all());
@@ -72,6 +76,8 @@ test("maps every field type", () => {
     'f: "x" | "y";',
     "g: string[];",
     "h: string;",
+    "i: string;",
+    "j: { lon: number; lat: number };",
   ])
     expect(out).toContain(line);
   expect(out).not.toContain("_superusers");

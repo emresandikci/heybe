@@ -136,6 +136,8 @@ function columnDef(field: Field): string {
   const name = quote(field.name);
   if (field.name === "id") return `${name} TEXT PRIMARY KEY NOT NULL`;
   if (field.type === "json") return `${name} TEXT DEFAULT NULL`;
+  if (field.type === "geoPoint")
+    return `${name} JSON DEFAULT '{"lon":0,"lat":0}' NOT NULL`;
   const type = sqlType(field.type);
   return `${name} ${type} DEFAULT ${type === "TEXT" ? "''" : "0"} NOT NULL`;
 }

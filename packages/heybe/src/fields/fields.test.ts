@@ -61,6 +61,7 @@ describe("sqlType", () => {
     expect(fields.number.sqlType).toBe("REAL");
     expect(fields.bool.sqlType).toBe("INTEGER");
     expect(fields.json.sqlType).toBe("TEXT");
+    expect(fields.editor.sqlType).toBe("TEXT");
     expect(fields.relation.sqlType).toBe("TEXT");
   });
 });
@@ -903,5 +904,111 @@ describe("password", () => {
     expect(fields.password.toDb(new PasswordValue("h", "p"))).toBe("h");
     expect(fields.password.fromDb("h", pw)).toEqual(new PasswordValue("h"));
     expect(fields.password.fromDb(null, pw)).toEqual(new PasswordValue());
+  });
+});
+
+describe("editor", () => {
+  test.each<[unknown, string]>([
+    ["", ""],
+    ["test", "test"],
+    [false, "false"],
+    [true, "true"],
+    [123.456, "123.456"],
+    [null, ""],
+    [{ a: 1 }, ""],
+  ])("normalize %p", (input, expected) => {
+    expect(stored("editor", {}, input)).toBe(expected);
+  });
+
+  test.each<[Record<string, unknown>, unknown, string | null]>([
+    [{}, 123, "validation_unsupported_value_type"],
+    [{}, "", null],
+    [{ required: true }, "", "validation_required"],
+    [{ required: true }, "abc", null],
+    [
+      { required: true },
+      "a".repeat(1 + (5 << 20)),
+      "validation_content_size_limit",
+    ],
+    [{ maxSize: 5 }, "abcdef", "validation_content_size_limit"],
+    [{ maxSize: 5 }, "abcde", null],
+    [{ maxSize: 5 }, "\u00e9\u00e9\u00e9", "validation_content_size_limit"],
+  ])("validate %p %p", (opts, value, expected) => {
+    expect(code("editor", opts, value)).toBe(expected);
+  });
+
+  test("message and body size", () => {
+    expect(check("editor", { maxSize: 5 }, "abcdef")?.message).toBe(
+      "The maximum allowed content size is 5 bytes.",
+    );
+    expect(fields.editor.maxBodySize!(field("editor"))).toBe(5 << 20);
+    expect(fields.editor.maxBodySize!(field("editor", { maxSize: 10 }))).toBe(
+      10,
+    );
+  });
+});
+
+describe("geoPoint", () => {
+  const zero = { lon: 0, lat: 0 };
+
+  test.each<[unknown, unknown]>([
+    [null, zero],
+    [undefined, zero],
+    ["", zero],
+    ["null", zero],
+    ["nope", zero],
+    [5, zero],
+    [[1, 2], zero],
+    [{}, zero],
+    [
+      { lon: 10, lat: 20 },
+      { lon: 10, lat: 20 },
+    ],
+    ['{"lon": 10, "lat": 20}', { lon: 10, lat: 20 }],
+    [
+      { lon: 10, lat: 20, extra: 1 },
+      { lon: 10, lat: 20 },
+    ],
+    [{ lon: "abc", lat: 1 }, zero],
+    [
+      { lat: 1, lon: "abc" },
+      { lon: 0, lat: 1 },
+    ],
+    [
+      { lon: null, lat: 4 },
+      { lon: 0, lat: 4 },
+    ],
+    [{ Lon: 3, LAT: 4 }, zero],
+  ])("normalize %p", (input, expected) => {
+    expect(stored("geoPoint", {}, input)).toEqual(expected);
+  });
+
+  test.each<[Record<string, unknown>, unknown, string | null]>([
+    [{}, 123, "validation_unsupported_value_type"],
+    [{}, zero, null],
+    [{ required: true }, zero, "validation_required"],
+    [{ required: true }, { lon: 0, lat: 1 }, null],
+    [{ required: true }, { lon: 1, lat: 0 }, null],
+    [{ required: true }, { lon: -1, lat: -2 }, null],
+    [{}, { lon: 0, lat: -90.1 }, "validation_invalid_latitude"],
+    [{}, { lon: 0, lat: 90.1 }, "validation_invalid_latitude"],
+    [{}, { lon: -180.1, lat: 0 }, "validation_invalid_longitude"],
+    [{}, { lon: 180.1, lat: 0 }, "validation_invalid_longitude"],
+    [{}, { lon: 180, lat: 90 }, null],
+  ])("validate %p %p", (opts, value, expected) => {
+    expect(code("geoPoint", opts, value)).toBe(expected);
+  });
+
+  test("db round trip", () => {
+    const f = field("geoPoint");
+    expect(fields.geoPoint.toDb({ lon: 10, lat: 20 })).toBe(
+      '{"lon":10,"lat":20}',
+    );
+    expect(fields.geoPoint.fromDb('{"lon":10,"lat":20}', f)).toEqual({
+      lon: 10,
+      lat: 20,
+    });
+    expect(fields.geoPoint.fromDb("", f)).toEqual(zero);
+    expect(fields.geoPoint.fromDb(null, f)).toEqual(zero);
   });
 });

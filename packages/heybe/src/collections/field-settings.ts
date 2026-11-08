@@ -192,6 +192,8 @@ export const FIELD_SHAPES: Record<FieldType, Shape> = {
     protected: "bool",
     thumbs: "strings",
   },
+  editor: { ...WITH_REQUIRED, maxSize: "int", convertURLs: "bool" },
+  geoPoint: WITH_REQUIRED,
   password: {
     ...WITH_REQUIRED,
     cost: "int",
@@ -481,6 +483,7 @@ export function validateFieldSettings(f: Field, ctx: SettingsCtx): Errors {
       break;
     }
     case "json":
+    case "editor":
       set(
         "maxSize",
         firstError(

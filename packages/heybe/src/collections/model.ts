@@ -12,7 +12,9 @@ export type FieldType =
   | "json"
   | "relation"
   | "file"
-  | "password";
+  | "password"
+  | "editor"
+  | "geoPoint";
 
 export interface Field {
   id: string;

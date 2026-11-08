@@ -484,7 +484,8 @@ class Runner {
       if (field?.hidden && !this.r.allowHidden)
         throw new FilterError(`non-filterable field "${prop}"`);
 
-      if (field?.type === "json") return this.jsonPath(field, i);
+      if (field?.type === "json" || field?.type === "geoPoint")
+        return this.jsonPath(field, i);
 
       if (i >= MAX_NESTED_RELS)
         throw new FilterError(

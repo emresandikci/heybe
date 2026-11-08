@@ -2,8 +2,10 @@ import type { FieldType } from "../collections/model";
 import { autodate } from "./autodate";
 import { bool } from "./bool";
 import { date } from "./date";
+import { editor } from "./editor";
 import { email } from "./email";
 import { file } from "./file";
+import { geoPoint } from "./geo-point";
 import { json } from "./json";
 import { number } from "./number";
 import { password } from "./password";
@@ -30,4 +32,6 @@ export const fields: Record<FieldType, FieldDef> = {
   relation,
   file,
   password,
+  editor,
+  geoPoint,
 };

@@ -16,6 +16,8 @@ function tsType(f: Field): string | null {
       return "boolean";
     case "json":
       return "unknown";
+    case "geoPoint":
+      return "{ lon: number; lat: number }";
     case "password":
       return null;
     case "select": {
