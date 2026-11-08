@@ -47,6 +47,21 @@ describe("jwt", () => {
       verifyJwt(signJwt({ id: "x", exp }, "other"), "secret", now),
     ).toBeNull();
   });
+
+  test("rejects alg none with an empty signature", () => {
+    const b64 = (v: unknown) =>
+      Buffer.from(JSON.stringify(v)).toString("base64url");
+    const token = `${b64({ alg: "none", typ: "JWT" })}.${b64({ id: "x", exp })}.`;
+    expect(verifyJwt(token, "secret", now)).toBeNull();
+  });
+
+  test("rejects a payload changed after signing", () => {
+    const [h, , s] = signJwt({ id: "x", exp }, "secret").split(".");
+    const p = Buffer.from(JSON.stringify({ exp, id: "y" })).toString(
+      "base64url",
+    );
+    expect(verifyJwt(`${h}.${p}.${s}`, "secret", now)).toBeNull();
+  });
 });
 
 describe("auth tokens", () => {

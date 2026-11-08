@@ -10,11 +10,13 @@ const SUPERUSER_PASSWORD = "1234567890";
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
 const CLI = resolve(import.meta.dir, "../src/cli.ts");
 const KEPT_HEADERS = /^(content-type|access-control-.*)$/;
-const PLACEHOLDER_KEYS: Record<string, string> = {
-  token: "<token>",
-  created: "<created>",
-  updated: "<updated>",
-  tokenKey: "<tokenKey>",
+const DATE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+// Only values in the expected format are replaced, so an empty or malformed value still shows as a difference.
+const PLACEHOLDERS: Record<string, [RegExp, string]> = {
+  token: [/^[\w-]+\.[\w-]+\.[\w-]+$/, "<token>"],
+  created: [DATE, "<created>"],
+  updated: [DATE, "<updated>"],
+  tokenKey: [/./, "<tokenKey>"],
 };
 
 export interface Target {
@@ -195,7 +197,10 @@ function normalize(target: Target["name"], value: unknown, key = ""): unknown {
   }
   if (typeof value === "string") {
     if (key === "id" && value !== "") return placeholder(value);
-    if (Object.hasOwn(PLACEHOLDER_KEYS, key)) return PLACEHOLDER_KEYS[key];
+    if (Object.hasOwn(PLACEHOLDERS, key)) {
+      const [format, placeholder] = PLACEHOLDERS[key]!;
+      if (format.test(value)) return placeholder;
+    }
     // other strings only when already seen as an id (relation values), so a wrong value is not hidden
     if (value !== "" && ids.has(value)) return placeholder(value);
   }
