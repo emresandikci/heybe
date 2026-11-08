@@ -1,4 +1,4 @@
-import { mkdir, rm, rmdir } from "node:fs/promises";
+import { mkdir, rename, rm, rmdir } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
 export interface Filesystem {
@@ -42,7 +42,14 @@ export function localFilesystem(root: string): Filesystem {
     async write(key, data) {
       const path = pathOf(key);
       await mkdir(dirname(path), { recursive: true });
-      await Bun.write(path, data);
+      const temp = `${path}.${crypto.randomUUID()}.tmp`;
+      try {
+        await Bun.write(temp, data);
+        await rename(temp, path);
+      } catch (err) {
+        await rm(temp, { force: true });
+        throw err;
+      }
     },
     async file(key) {
       const blob = Bun.file(pathOf(key));

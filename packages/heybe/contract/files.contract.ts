@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import sharp from "sharp";
 import {
   type Snapshot,
   type Target,
@@ -981,4 +982,176 @@ describe("sniffed content types", () => {
       );
     },
   );
+});
+
+describe("thumbnails", () => {
+  const SIZES = ["60x30", "0x40", "50x0", "80x40t", "80x40b", "80x40f"];
+  const THUMB_HEADERS = [
+    "content-disposition",
+    "content-security-policy",
+    "cache-control",
+    "x-content-type-options",
+    "x-frame-options",
+  ];
+
+  const image = (format: "png" | "jpeg" | "gif") =>
+    sharp({
+      create: { width: 200, height: 100, channels: 3, background: "#c81e1e" },
+    })
+      [format]()
+      .toBuffer();
+
+  const imageInfo = async (t: Target, url: string) => {
+    const res = await fetch(url);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const headers = Object.fromEntries(
+      [...res.headers].filter(([k]) =>
+        ["content-type", ...THUMB_HEADERS].includes(k),
+      ),
+    );
+    const meta =
+      res.ok && res.headers.get("content-type")?.startsWith("image/")
+        ? await sharp(bytes).metadata()
+        : null;
+    return {
+      status: res.status,
+      headers: maskNames(headers),
+      size: meta ? [meta.width, meta.height, meta.format] : bytes.length,
+    };
+  };
+
+  const sameImage = async (url: (t: Target) => string, status = 200) => {
+    const [pb, hb] = await Promise.all([
+      imageInfo(targets.pb, url(targets.pb)),
+      imageInfo(targets.hb, url(targets.hb)),
+    ]);
+    expect(pb.status).toBe(status);
+    expect(hb).toEqual(pb);
+    return pb;
+  };
+
+  const picUrl = (t: Target, key: string, query: string) => {
+    const r = record(t, key);
+    return `${t.url}/api/files/${id(t, "pics")}/${r.id}/${r.img}${query}`;
+  };
+
+  beforeAll(async () => {
+    const png = await image("png");
+    const jpeg = await image("jpeg");
+    const gif = await image("gif");
+    for (const t of [targets.pb, targets.hb]) {
+      const col = await api(t, "POST", "/api/collections", {
+        name: "pics",
+        type: "base",
+        viewRule: "",
+        createRule: "",
+        fields: [{ name: "img", type: "file", maxSelect: 1, thumbs: SIZES }],
+      });
+      if (!col.ok) throw new Error(`${t.name}: ${await col.text()}`);
+      state[t.name].pics = ((await col.json()) as Json).id;
+      const locked = await api(t, "POST", "/api/collections", {
+        name: "lockedpics",
+        type: "base",
+        createRule: "",
+        fields: [
+          {
+            name: "secret",
+            type: "file",
+            maxSelect: 1,
+            protected: true,
+            thumbs: SIZES,
+          },
+        ],
+      });
+      if (!locked.ok) throw new Error(`${t.name}: ${await locked.text()}`);
+      state[t.name].lockedpics = ((await locked.json()) as Json).id;
+      const uploads: [string, string, Uint8Array][] = [
+        ["png", "img", png],
+        ["jpeg", "img", jpeg],
+        ["gif", "img", gif],
+        ["text", "img", new TextEncoder().encode("plain text")],
+        ["corrupt", "img", new TextEncoder().encode("\x89PNG\r\n\x1a\nnope")],
+        ["secret", "secret", png],
+      ];
+      for (const [key, field, bytes] of uploads) {
+        const name =
+          key === "text"
+            ? "note.txt"
+            : `${key}.${key === "jpeg" ? "jpg" : "png"}`;
+        const res = await api(
+          t,
+          "POST",
+          `/api/collections/${field === "secret" ? "lockedpics" : "pics"}/records`,
+          form([
+            [
+              field,
+              new File(
+                [new Uint8Array(bytes)],
+                key === "gif" ? "pic.gif" : name,
+              ),
+            ],
+          ]),
+        );
+        if (!res.ok) throw new Error(`${t.name}: ${await res.text()}`);
+        state[t.name][key] = await res.json();
+      }
+    }
+  });
+
+  test.each(SIZES)("an allowed size %s", async (size) => {
+    const info = await sameImage((t) => picUrl(t, "png", `?thumb=${size}`));
+    expect(info.size).not.toEqual([200, 100, "png"]);
+  });
+
+  test("the default 100x100 size is allowed without being listed", async () => {
+    const info = await sameImage((t) => picUrl(t, "png", "?thumb=100x100"));
+    expect(info.size).toEqual([100, 100, "png"]);
+  });
+
+  test("a jpeg and a gif keep their format", async () => {
+    const jpeg = await sameImage((t) => picUrl(t, "jpeg", "?thumb=60x30"));
+    expect(jpeg.size).toEqual([60, 30, "jpeg"]);
+    const gif = await sameImage((t) => picUrl(t, "gif", "?thumb=60x30"));
+    expect(gif.size).toEqual([60, 30, "gif"]);
+  });
+
+  test("a second request is served from the stored thumb", async () => {
+    await sameImage((t) => picUrl(t, "png", "?thumb=60x30"));
+  });
+
+  test.each(["7x7", "60x31", "0x0", "bad"])(
+    "a size that is not allowed (%s) serves the original",
+    async (size) => {
+      const info = await sameImage((t) => picUrl(t, "png", `?thumb=${size}`));
+      expect(info.size).toEqual([200, 100, "png"]);
+    },
+  );
+
+  test("a non-image serves the original", async () => {
+    await sameImage((t) => {
+      const r = record(t, "text");
+      return `${t.url}/api/files/${id(t, "pics")}/${r.id}/${r.img}?thumb=60x30`;
+    });
+  });
+
+  test("a corrupt image serves the original", async () => {
+    await sameImage((t) => picUrl(t, "corrupt", "?thumb=60x30"));
+  });
+
+  test("a protected file thumb needs a token", async () => {
+    const tokens: Record<string, string> = {};
+    for (const t of [targets.pb, targets.hb]) {
+      const res = await api(t, "POST", "/api/files/token");
+      tokens[t.name] = ((await res.json()) as Json).token;
+    }
+    const url = (t: Target, query: string) => {
+      const r = record(t, "secret");
+      return `${t.url}/api/files/${id(t, "lockedpics")}/${r.id}/${r.secret}${query}`;
+    };
+    await sameImage((t) => url(t, "?thumb=60x30"), 404);
+    const info = await sameImage((t) =>
+      url(t, `?thumb=60x30&token=${tokens[t.name]}`),
+    );
+    expect(info.size).toEqual([60, 30, "png"]);
+  });
 });

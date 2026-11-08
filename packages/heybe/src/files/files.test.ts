@@ -39,6 +39,18 @@ describe("localFilesystem", () => {
     expect(await readdir(root)).toEqual([]);
   });
 
+  test("a write whose source fails leaves no file and keeps the old one", async () => {
+    const fs = localFilesystem(root);
+    const broken = Bun.file(join(root, "missing-source"));
+    await expect(fs.write("pbc_1/abc/a.txt", broken)).rejects.toThrow();
+    expect(await fs.file("pbc_1/abc/a.txt")).toBeNull();
+
+    await fs.write("pbc_1/abc/a.txt", new TextEncoder().encode("old"));
+    await expect(fs.write("pbc_1/abc/a.txt", broken)).rejects.toThrow();
+    expect(await (await fs.file("pbc_1/abc/a.txt"))?.text()).toBe("old");
+    expect(await readdir(join(root, "pbc_1/abc"))).toEqual(["a.txt"]);
+  });
+
   test("a directory is not a file", async () => {
     const fs = localFilesystem(root);
     await fs.write("pbc_1/abc/a.txt", new Uint8Array([1]));

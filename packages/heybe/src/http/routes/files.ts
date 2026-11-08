@@ -4,6 +4,7 @@ import { uniqueStrings } from "../../fields/shared";
 import { parseFilter } from "../../filter/parse";
 import { sniffMime } from "../../files/mime";
 import { fileKey } from "../../files/storage";
+import { createThumb, thumbGenerator } from "../../files/thumbs";
 import { buildRequestInfo, matchesRecord } from "../../records/rules";
 import { ApiError } from "../errors";
 import { checkSuperuserIp, framable } from "../middlewares";
@@ -48,6 +49,17 @@ const EXTENSION_TYPES: Record<string, string> = {
   ".pptx":
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 };
+
+const THUMB_TYPES = new Set([
+  "image/png",
+  "image/jpg",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+const DEFAULT_THUMB_SIZES = ["100x100"];
+
+const generateThumb = thumbGenerator(createThumb);
 
 const TRUE = new Set(["1", "t", "T", "TRUE", "true", "True"]);
 
@@ -109,20 +121,53 @@ async function download(e: RequestEvent): Promise<Response> {
   )
     throw new ApiError(404, "");
 
+  const originalKey = fileKey(c.id, record.id as string, filename);
+  let servedName = filename;
   let blob: Blob | null;
   try {
-    blob = await e.app.files.file(fileKey(c.id, record.id as string, filename));
+    blob = await e.app.files.file(originalKey);
   } catch {
     blob = null;
   }
   if (!blob) throw new ApiError(404, "");
 
+  const thumb = e.query.get("thumb") ?? "";
+  const thumbsOf = Array.isArray(field.thumbs) ? field.thumbs : [];
+  if (
+    thumb !== "" &&
+    (DEFAULT_THUMB_SIZES.includes(thumb) || thumbsOf.includes(thumb)) &&
+    THUMB_TYPES.has(await sniffMime(blob))
+  ) {
+    const thumbName = `${thumb}_${filename}`;
+    const thumbKey = fileKey(
+      c.id,
+      record.id as string,
+      `thumbs_${filename}/${thumbName}`,
+    );
+    let thumbBlob = await e.app.files.file(thumbKey).catch(() => null);
+    if (!thumbBlob) {
+      try {
+        await generateThumb(e.app.files, originalKey, thumbKey, thumb);
+        thumbBlob = await e.app.files.file(thumbKey);
+      } catch (err) {
+        console.warn(
+          `Fallback to original - failed to create thumb ${thumbName}`,
+          err,
+        );
+      }
+    }
+    if (thumbBlob) {
+      blob = thumbBlob;
+      servedName = thumbName;
+    }
+  }
+
   const type = await sniffMime(blob);
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
   const headers = new Headers({
-    "content-disposition": `${inline ? "inline" : "attachment"}; filename=${JSON.stringify(filename)}`,
-    "content-type": EXTENSION_TYPES[extensionOf(filename)] ?? type,
+    "content-disposition": `${inline ? "inline" : "attachment"}; filename=${JSON.stringify(servedName)}`,
+    "content-type": EXTENSION_TYPES[extensionOf(servedName)] ?? type,
     "content-security-policy":
       "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "max-age=2592000, stale-while-revalidate=86400",
