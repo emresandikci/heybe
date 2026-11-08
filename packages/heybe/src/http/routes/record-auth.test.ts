@@ -42,6 +42,26 @@ describe("auth-with-password", () => {
   });
 });
 
+describe("auth-with-password dummy check", () => {
+  test("hashes the dummy password with the collection password cost", async () => {
+    const users = app.collections.find("users")!;
+    app.collections.save({
+      id: users.id,
+      fields: users.fields.map((f) =>
+        f.name === "password" ? { ...f, cost: 7 } : f,
+      ),
+    } as any);
+    const hash = spyOn(Bun.password, "hash");
+    await call("/api/collections/users/auth-with-password", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identity: "no@example.com", password: "pw" }),
+    });
+    expect(hash).toHaveBeenCalledTimes(1);
+    expect(hash.mock.calls[0]![1]).toEqual({ algorithm: "bcrypt", cost: 7 });
+    hash.mockRestore();
+  });
+});
+
 describe("auth-with-password multipart", () => {
   test("number-like values are read as the submitted strings", async () => {
     await app

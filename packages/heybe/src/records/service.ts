@@ -641,10 +641,11 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     )
       values.tokenKey = randomByPattern(pattern);
     if (hash(values) !== hash(original))
-      this.deps.db.run(
-        "DELETE FROM _mfas WHERE collectionRef = ? AND recordRef = ?",
-        [c.id, values.id as string],
-      );
+      for (const table of ["_mfas", "_authOrigins"])
+        this.deps.db.run(
+          `DELETE FROM ${table} WHERE collectionRef = ? AND recordRef = ?`,
+          [c.id, values.id as string],
+        );
     // like PB, any tokenKey change (also an explicit one) drops the record's pending OTPs
     if (values.tokenKey !== original.tokenKey)
       this.deps.db.run(

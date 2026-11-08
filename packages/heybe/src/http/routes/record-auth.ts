@@ -1,6 +1,7 @@
 import { toAst } from "@heybe/query";
 import type { App } from "../../app";
-import { authTokenFromRequest } from "../middlewares";
+import { authTokenFromRequest, realIp } from "../middlewares";
+import { recordAuthOrigin } from "../../auth/alerts";
 import { type MfaMethod, checkMfa } from "../../auth/mfa";
 import { authMethodsProviders } from "../../auth/oauth2/flow";
 import { newAuthToken } from "../../auth/tokens";
@@ -10,7 +11,7 @@ import type { Collection } from "../../collections/model";
 import { FilterError, parseFilter } from "../../filter/parse";
 import { buildRequestInfo } from "../../records/rules";
 import { expandRecords } from "../../records/expand";
-import { serializeRecord } from "../../records/serialize";
+import { pickFields, serializeRecord } from "../../records/serialize";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
 import type { RequestEvent, Router } from "../router";
@@ -135,14 +136,21 @@ export async function verifyPassword(
   }
 }
 
-let dummyHash: Promise<string> | undefined;
+const dummyHashes = new Map<number, Promise<string>>();
 
-async function dummyPasswordCheck(password: string): Promise<void> {
-  dummyHash ??= Bun.password.hash("dummy-password", {
-    algorithm: "bcrypt",
-    cost: 10,
-  });
-  await Bun.password.verify(password, await dummyHash);
+// PB runs the dummy check with the collection's configured password cost.
+async function dummyPasswordCheck(
+  c: Collection,
+  password: string,
+): Promise<void> {
+  const field = c.fields.find((f) => f.name === "password");
+  const cost = Number(field?.cost) > 0 ? Number(field?.cost) : 10;
+  let hash = dummyHashes.get(cost);
+  if (!hash) {
+    hash = Bun.password.hash("dummy-password", { algorithm: "bcrypt", cost });
+    dummyHashes.set(cost, hash);
+  }
+  await Bun.password.verify(password, await hash);
 }
 
 function canAuthenticate(
@@ -214,7 +222,20 @@ export async function authResponse(
     (e.query.get("expand") ?? "").split(","),
     info,
   );
-  return e.json(200, { ...extra, record: expanded, token });
+  if (method !== "" && (c.authAlert as { enabled: boolean }).enabled)
+    await recordAuthOrigin(
+      e.app,
+      c,
+      record,
+      realIp(e.app, e.req, e.remoteIp),
+      e.req.headers.get("user-agent") ?? "",
+    ).catch((err) =>
+      console.error("heybe: failed to record auth origin:", err),
+    );
+  return e.json(
+    200,
+    pickFields({ ...extra, record: expanded, token }, e.query.get("fields")),
+  );
 }
 
 export function registerRecordAuthRoutes(router: Router): void {
@@ -279,7 +300,7 @@ export function registerRecordAuthRoutes(router: Router): void {
         password.identityFields,
       );
       if (!record || !(await verifyPassword(record, form.password))) {
-        if (!record) await dummyPasswordCheck(form.password);
+        if (!record) await dummyPasswordCheck(c, form.password);
         throw new ApiError(400, "Failed to authenticate.");
       }
       return authResponse(
