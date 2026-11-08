@@ -189,7 +189,6 @@ type Prepared = { old: Collection | null; next: Collection };
 
 export class CollectionStore {
   onChange?: () => void;
-  private depth = 0;
 
   constructor(
     private readonly db: Db,
@@ -206,7 +205,7 @@ export class CollectionStore {
       "CREATE TABLE IF NOT EXISTS _params (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     );
     if (!this.find("_superusers"))
-      for (const c of bootstrapCollections()) this.save(c);
+      for (const c of bootstrapCollections()) this.saveNow(c);
   }
 
   all(): Collection[] {
@@ -239,30 +238,31 @@ export class CollectionStore {
     return row ? fromRow(row) : null;
   }
 
-  save(input: SaveInput, isNew = false): Collection {
-    return this.changing(() => {
-      const saved = this.db.tx(() => {
-        const { old, next } = this.prepare(input, isNew);
-        this.validate(old, next);
-        this.persist(old, next);
-        return next;
-      });
-      this.resaveViewsLogged([saved.id], saved.name);
-      return saved;
+  save(input: SaveInput, isNew = false): Promise<Collection> {
+    return this.db.write(() => {
+      this.changed();
+      return this.saveNow(input, isNew);
     });
   }
 
-  // Nested saves (dependent view resaves) can still roll back with their caller,
-  // so onChange fires once the outermost operation has committed.
-  private changing<T>(fn: () => T): T {
-    this.depth++;
-    try {
-      const result = fn();
-      if (this.depth === 1) this.onChange?.();
-      return result;
-    } finally {
-      this.depth--;
-    }
+  private saveNow(input: SaveInput, isNew = false): Collection {
+    const saved = this.db.tx(() => {
+      const { old, next } = this.prepare(input, isNew);
+      this.validate(old, next);
+      this.persist(old, next);
+      return next;
+    });
+    this.resaveViewsLogged([saved.id], saved.name);
+    return saved;
+  }
+
+  // after the commit: onChange, then the storage dirs of deleted collections
+  private changed(removed: string[] = []) {
+    this.db.onComplete((err) => {
+      if (err !== null) return;
+      this.onChange?.();
+      return this.deleteFiles(removed);
+    });
   }
 
   // PB only logs these, so the user can fix the view queries afterwards
@@ -295,7 +295,8 @@ export class CollectionStore {
         if (view.type !== "view" || excludeIds.includes(view.id)) continue;
         try {
           const fields = inferViewFields(this.db, this, String(view.viewQuery));
-          if (comparable(fields) !== comparable(view.fields)) this.save(view);
+          if (comparable(fields) !== comparable(view.fields))
+            this.saveNow(view);
         } catch (e) {
           failures.push(`[${view.name}] ${(e as Error).message}`);
         }
@@ -305,21 +306,21 @@ export class CollectionStore {
   }
 
   // PB ImportCollections: all collections are saved first and validated afterwards, in one transaction.
-  // Errors throw synchronously; the returned promise settles once deleted collections' files are gone.
-  import(
+  // Deleted collections' storage dirs go after the outermost commit.
+  async import(
     items: Record<string, unknown>[],
     deleteMissing: boolean,
   ): Promise<void> {
     if (items.length === 0) throw new Error("no collections to import");
     const removed: string[] = [];
-    this.changing(() => {
+    await this.db.write(() => {
+      this.changed(removed);
       this.importTx(items, deleteMissing, removed);
       this.resaveViewsLogged(
         items.map((i) => String(i.id ?? "")),
         "imported",
       );
     });
-    return this.deleteFiles(removed);
   }
 
   private importTx(
@@ -367,29 +368,27 @@ export class CollectionStore {
     });
   }
 
-  // Errors throw synchronously; the returned promise settles once the collection's files are gone.
-  delete(nameOrId: string): Promise<void> {
-    const c = this.require(nameOrId);
-    if (c.system)
-      throw new Error(`[${c.name}] system collections cannot be deleted`);
-    const refs = this.references(c);
-    if (refs.length > 0)
-      throw new Error(
-        `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
-      );
-    this.changing(() =>
-      this.db.tx(() => {
-        this.remove(c);
-        try {
-          this.resaveViews([c.id]);
-        } catch (e) {
-          throw new Error(
-            `[${c.name}] failed to delete due to existing view dependency: ${(e as Error).message}`,
-          );
-        }
-      }),
-    );
-    return this.deleteFiles([c.id]);
+  // The storage dir goes after the outermost commit.
+  async delete(nameOrId: string): Promise<void> {
+    await this.db.write(() => {
+      const c = this.require(nameOrId);
+      if (c.system)
+        throw new Error(`[${c.name}] system collections cannot be deleted`);
+      const refs = this.references(c);
+      if (refs.length > 0)
+        throw new Error(
+          `[${c.name}] failed to delete due to existing relation references: ${refs.map((r) => r.name).join(", ")}`,
+        );
+      this.changed([c.id]);
+      this.remove(c);
+      try {
+        this.resaveViews([c.id]);
+      } catch (e) {
+        throw new Error(
+          `[${c.name}] failed to delete due to existing view dependency: ${(e as Error).message}`,
+        );
+      }
+    });
   }
 
   // like PB the storage dir goes after the commit, and a failure is only logged

@@ -28,7 +28,7 @@ async function update(e: RequestEvent): Promise<Response> {
     throw new ApiError(400, LOAD_FAILED);
   }
   try {
-    e.app.settings.update(body);
+    await e.app.settings.update(body);
   } catch (err) {
     if (err instanceof SettingsLoadError) throw new ApiError(400, LOAD_FAILED);
     throw err;

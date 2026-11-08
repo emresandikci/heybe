@@ -11,18 +11,18 @@ let clock: Date;
 let sent: MailMessage[];
 
 const users = () => app.collections.find("users")!;
-const setOtp = (enabled: boolean) =>
-  app.collections.save({
+const setOtp = async (enabled: boolean) =>
+  await app.collections.save({
     id: users().id,
     otp: { ...(users().otp as object), enabled },
   } as any);
 
-beforeEach(() => {
+beforeEach(async () => {
   clock = new Date("2026-01-01T00:00:00Z");
   app = createApp({ dir: ":memory:", now: () => clock });
   sent = [];
   app.mailer = { send: async (msg) => void sent.push(msg) };
-  setOtp(true);
+  await setOtp(true);
 });
 
 afterEach(() => app.close());
@@ -87,7 +87,7 @@ describe("request-otp", () => {
   });
 
   test("a disabled collection answers 403", async () => {
-    setOtp(false);
+    await setOtp(false);
     expect((await post("request-otp", { email: "a@example.com" })).status).toBe(
       403,
     );
@@ -164,7 +164,7 @@ describe("auth-with-otp", () => {
   test("an otpId of another collection fails", async () => {
     await createUser("a@example.com");
     const { otpId, code } = await requestCode("a@example.com");
-    app.collections.save({
+    await app.collections.save({
       name: "members",
       type: "auth",
       otp: { ...(users().otp as object), enabled: true },
@@ -209,8 +209,8 @@ describe("auth-with-otp", () => {
   });
 });
 
-const constrainPassword = () =>
-  app.collections.save({
+const constrainPassword = async () =>
+  await app.collections.save({
     id: users().id,
     fields: users().fields.map((f) =>
       f.name === "password" ? { ...f, max: 20, pattern: "^[a-z]+$" } : f,
@@ -220,7 +220,7 @@ const constrainPassword = () =>
 describe("random password after OTP verification", () => {
   test("ignores the password field max and pattern", async () => {
     const user = await createUser("a@example.com");
-    constrainPassword();
+    await constrainPassword();
     const { otpId, code } = await requestCode("a@example.com");
     expect(
       (await post("auth-with-otp", { otpId, password: code })).status,
@@ -237,7 +237,9 @@ describe("random password after OTP verification", () => {
 
 describe("attempt limit behind a trusted proxy", () => {
   test("clients are counted by their forwarded ip", async () => {
-    app.settings.update({ trustedProxy: { headers: ["x-forwarded-for"] } });
+    await app.settings.update({
+      trustedProxy: { headers: ["x-forwarded-for"] },
+    });
     await createUser("a@example.com");
     const { otpId, code } = await requestCode("a@example.com");
     const as = (ip: string, password: string) =>

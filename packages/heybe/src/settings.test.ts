@@ -7,15 +7,15 @@ import { SettingsLoadError } from "./settings";
 
 let app: App;
 
-beforeEach(() => {
+beforeEach(async () => {
   app = createApp({ dir: ":memory:" });
 });
 
 afterEach(() => app.close());
 
-const errorsOf = (patch: object): Record<string, any> => {
+const errorsOf = async (patch: object): Promise<Record<string, any>> => {
   try {
-    app.settings.update(patch);
+    await app.settings.update(patch);
   } catch (err) {
     return (err as { data: Record<string, any> }).data;
   }
@@ -37,23 +37,26 @@ describe("settings", () => {
     });
   });
 
-  test("update merges nested fields and persists", () => {
-    app.settings.update({ meta: { appName: "Mine" } } as never);
+  test("update merges nested fields and persists", async () => {
+    await app.settings.update({ meta: { appName: "Mine" } } as never);
     const s = app.settings.get();
     expect(s.meta.appName).toBe("Mine");
     expect(s.meta.senderName).toBe("Support");
   });
 
-  test("keys match case-insensitively and unknown keys are ignored", () => {
-    app.settings.update({ Meta: { AppName: "Z", nope: 1 }, other: 1 } as never);
+  test("keys match case-insensitively and unknown keys are ignored", async () => {
+    await app.settings.update({
+      Meta: { AppName: "Z", nope: 1 },
+      other: 1,
+    } as never);
     expect(app.settings.get().meta.appName).toBe("Z");
   });
 
-  test("Object.prototype names are ignored as unknown keys", () => {
+  test("Object.prototype names are ignored as unknown keys", async () => {
     const patch = JSON.parse(
       '{"constructor":1,"toString":{},"meta":{"valueOf":{},"appName":"P"},"__proto__":{"x":1}}',
     );
-    app.settings.update(patch);
+    await app.settings.update(patch);
     const json = JSON.parse(JSON.stringify(app.settings));
     const fresh = createApp({ dir: ":memory:" });
     const defaults = JSON.parse(JSON.stringify(fresh.settings));
@@ -63,18 +66,18 @@ describe("settings", () => {
     expect(Object.hasOwn(json.meta, "valueOf")).toBe(false);
   });
 
-  test("null zeroes a field and arrays are replaced", () => {
-    app.settings.update({
+  test("null zeroes a field and arrays are replaced", async () => {
+    await app.settings.update({
       smtp: { port: null },
       trustedProxy: { headers: ["X-Real-IP"] },
     } as never);
     expect(app.settings.get().smtp.port).toBe(0);
     expect(app.settings.get().trustedProxy.headers).toEqual(["X-Real-IP"]);
-    app.settings.update({ trustedProxy: { headers: null } } as never);
+    await app.settings.update({ trustedProxy: { headers: null } } as never);
     expect(app.settings.get().trustedProxy.headers).toEqual([]);
   });
 
-  test("wrong types are load errors", () => {
+  test("wrong types are load errors", async () => {
     for (const patch of [
       { meta: "x" },
       { meta: { appName: 5 } },
@@ -83,21 +86,21 @@ describe("settings", () => {
       { superuserIPs: [1] },
       [1],
     ])
-      expect(() => app.settings.update(patch as never)).toThrow(
+      await expect(app.settings.update(patch as never)).rejects.toThrow(
         SettingsLoadError,
       );
   });
 
-  test("a failed update changes nothing", () => {
-    expect(() =>
+  test("a failed update changes nothing", async () => {
+    await expect(
       app.settings.update({ meta: { appName: "" } } as never),
-    ).toThrow();
+    ).rejects.toThrow();
     expect(app.settings.get().meta.appName).toBe("Acme");
   });
 
-  test("validation errors", () => {
+  test("validation errors", async () => {
     expect(
-      errorsOf({
+      await errorsOf({
         meta: { appURL: "nope", senderAddress: "bad", accentColor: "red" },
       }),
     ).toEqual({
@@ -114,13 +117,15 @@ describe("settings", () => {
         },
       },
     });
-    expect(errorsOf({ smtp: { enabled: true, host: "", port: 0 } })).toEqual({
+    expect(
+      await errorsOf({ smtp: { enabled: true, host: "", port: 0 } }),
+    ).toEqual({
       smtp: {
         host: { code: "validation_required", message: "Cannot be blank." },
         port: { code: "validation_required", message: "Cannot be blank." },
       },
     });
-    expect(errorsOf({ superuserIPs: ["1.2.3.4", "bad", ""] })).toEqual({
+    expect(await errorsOf({ superuserIPs: ["1.2.3.4", "bad", ""] })).toEqual({
       superuserIPs: {
         1: {
           code: "validation_invlaid_ip_or_subnet",
@@ -130,7 +135,7 @@ describe("settings", () => {
       },
     });
     expect(
-      errorsOf({ backups: { cron: "bad", cronMaxKeep: 0 } }).backups,
+      (await errorsOf({ backups: { cron: "bad", cronMaxKeep: 0 } })).backups,
     ).toEqual({
       cron: {
         code: "validation_invalid_cron",
@@ -141,9 +146,9 @@ describe("settings", () => {
     });
   });
 
-  test("rate limit rules are validated and conflicts are reported", () => {
+  test("rate limit rules are validated and conflicts are reported", async () => {
     expect(
-      errorsOf({
+      await errorsOf({
         rateLimits: {
           rules: [
             { label: "/api/x", duration: 1, maxRequests: 1 },
@@ -166,7 +171,9 @@ describe("settings", () => {
       },
     });
     expect(
-      errorsOf({ rateLimits: { rules: [{ label: "a b", audience: "x" }] } }),
+      await errorsOf({
+        rateLimits: { rules: [{ label: "a b", audience: "x" }] },
+      }),
     ).toEqual({
       rateLimits: {
         rules: {
@@ -193,8 +200,8 @@ describe("settings", () => {
     });
   });
 
-  test("secrets are stored but never serialized", () => {
-    app.settings.update({
+  test("secrets are stored but never serialized", async () => {
+    await app.settings.update({
       smtp: { password: "p" },
       s3: { secret: "s" },
       backups: { s3: { secret: "b" } },
@@ -212,10 +219,10 @@ describe("settings", () => {
     expect(json.smtp.host).toBe("smtp.example.com");
   });
 
-  test("settings survive reopening the database", () => {
+  test("settings survive reopening the database", async () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-settings-"));
     const first = createApp({ dir });
-    first.settings.update({ meta: { appName: "Kept" } } as never);
+    await first.settings.update({ meta: { appName: "Kept" } } as never);
     first.close();
     const second = createApp({ dir });
     expect(second.settings.get().meta.appName).toBe("Kept");

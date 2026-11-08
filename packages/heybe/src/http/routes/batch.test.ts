@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { type App, createApp } from "../../app";
 import { newAuthToken } from "../../auth/tokens";
 import * as mime from "../../files/mime";
+import { RecordServiceImpl } from "../../records/service";
 import { toApiError } from "../errors";
 import { loadAuth } from "../middlewares";
 import { createEvent, resolveBodyLimit } from "../router";
@@ -24,14 +25,14 @@ let time = Date.parse("2026-01-01T00:00:00Z");
 // milliseconds the clock moves on each read
 let step = 0;
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "heybe-batch-"));
   step = 0;
   app = createApp({ dir, now: () => new Date((time += step)) });
-  app.settings.update({
+  await app.settings.update({
     batch: { enabled: true, maxRequests: 50, timeout: 3 },
   });
-  app.collections.save({
+  await app.collections.save({
     name: "notes",
     listRule: "",
     viewRule: "",
@@ -80,10 +81,12 @@ async function call(
   path: string,
   body: FormData | Record<string, unknown>,
   token?: string,
+  signal?: AbortSignal,
 ) {
   const json = !(body instanceof FormData);
   const req = new Request(`http://x${path}`, {
     method,
+    signal,
     headers: {
       ...(json ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: token } : {}),
@@ -102,11 +105,14 @@ async function call(
   }
 }
 
-const batch = (body: FormData | Record<string, unknown>, token?: string) =>
-  call("POST", "/api/batch", body, token);
+const batch = (
+  body: FormData | Record<string, unknown>,
+  token?: string,
+  signal?: AbortSignal,
+) => call("POST", "/api/batch", body, token, signal);
 
-function addMember() {
-  app.collections.save({
+async function addMember() {
+  await app.collections.save({
     name: "members",
     type: "auth",
     updateRule: "id = @request.auth.id",
@@ -188,7 +194,107 @@ describe("batch transaction", () => {
   });
 });
 
+describe("batch interruption", () => {
+  test("client abort mid-batch rolls back", async () => {
+    const controller = new AbortController();
+    const original = RecordServiceImpl.prototype.createPrepared;
+    spy(RecordServiceImpl.prototype, "createPrepared").mockImplementation(
+      function (this: RecordServiceImpl<any>, ...args: [any, any]) {
+        controller.abort();
+        return original.apply(this, args);
+      },
+    );
+    const res = await batch(
+      form([create("a"), create("b")], { "requests.0.file": "x" }),
+      undefined,
+      controller.signal,
+    );
+    expect(res).toEqual({
+      status: 400,
+      body: { message: "Batch transaction failed.", data: {} },
+    });
+    expect(titles()).toEqual([]);
+    expect(stored()).toEqual([]);
+  });
+});
+
+const addItems = () =>
+  app.collections.save({
+    name: "items",
+    createRule: "",
+    updateRule: "",
+    viewRule: "",
+    fields: [
+      { name: "title", type: "text" },
+      { name: "file", type: "file", maxSelect: 1 },
+    ],
+  } as any);
+
+const createItem = {
+  method: "POST",
+  url: "/api/collections/items/records",
+  body: { id: "item00000000001", title: "a" },
+};
+const updateItem = {
+  method: "PATCH",
+  url: "/api/collections/items/records/item00000000001",
+  body: { title: "b" },
+};
+const itemIds = () =>
+  app
+    .records("items")
+    .query({})
+    .items.map((r) => r.id);
+
+describe("requests prepared inside the transaction", () => {
+  test("a client abort while one prepares writes nothing", async () => {
+    await addItems();
+    const controller = new AbortController();
+    const original = RecordServiceImpl.prototype.prepare;
+    let calls = 0;
+    spy(RecordServiceImpl.prototype, "prepare").mockImplementation(function (
+      this: RecordServiceImpl<any>,
+      ...args: [any, any]
+    ) {
+      if (++calls === 2) controller.abort();
+      return original.apply(this, args);
+    });
+    const update = spy(RecordServiceImpl.prototype, "updatePrepared");
+    const res = await batch(
+      { requests: [createItem, updateItem] },
+      undefined,
+      controller.signal,
+    );
+    expect(res).toEqual({
+      status: 400,
+      body: { message: "Batch transaction failed.", data: {} },
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(itemIds()).toEqual([]);
+  });
+
+  test("their uploads are deleted when a later request fails", async () => {
+    await addItems();
+    const res = await batch(
+      form([createItem, updateItem, create("")], { "requests.1.file": "x" }),
+    );
+    expect(res.status).toBe(400);
+    expect(Object.keys(res.body.data.requests)).toEqual(["2"]);
+    expect(itemIds()).toEqual([]);
+    expect(stored()).toEqual([]);
+  });
+});
+
 describe("batch preparation", () => {
+  test("each item is prepared once", async () => {
+    await addItems();
+    const prepare = spy(RecordServiceImpl.prototype, "prepare");
+    const res = await batch({ requests: [createItem, updateItem] });
+    expect(res.status).toBe(200);
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(app.records("items").findRaw("item00000000001").title).toBe("b");
+  });
+
   test("stops at the first request whose rules fail: a guest makes no bcrypt calls", async () => {
     await addMember();
     const calls = passwordSpies();
@@ -204,7 +310,7 @@ describe("batch preparation", () => {
   });
 
   test("an over-limit multipart batch is rejected before its files are read", async () => {
-    app.settings.update({ batch: { maxRequests: 2 } });
+    await app.settings.update({ batch: { maxRequests: 2 } });
     const sniff = spy(mime, "sniffMime");
     const res = await batch(
       form([create("a"), create("b"), create("c")], {

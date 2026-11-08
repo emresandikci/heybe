@@ -27,7 +27,7 @@ export function createApp(opts: { dir: string; now?: () => Date }): App {
   const storageRoot = memory
     ? mkdtempSync(join(tmpdir(), "heybe-storage-"))
     : join(opts.dir, "storage");
-  const db = openDb(memory ? ":memory:" : join(opts.dir, "data.db"));
+  const db = openDb(join(memory ? storageRoot : opts.dir, "data.db"));
   const now = opts.now ?? (() => new Date());
   const files = localFilesystem(storageRoot);
   const collections = new CollectionStore(db, now, files);

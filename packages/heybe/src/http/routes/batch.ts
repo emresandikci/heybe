@@ -47,8 +47,6 @@ interface Item {
   old?: OldPassword | null;
   // the request failed while preparing; reported when the batch reaches it
   error?: unknown;
-  // its checks passed inside the transaction after an earlier write, so it is prepared unchecked
-  force?: boolean;
 }
 
 const DEFAULT_TIMEOUT = 3;
@@ -58,7 +56,7 @@ const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const READ_FAILED = "Failed to read the submitted batch data.";
 const TIMEOUT = new Error("batch transaction timeout");
 const UNKNOWN_ACTION = new Error("unknown batch request action");
-const RETRY = new Error("batch request needs preparing");
+const INTERRUPTED = new Error("batch request interrupted");
 
 // Port of PB ValidBatchActions.
 const ACTIONS: [Action, RegExp][] = [
@@ -212,7 +210,7 @@ function upsertTarget(app: App, c: Collection, item: Item): string | null {
 
 // The request's checks as the database stands now, on a copy of its request info.
 function check(app: App, item: Item): void {
-  if (item.error) throw item.error;
+  if (item.error === UNKNOWN_ACTION) throw item.error;
   const c = writable(app, item.collection);
   const info = { ...item.info };
   if (item.action === "delete")
@@ -271,7 +269,7 @@ async function trackPassword(
   else if (!update) hashes.set(key, "");
 }
 
-function write(app: App, item: Item): BatchResult {
+function write(app: App, item: Item): Promise<BatchResult> {
   const c = item.c!;
   const p = item.p!;
   const old = item.old ?? null;
@@ -298,11 +296,10 @@ function responseError(err: unknown, index: number): ApiError {
 }
 
 // Port of PB batchTransaction: every request runs with the batch caller's auth and the collection
-// rules, all writes in one transaction. SQLite writes are synchronous, so the transaction holds
-// no awaits: uploads and password hashes are prepared before it and settled after it.
-// Preparing stops at the first request whose checks fail on the database as it is (PB stops
-// there too). When such a request passes its checks inside the transaction because of an earlier
-// write, the transaction is rolled back, the request prepared and the transaction run again.
+// rules, all writes in one transaction. Uploads and password hashes are prepared before it and
+// settled after it. Preparing stops at the first request whose checks fail on the database as it
+// is (PB stops there too); the transaction checks such a request again after the earlier writes and
+// prepares it there when it passes.
 async function batch(e: RequestEvent): Promise<Response> {
   const settings = e.app.settings.get().batch;
   if (!settings.enabled || settings.maxRequests <= 0)
@@ -314,53 +311,51 @@ async function batch(e: RequestEvent): Promise<Response> {
   const items = requests.map((r) => plan(e, r));
 
   const started = e.app.now().getTime();
+  const signal = e.req.signal;
   const checkTime = () => {
     if (e.app.now().getTime() - started >= timeout) throw TIMEOUT;
   };
+  const checkpoint = () => {
+    if (signal.aborted) throw INTERRUPTED;
+    checkTime();
+  };
+  const interrupted = new Promise<never>((_, reject) => {
+    if (signal.aborted) reject(INTERRUPTED);
+    signal.addEventListener("abort", () => reject(INTERRUPTED), {
+      once: true,
+    });
+  });
+  interrupted.catch(() => {});
   const hashes: Hashes = new Map();
-  let results: BatchResult[] = [];
-  let next = 0;
+  const results: BatchResult[] = [];
   let failed = 0;
   let error: unknown = null;
   try {
-    for (;;) {
-      for (; next < items.length; next++) {
-        const item = items[next]!;
-        if (!item.force) {
-          try {
-            check(e.app, item);
-          } catch {
-            break;
-          }
-        }
-        await prepare(e.app, item, hashes);
-        checkTime();
-        if (item.error) break;
-      }
-      results = [];
+    for (const item of items) {
       try {
-        e.app.db.tx(() => {
-          for (const [i, item] of items.entries()) {
-            failed = i;
-            if (item.error || !item.p) {
-              check(e.app, item);
-              throw RETRY;
-            }
-            results.push(write(e.app, item));
-            checkTime();
-          }
-        });
+        check(e.app, item);
+      } catch {
         break;
-      } catch (err) {
-        if (err !== RETRY) throw err;
-        items[failed]!.force = true;
-        for (const { p } of items)
-          if (p) {
-            p.saved = undefined;
-            p.removed = [];
-          }
       }
+      await prepare(e.app, item, hashes);
+      checkTime();
+      if (item.error) break;
     }
+    await e.app.db.write(async () => {
+      for (const [i, item] of items.entries()) {
+        failed = i;
+        if (signal.aborted) throw INTERRUPTED;
+        const run = runItem(e.app, item, hashes, checkpoint);
+        try {
+          results.push(await Promise.race([run, interrupted]));
+        } catch (err) {
+          // an interrupted request finishes inside the transaction, so it is rolled back with it
+          await run.catch(() => {});
+          throw err;
+        }
+        checkTime();
+      }
+    });
   } catch (err) {
     error = err;
   }
@@ -371,7 +366,8 @@ async function batch(e: RequestEvent): Promise<Response> {
         .records(item.p.ctx.collection.name)
         .settle(item.p, error === null);
 
-  if (error === TIMEOUT) throw new ApiError(400, "Batch transaction failed.");
+  if (error === TIMEOUT || error === INTERRUPTED)
+    throw new ApiError(400, "Batch transaction failed.");
   if (error !== null) {
     const response = responseError(error, failed);
     throw new ApiError(400, "Batch transaction failed.", {
@@ -389,6 +385,24 @@ async function batch(e: RequestEvent): Promise<Response> {
     });
   }
   return e.json(200, results);
+}
+
+// One request inside the transaction: its checks come before its prepare error, like the route.
+async function runItem(
+  app: App,
+  item: Item,
+  hashes: Hashes,
+  checkpoint: () => void,
+): Promise<BatchResult> {
+  if (!item.p) {
+    check(app, item);
+    if (!item.error) {
+      await prepare(app, item, hashes);
+      checkpoint();
+    }
+  }
+  if (item.error) throw item.error;
+  return write(app, item);
 }
 
 // The body limit is inlined like PB: a disabled batch is a 403 whatever the body size.

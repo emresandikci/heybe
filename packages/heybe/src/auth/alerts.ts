@@ -66,8 +66,10 @@ export async function recordAuthOrigin(
       clearTimeout(timer);
     }
   }
-  for (const old of origins.slice(MAX_AUTH_ORIGINS - 1))
-    app.db.run("DELETE FROM _authOrigins WHERE id = ?", [old.id]);
+  await app.db.write(() => {
+    for (const old of origins.slice(MAX_AUTH_ORIGINS - 1))
+      app.db.run("DELETE FROM _authOrigins WHERE id = ?", [old.id]);
+  });
   await app.records("_authOrigins").create({
     collectionRef: c.id,
     recordRef: record.id,

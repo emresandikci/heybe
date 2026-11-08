@@ -108,7 +108,7 @@ describe("truncate", () => {
     app.db.query<{ id: string }>(`SELECT id FROM ${table}`).length;
 
   test("removes every record", async () => {
-    app.collections.save({ name: "posts" });
+    await app.collections.save({ name: "posts" });
     for (const id of ["a", "b", "c"].map((x) => x.repeat(15)))
       await app.records("posts").create({ id });
     const res = (await call(
@@ -121,8 +121,8 @@ describe("truncate", () => {
   });
 
   test("a required reference rolls everything back", async () => {
-    const target = app.collections.save({ name: "targets" });
-    app.collections.save({
+    const target = await app.collections.save({ name: "targets" });
+    await app.collections.save({
       name: "refs",
       fields: [
         {

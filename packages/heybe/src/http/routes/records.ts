@@ -419,67 +419,67 @@ async function remove(e: RequestEvent): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
-// Batch versions of the write routes: the same checks, written synchronously inside the batch
-// transaction with the uploads and hashes prepared before it.
+// Batch versions of the write routes: the same checks, written inside the batch transaction with
+// the uploads and hashes prepared before it.
 export interface BatchResult {
   body: unknown;
   status: number;
 }
 
 // The create route's checks and write on a prepared record (batch and OAuth2 sign-up).
-export function createPreparedChecked(
+export async function createPreparedChecked(
   app: App,
   c: Collection,
   info: RequestInfo,
   p: PreparedWrite,
-): Values {
+): Promise<Values> {
   const { data, access } = createChecks(app, c, info);
   try {
     validateAuthForm(c, data, null, access, CREATE_FAILED, null);
-    return app.records(c.name).createPrepared(p, data);
+    return await app.records(c.name).createPrepared(p, data);
   } catch (err) {
     saveFailed(CREATE_FAILED, err);
   }
 }
 
-export function batchCreate(
+export async function batchCreate(
   app: App,
   c: Collection,
   info: RequestInfo,
   p: PreparedWrite,
-): BatchResult {
-  const saved = createPreparedChecked(app, c, info, p);
+): Promise<BatchResult> {
+  const saved = await createPreparedChecked(app, c, info, p);
   return { body: serialize(app, c, info, saved.id as string), status: 200 };
 }
 
-export function batchUpdate(
+export async function batchUpdate(
   app: App,
   c: Collection,
   id: string,
   info: RequestInfo,
   p: PreparedWrite,
   old: OldPassword | null,
-): BatchResult {
+): Promise<BatchResult> {
   const { data, original, access } = updateChecks(app, c, id, info);
   try {
     validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
-    app.records(c.name).updatePrepared(p, id, data);
+    await app.records(c.name).updatePrepared(p, id, data);
   } catch (err) {
     saveFailed(UPDATE_FAILED, err);
   }
   return { body: serialize(app, c, info, id), status: 200 };
 }
 
-export function batchDelete(
+export async function batchDelete(
   app: App,
   c: Collection,
   id: string,
   info: RequestInfo,
   p: PreparedWrite,
-): BatchResult {
+): Promise<BatchResult> {
   ruleFilter(app, c, c.deleteRule, "delete", info, id);
   try {
-    app.records(c.name).deletePrepared(p, id);
+    await app.records(c.name).deletePrepared(p, id);
   } catch (err) {
     logUnexpected(err);
     throw new ApiError(400, DELETE_FAILED);

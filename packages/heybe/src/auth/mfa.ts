@@ -63,16 +63,22 @@ function findMfa(app: App, id: string): Values | null {
 }
 
 // False when another request already used it, which keeps an mfaId single use under concurrency.
-const deleteMfa = (app: App, id: string) =>
-  app.db.run("DELETE FROM _mfas WHERE id = ?", [id]).changes > 0;
+async function deleteMfa(app: App, id: string): Promise<boolean> {
+  const { changes } = await app.db.write(() =>
+    app.db.run("DELETE FROM _mfas WHERE id = ?", [id]),
+  );
+  return changes > 0;
+}
 
 // Replaces PB's hourly cron cleanup.
-function deleteExpiredMfas(app: App, c: Collection): void {
+async function deleteExpiredMfas(app: App, c: Collection) {
   const oldest = new Date(app.now().getTime() - mfaOptions(c).duration * 1000);
-  app.db.run("DELETE FROM _mfas WHERE collectionRef = ? AND created < ?", [
-    c.id,
-    formatDate(oldest),
-  ]);
+  await app.db.write(() =>
+    app.db.run("DELETE FROM _mfas WHERE collectionRef = ? AND created < ?", [
+      c.id,
+      formatDate(oldest),
+    ]),
+  );
 }
 
 // Port of PB checkMFA, shared by every auth method. Call it after the auth rule passed and before
@@ -91,7 +97,7 @@ export async function checkMfa(
 
   const mfaId = requestedMfaId(e, body);
   if (mfaId === "") {
-    deleteExpiredMfas(e.app, c);
+    await deleteExpiredMfas(e.app, c);
     const created = await e.app.records("_mfas").create({
       collectionRef: c.id,
       recordRef: record.id,
@@ -102,14 +108,14 @@ export async function checkMfa(
 
   const mfa = findMfa(e.app, mfaId);
   if (!mfa || hasExpired(e.app, mfa, mfaOptions(c).duration * 1000)) {
-    if (mfa) deleteMfa(e.app, mfaId);
+    if (mfa) await deleteMfa(e.app, mfaId);
     throw new ApiError(400, "Invalid or expired MFA session.");
   }
   if (mfa.recordRef !== record.id || mfa.collectionRef !== c.id)
     throw new ApiError(400, "Invalid MFA session.");
   if (mfa.method === method)
     throw new ApiError(400, "A different authentication method is required.");
-  if (!deleteMfa(e.app, mfaId))
+  if (!(await deleteMfa(e.app, mfaId)))
     throw new ApiError(400, "Invalid or expired MFA session.");
   return null;
 }

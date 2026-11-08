@@ -14,9 +14,9 @@ import {
 let app: App;
 let users: Collection;
 
-beforeEach(() => {
+beforeEach(async () => {
   app = createApp({ dir: ":memory:" });
-  app.settings.update({
+  await app.settings.update({
     meta: { appName: "Acme", appURL: "https://app.example" },
   });
   users = app.collections.find("_superusers")!;

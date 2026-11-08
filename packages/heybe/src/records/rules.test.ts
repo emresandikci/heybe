@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../app";
+import { statementCacheSize } from "../db";
 import { createEvent } from "../http/router";
 import { buildRequestInfo, matchesDraft } from "./rules";
 
@@ -27,12 +28,12 @@ describe("buildRequestInfo", () => {
 });
 
 describe("statement cache", () => {
-  test("paging and create-rule draft checks reuse the same statements", () => {
+  test("paging and create-rule draft checks reuse the same statements", async () => {
     const app = createApp({
       dir: ":memory:",
       now: () => new Date("2026-01-01T00:00:00.000Z"),
     });
-    const c = app.collections.save({
+    const c = await app.collections.save({
       name: "posts",
       fields: [{ name: "title", type: "text" }] as any,
       createRule: "title != ''",
@@ -46,9 +47,9 @@ describe("statement cache", () => {
       matchesDraft(app, c, { id: "", title: "t" }, c.createRule!, info);
     };
     run(0);
-    const size = app.db.cacheSize();
+    const size = statementCacheSize(app.db);
     for (let i = 1; i < 300; i++) run(i);
-    expect(app.db.cacheSize()).toBe(size);
+    expect(statementCacheSize(app.db)).toBe(size);
     app.close();
   });
 });

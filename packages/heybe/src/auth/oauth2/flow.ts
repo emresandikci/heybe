@@ -796,9 +796,9 @@ export async function authWithOAuth2(
         context: "oauth2",
         headers: { ...info.headers, content_type: "multipart/form-data" },
       };
-      saved = app.db.tx(() => {
+      saved = await app.db.write(async () => {
         try {
-          createPreparedChecked(app, c, createInfo, create);
+          await createPreparedChecked(app, c, createInfo, create);
         } catch (err) {
           // the internal create request fails with its own response
           if (err instanceof ValidationError)
@@ -808,8 +808,8 @@ export async function authWithOAuth2(
         const created = records.findRaw(id);
         // verified as long as it matches the OAuth2 data (even if the email is empty)
         if (created.email === user.email && created.verified !== true)
-          records.updatePrepared(verify, id, { verified: true });
-        links.createPrepared(linkWrite, newLink);
+          await records.updatePrepared(verify, id, { verified: true });
+        await links.createPrepared(linkWrite, newLink);
         return records.findRaw(id);
       });
     } else {
@@ -822,7 +822,7 @@ export async function authWithOAuth2(
       const update = await prepare(records, {}, id);
       const newLink = linkData(id);
       const linkWrite = await prepare(links, newLink);
-      saved = app.db.tx(() => {
+      saved = await app.db.write(async () => {
         // decided on the record as it is now, not as it was before the awaits
         const current = records.findRaw(id);
         const verified = current.verified === true;
@@ -847,9 +847,9 @@ export async function authWithOAuth2(
             [c.id, id],
           );
         if (Object.keys(data).length > 0)
-          records.updatePrepared(update, id, data);
+          await records.updatePrepared(update, id, data);
         if (!findExternalAuth(app, c, p.name, user.id))
-          links.createPrepared(linkWrite, newLink);
+          await links.createPrepared(linkWrite, newLink);
         return records.findRaw(id);
       });
     }

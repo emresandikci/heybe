@@ -11,19 +11,19 @@ let clock: Date;
 let sent: MailMessage[];
 
 const users = () => app.collections.find("users")!;
-const setMfa = (mfa: object) =>
-  app.collections.save({
+const setMfa = async (mfa: object) =>
+  await app.collections.save({
     id: users().id,
     otp: { ...(users().otp as object), enabled: true },
     mfa: { ...(users().mfa as object), enabled: true, ...mfa },
   } as any);
 
-beforeEach(() => {
+beforeEach(async () => {
   clock = new Date("2026-01-01T00:00:00Z");
   app = createApp({ dir: ":memory:", now: () => clock });
   sent = [];
   app.mailer = { send: async (msg) => void sent.push(msg) };
-  setMfa({});
+  await setMfa({});
 });
 
 afterEach(() => app.close());
@@ -92,7 +92,7 @@ describe("mfa", () => {
 
   test("an mfaId is valid for the MFA duration and then deleted", async () => {
     await createUser();
-    setMfa({ duration: 60 });
+    await setMfa({ duration: 60 });
     const first = await startMfa();
     advance(60);
     expect((await withOtp(first)).status).toBe(200);

@@ -32,8 +32,8 @@ const autodates = [
 
 let app: App;
 
-function addPosts() {
-  app.collections.save({
+async function addPosts() {
+  await app.collections.save({
     name: "posts",
     fields: [
       text("title", { required: true }),
@@ -54,9 +54,9 @@ async function failure(promise: Promise<unknown>): Promise<ValidationError> {
   throw new Error("expected a ValidationError");
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   app = createApp({ dir: "", now });
-  addPosts();
+  await addPosts();
 });
 
 afterEach(() => app.close());
@@ -190,7 +190,7 @@ describe("update and delete", () => {
     let t = new Date("2026-01-01T00:00:00.000Z");
     app.close();
     app = createApp({ dir: "", now: () => t });
-    addPosts();
+    await addPosts();
     const r = await app.records("posts").create({ title: "a", views: 1 });
     t = new Date("2026-02-01T00:00:00.000Z");
     const u = await app.records("posts").update(r.id as string, { views: 2 });
@@ -226,7 +226,7 @@ describe("update and delete", () => {
   });
 
   test("text :autogenerate appends a random value", async () => {
-    app.collections.save({
+    await app.collections.save({
       name: "slugs",
       fields: [text("slug", { autogeneratePattern: "[a-z]{4}" })] as any,
     });
@@ -251,7 +251,7 @@ describe("update and delete", () => {
 
   test("delete unlinks and cascades relations", async () => {
     const posts = app.collections.find("posts")!;
-    app.collections.save({
+    await app.collections.save({
       name: "notes",
       fields: [
         {
@@ -263,7 +263,7 @@ describe("update and delete", () => {
         },
       ] as any,
     });
-    app.collections.save({
+    await app.collections.save({
       name: "links",
       fields: [
         {
@@ -290,12 +290,12 @@ describe("update and delete", () => {
   });
 
   test("truncate succeeds when a cascade already removed later records", async () => {
-    app.collections.save({
+    await app.collections.save({
       name: "nodes",
       fields: [text("name")] as any,
     });
     const nodes = app.collections.find("nodes")!;
-    app.collections.save({
+    await app.collections.save({
       ...nodes,
       fields: [
         ...nodes.fields,
@@ -319,9 +319,9 @@ describe("update and delete", () => {
 });
 
 describe("auth records", () => {
-  beforeEach(() => {
-    app.collections.delete("users");
-    app.collections.save({
+  beforeEach(async () => {
+    await app.collections.delete("users");
+    await app.collections.save({
       name: "users",
       type: "auth",
       fields: [text("name")] as any,
@@ -427,8 +427,8 @@ describe("auth records", () => {
     ).toHaveProperty("collectionName", "users");
   });
 
-  test("hidden fields are shown to superusers only", () => {
-    app.collections.save({
+  test("hidden fields are shown to superusers only", async () => {
+    await app.collections.save({
       name: "secrets",
       fields: [text("note", { hidden: true }), text("open")] as any,
     });
@@ -448,7 +448,7 @@ describe("concurrency", () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-"));
     const file = createApp({ dir, now });
     try {
-      file.collections.save({
+      await file.collections.save({
         name: "items",
         fields: [text("title"), { name: "views", type: "number" }] as any,
       });
@@ -479,7 +479,7 @@ describe("concurrency", () => {
     const dir = mkdtempSync(join(tmpdir(), "heybe-"));
     const file = createApp({ dir, now });
     try {
-      file.collections.save({
+      await file.collections.save({
         name: "items",
         fields: [text("n"), ...autodates] as any,
       });
@@ -513,10 +513,10 @@ describe("file uploads", () => {
   const keysOf = (c: string, r: Record<string, unknown>, names: string[]) =>
     names.map((n) => join(disk.collections.find(c)!.id, r.id as string, n));
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "heybe-"));
     disk = createApp({ dir, now });
-    disk.collections.save({
+    await disk.collections.save({
       name: "docs",
       fields: [
         text("title", { required: true }),
@@ -540,6 +540,24 @@ describe("file uploads", () => {
     expect(stored()).toEqual(
       keysOf("docs", r, [r.file as string, ...(r.files as string[])]).sort(),
     );
+  });
+
+  test("an update in a rolled back savepoint keeps the old file", async () => {
+    const r = await disk
+      .records("docs")
+      .create({ title: "a", file: txt() } as any);
+    await disk.db.write(async () => {
+      await disk.db
+        .write(async () => {
+          await disk
+            .records("docs")
+            .update(r.id as string, { file: txt("new.txt") } as any);
+          throw new Error("undo");
+        })
+        .catch(() => {});
+    });
+    expect(disk.records("docs").findRaw(r.id as string).file).toBe(r.file);
+    expect(stored()).toEqual(keysOf("docs", r, [r.file as string]));
   });
 
   test("a create failing validation leaves no files", async () => {

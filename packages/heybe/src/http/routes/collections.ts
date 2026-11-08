@@ -84,9 +84,9 @@ function integer(value: string | null, fallback: number): number {
   return Number(value);
 }
 
-function save(app: App, input: Collection, action: "create" | "update") {
+async function save(app: App, input: Collection, action: "create" | "update") {
   try {
-    return app.collections.save(input, action === "create");
+    return await app.collections.save(input, action === "create");
   } catch (err) {
     if (err instanceof ValidationError || err instanceof ApiError) throw err;
     throw new ApiError(
@@ -158,7 +158,7 @@ async function create(e: RequestEvent): Promise<Response> {
     delete (input as Partial<Collection>).id;
   return e.json(
     200,
-    picked(e, serializeCollection(save(e.app, input, "create"))),
+    picked(e, serializeCollection(await save(e.app, input, "create"))),
   );
 }
 
@@ -172,15 +172,14 @@ async function update(e: RequestEvent): Promise<Response> {
   if (input.id !== existing.id) throw new ApiError(404, "");
   return e.json(
     200,
-    picked(e, serializeCollection(save(e.app, input, "update"))),
+    picked(e, serializeCollection(await save(e.app, input, "update"))),
   );
 }
 
 async function remove(e: RequestEvent): Promise<Response> {
   const c = findOr404(e.app, e.params.collection!);
-  let cleanup: Promise<void>;
   try {
-    cleanup = e.app.collections.delete(c.id);
+    await e.app.collections.delete(c.id);
   } catch {
     const refs = e.app.collections.references(c);
     const suffix =
@@ -189,7 +188,6 @@ async function remove(e: RequestEvent): Promise<Response> {
         : "";
     throw new ApiError(400, `Failed to delete collection${suffix}`);
   }
-  await cleanup;
   return new Response(null, { status: 204 });
 }
 
@@ -266,9 +264,8 @@ async function importCollections(e: RequestEvent): Promise<Response> {
       },
     );
 
-  let cleanup: Promise<void>;
   try {
-    cleanup = e.app.collections.import(
+    await e.app.collections.import(
       items as Record<string, unknown>[],
       deleteMissing,
     );
@@ -285,7 +282,6 @@ async function importCollections(e: RequestEvent): Promise<Response> {
       },
     });
   }
-  await cleanup;
   return new Response(null, { status: 204 });
 }
 
@@ -311,7 +307,11 @@ async function dryRunViewQuery(e: RequestEvent): Promise<Response> {
       params: { max: 5000, min: 0 },
     });
   try {
-    return e.json(200, dryRunView(e.app.db, e.app.collections, query, 10));
+    const app = e.app;
+    return e.json(
+      200,
+      await app.db.write(() => dryRunView(app.db, app.collections, query, 10)),
+    );
   } catch (err) {
     throw new ApiError(
       400,

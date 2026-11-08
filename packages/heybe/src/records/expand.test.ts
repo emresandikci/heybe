@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { type App, createApp } from "../app";
+import { statementCacheSize } from "../db";
 import type { RequestInfo } from "../filter/compile";
 import { expandRecords } from "./expand";
 
@@ -18,37 +19,39 @@ const guest: RequestInfo = {
   context: "default",
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   app = createApp({ dir: "", now });
-  const authors = app.collections.save({
+  const authors = await app.collections.save({
     name: "authors",
     viewRule: "",
     fields: [{ name: "name", type: "text" }],
   } as any);
-  app.collections.save({
+  await app.collections.save({
     name: "secrets",
     fields: [{ name: "name", type: "text" }],
   } as any);
-  posts = app.collections.save({
-    name: "posts",
-    viewRule: "",
-    fields: [
-      { name: "title", type: "text" },
-      {
-        name: "author",
-        type: "relation",
-        collectionId: authors.id,
-        maxSelect: 1,
-      },
-      {
-        name: "secret",
-        type: "relation",
-        collectionId: app.collections.find("secrets")!.id,
-        maxSelect: 1,
-      },
-    ],
-  } as any).id;
-  app.collections.save({
+  posts = (
+    await app.collections.save({
+      name: "posts",
+      viewRule: "",
+      fields: [
+        { name: "title", type: "text" },
+        {
+          name: "author",
+          type: "relation",
+          collectionId: authors.id,
+          maxSelect: 1,
+        },
+        {
+          name: "secret",
+          type: "relation",
+          collectionId: app.collections.find("secrets")!.id,
+          maxSelect: 1,
+        },
+      ],
+    } as any)
+  ).id;
+  await app.collections.save({
     name: "comments",
     viewRule: "",
     fields: [
@@ -123,7 +126,7 @@ describe("expandRecords", () => {
       ["author", "comments_via_post"],
       guest,
     );
-    const size = app.db.cacheSize();
+    const size = statementCacheSize(app.db);
     expandRecords(
       app,
       app.collections.find("posts")!,
@@ -131,7 +134,7 @@ describe("expandRecords", () => {
       ["author", "comments_via_post"],
       guest,
     );
-    expect(app.db.cacheSize()).toBe(size);
+    expect(statementCacheSize(app.db)).toBe(size);
   });
 });
 

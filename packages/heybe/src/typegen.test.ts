@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => app.close());
 
 test("generates the augmentation for base and auth collections", async () => {
-  const users = app.collections.save({
+  const users = await app.collections.save({
     name: "fx_users",
     type: "auth",
     fields: [
@@ -23,7 +23,7 @@ test("generates the augmentation for base and auth collections", async () => {
       ...autodates,
     ] as any,
   });
-  app.collections.save({
+  await app.collections.save({
     name: "fx_posts",
     fields: [
       { name: "title", type: "text" },
@@ -50,8 +50,8 @@ test("generates the augmentation for base and auth collections", async () => {
   expect(generateTypes(fixtures)).toBe(expected);
 });
 
-test("maps every field type", () => {
-  app.collections.save({
+test("maps every field type", async () => {
+  await app.collections.save({
     name: "all",
     fields: [
       { name: "a", type: "email" },
@@ -83,14 +83,14 @@ test("maps every field type", () => {
   expect(out).not.toContain("_superusers");
 });
 
-test("the store notifies after save and delete", () => {
+test("the store notifies after save and delete", async () => {
   let calls = 0;
   app.collections.onChange = () => calls++;
-  app.collections.save({
+  await app.collections.save({
     name: "tmp",
     fields: [{ name: "a", type: "text" }] as any,
   });
-  app.collections.delete("tmp");
+  await app.collections.delete("tmp");
   expect(calls).toBe(2);
 });
 
@@ -108,12 +108,12 @@ test("a failed write is only a warning", () => {
   expect(warnings).toHaveLength(1);
 });
 
-test("includes view collections with their inferred fields", () => {
-  app.collections.save({
+test("includes view collections with their inferred fields", async () => {
+  await app.collections.save({
     name: "posts",
     fields: [{ name: "title", type: "text" }] as any,
   });
-  app.collections.save({
+  await app.collections.save({
     name: "post_stats",
     type: "view",
     viewQuery: "select id, title, count(id) as total from posts group by id",

@@ -522,33 +522,40 @@ export class Settings {
   constructor(private readonly db: Db) {}
 
   get(): SettingsData {
-    if (!this.cached) {
-      const row = this.db.get<{ value: string }>(
-        "SELECT value FROM _params WHERE key = 'settings'",
-      );
-      this.cached = merge(
-        SCHEMA,
-        row ? JSON.parse(row.value) : {},
-        DEFAULTS,
-      ) as SettingsData;
-    }
+    this.cached ??= this.db.committed(() => this.load());
     return structuredClone(this.cached);
   }
 
-  update(patch: DeepPartial<SettingsData>): SettingsData {
-    const next = merge(SCHEMA, patch, this.get()) as SettingsData;
-    const errors = validate(next);
-    if (errors)
-      throw new ValidationError(
-        "An error occurred while saving the new settings.",
-        errors,
-      );
-    this.db.run(
-      "INSERT INTO _params (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      [JSON.stringify(next)],
+  private load(): SettingsData {
+    const row = this.db.get<{ value: string }>(
+      "SELECT value FROM _params WHERE key = 'settings'",
     );
-    this.cached = next;
-    return this.get();
+    return merge(
+      SCHEMA,
+      row ? JSON.parse(row.value) : {},
+      DEFAULTS,
+    ) as SettingsData;
+  }
+
+  async update(patch: DeepPartial<SettingsData>): Promise<SettingsData> {
+    const next = await this.db.write(() => {
+      const next = merge(SCHEMA, patch, this.load()) as SettingsData;
+      const errors = validate(next);
+      if (errors)
+        throw new ValidationError(
+          "An error occurred while saving the new settings.",
+          errors,
+        );
+      this.db.run(
+        "INSERT INTO _params (key, value) VALUES ('settings', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [JSON.stringify(next)],
+      );
+      this.db.onComplete((err) => {
+        this.cached = err === null ? next : null;
+      });
+      return next;
+    });
+    return structuredClone(next);
   }
 
   toJSON(): object {

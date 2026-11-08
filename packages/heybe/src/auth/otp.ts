@@ -66,16 +66,21 @@ export async function issueOtp(
 }
 
 // False when another request already used it, which keeps the code single use under concurrency.
-export function deleteOtp(app: App, id: string): boolean {
-  return app.db.run("DELETE FROM _otps WHERE id = ?", [id]).changes > 0;
+export async function deleteOtp(app: App, id: string): Promise<boolean> {
+  const { changes } = await app.db.write(() =>
+    app.db.run("DELETE FROM _otps WHERE id = ?", [id]),
+  );
+  return changes > 0;
 }
 
-export function deleteExpiredOtps(app: App, c: Collection): void {
+export async function deleteExpiredOtps(app: App, c: Collection) {
   const oldest = new Date(app.now().getTime() - otpDurationMs(c));
-  app.db.run("DELETE FROM _otps WHERE collectionRef = ? AND created < ?", [
-    c.id,
-    formatDate(oldest),
-  ]);
+  await app.db.write(() =>
+    app.db.run("DELETE FROM _otps WHERE collectionRef = ? AND created < ?", [
+      c.id,
+      formatDate(oldest),
+    ]),
+  );
 }
 
 // PB limits OTP guesses per record and client IP, since the codes are short digit strings.

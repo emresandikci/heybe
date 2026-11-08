@@ -1,7 +1,8 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { quote } from "../collections/ddl";
 import { CollectionStore } from "../collections/store";
-import { type Db, openDb } from "../db";
+import type { Db } from "../db";
+import { tempDb } from "../test-db";
 import { type CompileCtx, QueryCompiler, type RequestInfo } from "./compile";
 import { macroValue } from "./macros";
 import { FilterError, parseFilter, parseSort } from "./parse";
@@ -79,11 +80,13 @@ function insert(table: string, row: Record<string, unknown>) {
   );
 }
 
-beforeAll(() => {
-  db = openDb(":memory:");
+afterAll(() => db.close());
+
+beforeAll(async () => {
+  db = tempDb();
   store = new CollectionStore(db, now);
-  store.delete("users");
-  const users = store.save({
+  await store.delete("users");
+  const users = await store.save({
     name: "users",
     type: "auth",
     listRule: "",
@@ -92,7 +95,7 @@ beforeAll(() => {
       { name: "created", type: "autodate", onCreate: true },
     ] as any,
   });
-  store.save({
+  await store.save({
     name: "posts",
     fields: [
       { name: "title", type: "text" },
@@ -122,7 +125,7 @@ beforeAll(() => {
     ] as any,
   });
 
-  store.save({
+  await store.save({
     name: "codes",
     fields: [{ name: "code", type: "text" }] as any,
   });
@@ -465,30 +468,32 @@ describe("@request.body", () => {
 });
 
 describe("client filters without hidden field access", () => {
-  const compile = (filter: string, rule: string | null = "") => {
-    store.save({ ...store.find("users")!, listRule: rule });
+  const compile = async (filter: string, rule: string | null = "") => {
+    await store.save({ ...store.find("users")!, listRule: rule });
     const q = new QueryCompiler(ctx("posts", user1));
     q.allowHidden = false;
     return run("posts", q.filter(parseFilter(filter)).build());
   };
 
-  test("hidden fields are not filterable", () => {
-    expect(() => compile(`secret = "s1"`)).toThrow(FilterError);
+  test("hidden fields are not filterable", async () => {
+    await expect(compile(`secret = "s1"`)).rejects.toThrow(FilterError);
   });
 
-  test("auth emails are matched only when visible", () => {
-    expect(compile(`author.email = "a@x.com"`)).toBe("");
-    expect(compile(`author.email = "b@x.com"`)).toBe("p2");
+  test("auth emails are matched only when visible", async () => {
+    expect(await compile(`author.email = "a@x.com"`)).toBe("");
+    expect(await compile(`author.email = "b@x.com"`)).toBe("p2");
   });
 
-  test("joined collections apply their list rule", () => {
-    expect(() => compile(`author.name = "Al"`, null)).toThrow(FilterError);
-    expect(compile(`author.name = "Al"`, `name = "Bo"`)).toBe("");
-    expect(compile(`title != "" || author.name = "x"`, `name = "Bo"`)).toBe(
-      "p2",
+  test("joined collections apply their list rule", async () => {
+    await expect(compile(`author.name = "Al"`, null)).rejects.toThrow(
+      FilterError,
     );
-    expect(compile(`author.name != ""`, `name = "Bo"`)).toBe("p2");
-    store.save({ ...store.find("users")!, listRule: "" });
+    expect(await compile(`author.name = "Al"`, `name = "Bo"`)).toBe("");
+    expect(
+      await compile(`title != "" || author.name = "x"`, `name = "Bo"`),
+    ).toBe("p2");
+    expect(await compile(`author.name != ""`, `name = "Bo"`)).toBe("p2");
+    await store.save({ ...store.find("users")!, listRule: "" });
   });
 
   test("the rule filter keeps hidden field access", () => {

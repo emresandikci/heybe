@@ -18,8 +18,8 @@ describe("superuser IP restriction", () => {
     expect(() => checkSuperuserIp(app, req(), "9.9.9.9")).not.toThrow();
   });
 
-  test("an IP outside the allowlist is 403, inside is allowed", () => {
-    app.settings.update({ superuserIPs: ["10.0.0.0/8", "::1"] });
+  test("an IP outside the allowlist is 403, inside is allowed", async () => {
+    await app.settings.update({ superuserIPs: ["10.0.0.0/8", "::1"] });
     expect(() => checkSuperuserIp(app, req(), "10.1.2.3")).not.toThrow();
     expect(() => checkSuperuserIp(app, req(), "::1")).not.toThrow();
     expect(() => checkSuperuserIp(app, req(), "9.9.9.9")).toThrow(
@@ -27,14 +27,14 @@ describe("superuser IP restriction", () => {
     );
   });
 
-  test("trusted proxy headers pick the rightmost or leftmost IP", () => {
-    app.settings.update({
+  test("trusted proxy headers pick the rightmost or leftmost IP", async () => {
+    await app.settings.update({
       superuserIPs: ["1.1.1.1"],
       trustedProxy: { headers: ["X-Forwarded-For"], useLeftmostIP: false },
     });
     const headers = { "x-forwarded-for": "1.1.1.1, 2.2.2.2" };
     expect(() => checkSuperuserIp(app, req(headers), "1.1.1.1")).toThrow();
-    app.settings.update({ trustedProxy: { useLeftmostIP: true } });
+    await app.settings.update({ trustedProxy: { useLeftmostIP: true } });
     expect(() => checkSuperuserIp(app, req(headers), "9.9.9.9")).not.toThrow();
   });
 });

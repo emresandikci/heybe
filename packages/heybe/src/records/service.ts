@@ -37,12 +37,17 @@ export interface RecordService<T> {
   delete(id: string): Promise<void>;
   truncate(): Promise<void>;
   findRaw(id: string): Record<string, unknown>;
-  // Writes in parts, for batches: `prepare` (async) before the transaction, the `*Prepared` writes
+  // Writes in parts, for batches: `prepare` before the transaction, the `*Prepared` writes
   // inside it, `settle` after it.
   prepare(data: Partial<T>, id?: string): Promise<PreparedWrite>;
-  createPrepared(p: PreparedWrite, data: Partial<T>): T;
-  updatePrepared(p: PreparedWrite, id: string, data: Partial<T>): T;
-  deletePrepared(p: PreparedWrite, id: string): void;
+  createPrepared(p: PreparedWrite, data: Partial<T>): Promise<T>;
+  updatePrepared(
+    p: PreparedWrite,
+    id: string,
+    data: Partial<T>,
+    opts?: { tokenKey?: string },
+  ): Promise<T>;
+  deletePrepared(p: PreparedWrite, id: string): Promise<void>;
   settle(p: PreparedWrite, committed: boolean): Promise<void>;
   query(opts: {
     filter?: Expr | null;
@@ -55,6 +60,8 @@ export interface RecordService<T> {
     manageRule?: Expr | null;
   }): ListResult<T>;
 }
+
+export class StaleTokenError extends Error {}
 
 type Values = Record<string, unknown>;
 type Errors = Record<string, { code: string; message: string }>;
@@ -291,11 +298,11 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     return p;
   }
 
-  createPrepared(p: PreparedWrite, data: Partial<T>): T {
+  async createPrepared(p: PreparedWrite, data: Partial<T>): Promise<T> {
     const input = this.resolve(p, data as Values);
     delete input["id:autogenerate"];
     input.id = p.ctx.recordId;
-    const { c, saved } = this.deps.db.tx(() => {
+    const { c, saved } = await this.deps.db.write(() => {
       const c = this.writable();
       const values = zeroValues(c);
       assign(c, values, input);
@@ -318,11 +325,19 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     return this.output(c, saved);
   }
 
-  updatePrepared(p: PreparedWrite, id: string, data: Partial<T>): T {
+  // `tokenKey`: the one a token was checked against; the write fails when it changed since
+  async updatePrepared(
+    p: PreparedWrite,
+    id: string,
+    data: Partial<T>,
+    opts: { tokenKey?: string } = {},
+  ): Promise<T> {
     const input = this.resolve(p, data as Values);
-    const { c, saved, original } = this.deps.db.tx(() => {
+    const { c, saved, original } = await this.deps.db.write(() => {
       const c = this.writable();
       const original = this.load(c, id);
+      if (opts.tokenKey !== undefined && original.tokenKey !== opts.tokenKey)
+        throw new StaleTokenError();
       const values = { ...original };
       assign(c, values, input);
       this.check(c, values, original, UPDATE_FAILED);
@@ -339,16 +354,18 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     return this.output(c, saved);
   }
 
-  deletePrepared(p: PreparedWrite, id: string): void {
-    const c = this.writable();
-    this.deps.db.tx(() => this.remove(c, this.load(c, id), p.removed));
+  async deletePrepared(p: PreparedWrite, id: string): Promise<void> {
+    await this.deps.db.write(() => {
+      const c = this.writable();
+      this.remove(c, this.load(c, id), p.removed);
+    });
   }
 
   async truncate(): Promise<void> {
     const c = this.writable();
     const { db } = this.deps;
     const removed: string[] = [];
-    db.tx(() => {
+    await db.write(() => {
       for (const { id } of db.query<{ id: string }>(
         `SELECT id FROM ${quote(c.name)}`,
       )) {
@@ -492,15 +509,21 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     return out;
   }
 
-  private async commit<R>(p: PreparedWrite, write: () => R): Promise<R> {
+  private async commit<R>(
+    p: PreparedWrite,
+    write: () => Promise<R>,
+  ): Promise<R> {
     let result: R;
     try {
-      result = write();
+      result = await write();
     } catch (e) {
       await this.settle(p, false);
       throw e;
     }
-    await this.settle(p, true);
+    // inside an outer write the files are settled once it commits or rolls back
+    let settled: Promise<void> | undefined;
+    this.deps.db.onComplete((err) => (settled = this.settle(p, err === null)));
+    await settled;
     return result;
   }
 

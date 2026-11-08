@@ -55,7 +55,7 @@ describe("request routes do not wait for the mail", () => {
   ] as const;
   for (const [path, status] of routes)
     test(`${path} answers known and unknown emails while the mailer hangs`, async () => {
-      app.collections.save({
+      await app.collections.save({
         id: users().id,
         otp: { ...(users().otp as object), enabled: true },
       } as any);
@@ -111,6 +111,33 @@ describe("expired tokens", () => {
 
       clock = new Date(clock.getTime() - 1000);
       expect((await post(path, { token, ...extra })).status).toBe(204);
+    });
+});
+
+describe("single-use tokens", () => {
+  const cases = [
+    [
+      "passwordReset",
+      "confirm-password-reset",
+      { password: "newpass123", passwordConfirm: "newpass123" },
+    ],
+    ["emailChange", "confirm-email-change", { password: "12345678" }],
+  ] as const;
+
+  for (const [kind, path, extra] of cases)
+    test(`two parallel ${path} calls with one token: statuses sorted equal [204, 400]`, async () => {
+      const record = await createUser("once@example.com");
+      const raw = app.records("users").findRaw(record.id as string);
+      const token = newMailToken(app, kind, users(), raw, "new@example.com");
+      const responses = await Promise.all([
+        post(path, { token, ...extra }),
+        post(path, { token, ...extra }),
+      ]);
+      expect(responses.map((r) => r.status).sort()).toEqual([204, 400]);
+      const failed = responses.find((r) => r.status === 400)!;
+      expect(((await failed.json()) as any).data.token.code).toBe(
+        "validation_invalid_token",
+      );
     });
 });
 
@@ -183,7 +210,7 @@ describe("verification with password auth disabled", () => {
   test("the random password skips the password field max and pattern", async () => {
     const record = await createUser("nopass@example.com");
     const id = record.id as string;
-    app.collections.save({
+    await app.collections.save({
       id: users().id,
       passwordAuth: { ...(users().passwordAuth as object), enabled: false },
       fields: users().fields.map((f) =>

@@ -1,11 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { openDb } from "../db";
+import { afterAll, describe, expect, test } from "bun:test";
+import { tempDb } from "../test-db";
 import type { Collection, Field, FieldType } from "../collections/model";
 import { type FieldCtx, PasswordValue, fields } from "./index";
 import { UploadedFile } from "./file";
 import type { PrepareCtx } from "./shared";
 
-const db = openDb(":memory:");
+const db = tempDb();
+afterAll(() => db.close());
 db.run("CREATE TABLE targets (id TEXT PRIMARY KEY)");
 db.run("INSERT INTO targets (id) VALUES ('a'), ('b'), ('c')");
 db.run("CREATE TABLE posts (id TEXT PRIMARY KEY)");

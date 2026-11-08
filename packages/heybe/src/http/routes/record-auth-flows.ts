@@ -23,6 +23,7 @@ import { authFromToken, newAuthToken } from "../../auth/tokens";
 import type { Collection } from "../../collections/model";
 import { isEmail } from "../../fields/email";
 import { runeLength } from "../../fields/shared";
+import { type PreparedWrite, StaleTokenError } from "../../records/service";
 import { NotFoundError, ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
 import { realIp } from "../middlewares";
@@ -113,19 +114,30 @@ function emailError(v: string): FieldError | null {
   return null;
 }
 
+// `tokenKey`: the one the request's token was checked against, so a token is used only once
 async function save(
   app: App,
   c: Collection,
   record: Values,
   data: Values,
   message: string,
+  tokenKey?: string,
 ): Promise<void> {
+  const records = app.records(c.name);
+  const id = record.id as string;
+  let committed = false;
+  let p: PreparedWrite | undefined;
   try {
-    await app.records(c.name).update(record.id as string, data);
+    p = await records.prepare(data, id);
+    await records.updatePrepared(p, id, data, { tokenKey });
+    committed = true;
   } catch (error) {
+    if (error instanceof StaleTokenError) check({ token: invalidToken });
     if (error instanceof ValidationError)
       throw new ApiError(400, message, error.data);
     throw error;
+  } finally {
+    if (p) await records.settle(p, committed);
   }
 }
 
@@ -288,7 +300,14 @@ async function confirmPasswordReset(e: RequestEvent): Promise<Response> {
     record.email === decodeJwtClaims(form.token)?.email
   )
     data.verified = true;
-  await save(e.app, c, record, data, "Failed to set new password.");
+  await save(
+    e.app,
+    c,
+    record,
+    data,
+    "Failed to set new password.",
+    record.tokenKey as string,
+  );
   resendLimit.remove(e.app, passwordResetResendKey(c, record));
   return noContent();
 }
@@ -373,6 +392,7 @@ async function confirmEmailChange(e: RequestEvent): Promise<Response> {
     parsed.record,
     { email: parsed.newEmail, verified: true },
     "Failed to confirm email change.",
+    parsed.record.tokenKey as string,
   );
   return noContent();
 }
@@ -399,7 +419,7 @@ async function requestOtp(e: RequestEvent): Promise<Response> {
     return e.json(200, { otpId: newId() });
   }
 
-  deleteExpiredOtps(e.app, c);
+  await deleteExpiredOtps(e.app, c);
   const { id, code } = await issueOtp(e.app, c, record);
   if (code !== null) {
     const app = e.app;
@@ -407,7 +427,7 @@ async function requestOtp(e: RequestEvent): Promise<Response> {
       try {
         await sendOtpMail(app, c, record, id, code);
       } catch (error) {
-        deleteOtp(app, id);
+        await deleteOtp(app, id);
         console.error("heybe: failed to send OTP email:", error);
       }
     });
@@ -453,7 +473,7 @@ async function authWithOtp(e: RequestEvent): Promise<Response> {
       "Too many attempts, please try again later with a new OTP.",
     );
   if (!(await verifyPassword(otp, form.password))) throw invalid();
-  if (!deleteOtp(e.app, otp.id as string)) throw invalid();
+  if (!(await deleteOtp(e.app, otp.id as string))) throw invalid();
 
   // the OTP was mailed to the record email, so it proves ownership of it
   const sentTo = otp.sentTo as string;

@@ -16,13 +16,13 @@ const autodates = [
   { name: "updated", type: "autodate", onCreate: true, onUpdate: true },
 ];
 
-beforeEach(() => {
+beforeEach(async () => {
   app = createApp({ dir: ":memory:", now: () => new Date("2026-01-01") });
-  const demo2 = app.collections.save({
+  const demo2 = await app.collections.save({
     name: "demo2",
     fields: [{ name: "text", type: "text" }, ...autodates] as any,
   });
-  app.collections.save({
+  await app.collections.save({
     name: "demo1",
     fields: [
       { name: "text", type: "text" },
@@ -51,8 +51,8 @@ beforeEach(() => {
       ...autodates,
     ] as any,
   });
-  app.collections.save({ name: "demo3" });
-  app.collections.save({ name: "demo4" });
+  await app.collections.save({ name: "demo3" });
+  await app.collections.save({ name: "demo4" });
 });
 afterEach(() => app.close());
 
@@ -238,9 +238,9 @@ describe("inferViewFields", () => {
     expect(() => dryRunView(app.db, app.collections, hidden, 10)).toThrow(
       "failed to retrieve query records",
     );
-    expect(() =>
+    await expect(
       app.collections.save({ name: "evil", type: "view", viewQuery: hidden }),
-    ).toThrow(ValidationError);
+    ).rejects.toThrow(ValidationError);
     saveView(app.db, "evil", hidden);
     app.db.run("DROP VIEW evil");
     app.db.run("select id from demo2; delete from demo2");
@@ -285,15 +285,15 @@ describe("dryRunView", () => {
 });
 
 describe("view collections", () => {
-  test("save creates the view, renames recreate it and delete drops it", () => {
-    const v = app.collections.save({
+  test("save creates the view, renames recreate it and delete drops it", async () => {
+    const v = await app.collections.save({
       name: "v1",
       type: "view",
       listRule: "",
       viewQuery: "select id, text from demo2",
     });
     expect(v.fields.map((f) => f.name)).toEqual(["id", "text"]);
-    app.collections.save({
+    await app.collections.save({
       id: v.id,
       name: "v2",
       viewQuery: "select id from demo2",
@@ -303,38 +303,40 @@ describe("view collections", () => {
     expect(app.collections.find("v2")!.fields.map((f) => f.name)).toEqual([
       "id",
     ]);
-    app.collections.delete("v2");
+    await app.collections.delete("v2");
     expect(objectNames()).not.toContain("v2");
   });
 
-  test("a source used by a view cannot be deleted", () => {
-    app.collections.save({
+  test("a source used by a view cannot be deleted", async () => {
+    await app.collections.save({
       name: "v1",
       type: "view",
       viewQuery: "select id from demo3",
     });
-    expect(() => app.collections.delete("demo3")).toThrow(
+    await expect(app.collections.delete("demo3")).rejects.toThrow(
       "existing view dependency",
     );
     expect(app.collections.find("demo3")).not.toBeNull();
   });
 
-  test("a column read by a view cannot be dropped or silently renamed", () => {
-    app.collections.save({
+  test("a column read by a view cannot be dropped or silently renamed", async () => {
+    await app.collections.save({
       name: "v1",
       type: "view",
       viewQuery: "select id, text from demo2",
     });
     const demo2 = app.collections.find("demo2")!;
-    expect(() =>
+    await expect(
       app.collections.save({
         ...demo2,
         fields: demo2.fields.filter((f) => f.name !== "text"),
       }),
-    ).toThrow("failed to drop column text - SQL logic error: error in view v1");
+    ).rejects.toThrow(
+      "failed to drop column text - SQL logic error: error in view v1",
+    );
     // SQLite rewrites the view, the stored query is stale and PB only logs that
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    app.collections.save({
+    await app.collections.save({
       ...demo2,
       fields: demo2.fields.map((f) =>
         f.name === "text" ? { ...f, name: "body" } : f,
@@ -345,8 +347,8 @@ describe("view collections", () => {
     expect(app.db.query("SELECT * FROM v1")).toEqual([]);
   });
 
-  test("import creates views after their sources", () => {
-    app.collections.import(
+  test("import creates views after their sources", async () => {
+    await app.collections.import(
       [
         { name: "iv", type: "view", viewQuery: "select id, title from isrc" },
         { name: "isrc", fields: [{ name: "title", type: "text" }] },
@@ -359,13 +361,13 @@ describe("view collections", () => {
     ]);
   });
 
-  test("onChange waits for the outermost operation to commit", () => {
-    app.collections.save({
+  test("onChange waits for the outermost operation to commit", async () => {
+    await app.collections.save({
       name: "v1",
       type: "view",
       viewQuery: "select id from demo3",
     });
-    app.collections.save({
+    await app.collections.save({
       name: "v2",
       type: "view",
       viewQuery: "select id, text from demo2",
@@ -379,21 +381,24 @@ describe("view collections", () => {
 
     // the nested v2 save logs v1's failure, as PB does
     const warn = spyOn(console, "warn").mockImplementation(() => {});
-    expect(() => app.collections.delete("demo3")).toThrow(
+    await expect(app.collections.delete("demo3")).rejects.toThrow(
       "existing view dependency",
     );
     warn.mockRestore();
     expect(changes).toBe(0);
     expect(app.collections.find("v2")!.fields[1]!.hidden).toBe(true);
 
-    app.collections.save({ ...app.collections.find("demo4")!, listRule: "" });
+    await app.collections.save({
+      ...app.collections.find("demo4")!,
+      listRule: "",
+    });
     expect(changes).toBe(1);
     expect(app.collections.find("v2")!.fields[1]!.hidden).toBe(false);
   });
 
-  test("validation errors", () => {
+  test("validation errors", async () => {
     try {
-      app.collections.save({
+      await app.collections.save({
         name: "v1",
         type: "view",
         viewQuery: "select text from demo2",
@@ -421,12 +426,12 @@ test("findRecordByViewFile resolves the source record through nested views", asy
   app.db.run(
     "INSERT INTO demo1 (id, file_one, file_many) VALUES ('r1', 'a.txt', '[\"b.txt\",\"c.txt\"]')",
   );
-  const inner = app.collections.save({
+  const inner = await app.collections.save({
     name: "inner_view",
     type: "view",
     viewQuery: "select id, file_one as f1, file_many from demo1",
   });
-  const outer = app.collections.save({
+  const outer = await app.collections.save({
     name: "outer_view",
     type: "view",
     viewQuery: "select id, f1 as file, file_many as many from inner_view",

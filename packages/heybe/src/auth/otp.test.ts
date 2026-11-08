@@ -79,7 +79,7 @@ describe("expiry", () => {
     const old = await issueOtp(app, users(), raw);
     advance(181);
     const fresh = await issueOtp(app, users(), raw);
-    deleteExpiredOtps(app, users());
+    await deleteExpiredOtps(app, users());
     const left = app.db.query<{ id: string }>("SELECT id FROM _otps");
     expect(left.map((r) => r.id)).toEqual([fresh.id]);
     expect(left.map((r) => r.id)).not.toContain(old.id);

@@ -45,7 +45,7 @@ describe("auth-with-password", () => {
 describe("auth-with-password dummy check", () => {
   test("hashes the dummy password with the collection password cost", async () => {
     const users = app.collections.find("users")!;
-    app.collections.save({
+    await app.collections.save({
       id: users.id,
       fields: users.fields.map((f) =>
         f.name === "password" ? { ...f, cost: 7 } : f,
@@ -88,7 +88,7 @@ describe("auth-refresh guard order", () => {
   });
 
   test("a base collection without a token is 401", async () => {
-    app.collections.save({ name: "posts", type: "base", fields: [] });
+    await app.collections.save({ name: "posts", type: "base", fields: [] });
     const res = (await call("/api/collections/posts/auth-refresh")) as {
       status: number;
     };
@@ -96,7 +96,7 @@ describe("auth-refresh guard order", () => {
   });
 
   test("a superuser token on a base collection is 403", async () => {
-    app.collections.save({ name: "posts", type: "base", fields: [] });
+    await app.collections.save({ name: "posts", type: "base", fields: [] });
     const created = await app
       .records("_superusers")
       .create({ email: "a@example.com", password: "1234567890" });

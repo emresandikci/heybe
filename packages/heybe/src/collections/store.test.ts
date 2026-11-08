@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, test } from "bun:test";
-import { type Db, openDb } from "../db";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import type { Db } from "../db";
+import { tempDb } from "../test-db";
 import { ValidationError } from "../util";
 import { CollectionStore } from "./store";
 import { collectionId } from "./model";
@@ -27,9 +28,9 @@ const postFields = [
   autodate("updated", true),
 ] as any;
 
-function validationData(fn: () => unknown): any {
+async function validationData(write: Promise<unknown>): Promise<any> {
   try {
-    fn();
+    await write;
   } catch (e) {
     expect(e).toBeInstanceOf(ValidationError);
     return (e as ValidationError).data;
@@ -38,9 +39,11 @@ function validationData(fn: () => unknown): any {
 }
 
 beforeEach(() => {
-  db = openDb(":memory:");
+  db = tempDb();
   store = new CollectionStore(db, now);
 });
+
+afterEach(() => db.close());
 
 describe("collectionId", () => {
   test("matches PocketBase", () => {
@@ -86,8 +89,8 @@ describe("bootstrap", () => {
 });
 
 describe("save", () => {
-  test("creates the table with id, fields, created, updated", () => {
-    const c = store.save({ name: "posts", fields: postFields });
+  test("creates the table with id, fields, created, updated", async () => {
+    const c = await store.save({ name: "posts", fields: postFields });
     expect(c.id).toBe("pbc_1125843985");
     expect(c.created).toBe("2026-01-01 00:00:00.000Z");
     expect(columns("posts")).toEqual(["id", "title", "created", "updated"]);
@@ -95,20 +98,20 @@ describe("save", () => {
     expect(store.find(c.id)).toEqual(c);
   });
 
-  test("a collection with only a title field gets no created and updated columns", () => {
-    store.save({ name: "posts", fields: [text("title")] as any });
+  test("a collection with only a title field gets no created and updated columns", async () => {
+    await store.save({ name: "posts", fields: [text("title")] as any });
     expect(columns("posts")).toEqual(["id", "title"]);
   });
 
-  test("adds and drops columns", () => {
-    const c = store.save({ name: "posts", fields: postFields });
-    const withBody = store.save({
+  test("adds and drops columns", async () => {
+    const c = await store.save({ name: "posts", fields: postFields });
+    const withBody = await store.save({
       id: c.id,
       name: "posts",
       fields: [...c.fields, text("body")] as any,
     });
     expect(columns("posts")).toContain("body");
-    store.save({
+    await store.save({
       id: c.id,
       name: "posts",
       fields: withBody.fields.filter((f) => f.name !== "title"),
@@ -116,10 +119,10 @@ describe("save", () => {
     expect(columns("posts")).toEqual(["id", "created", "updated", "body"]);
   });
 
-  test("renaming a field keeps row data", () => {
-    const c = store.save({ name: "posts", fields: postFields });
+  test("renaming a field keeps row data", async () => {
+    const c = await store.save({ name: "posts", fields: postFields });
     db.run("INSERT INTO posts (id, title) VALUES ('a', 'hello')");
-    store.save({
+    await store.save({
       id: c.id,
       name: "posts",
       fields: c.fields.map((f) =>
@@ -130,13 +133,13 @@ describe("save", () => {
     expect(db.get("SELECT heading FROM posts")).toEqual({ heading: "hello" });
   });
 
-  test("swapping two field names keeps row data", () => {
-    const c = store.save({
+  test("swapping two field names keeps row data", async () => {
+    const c = await store.save({
       name: "posts",
       fields: [text("a"), text("b")] as any,
     });
     db.run("INSERT INTO posts (id, a, b) VALUES ('x', '1', '2')");
-    store.save({
+    await store.save({
       id: c.id,
       name: "posts",
       fields: c.fields.map((f) =>
@@ -150,14 +153,14 @@ describe("save", () => {
     expect(db.get("SELECT a, b FROM posts")).toEqual({ a: "2", b: "1" });
   });
 
-  test("renaming the collection renames the table and keeps rows and indexes", () => {
-    const c = store.save({
+  test("renaming the collection renames the table and keeps rows and indexes", async () => {
+    const c = await store.save({
       name: "posts",
       fields: postFields,
       indexes: ["CREATE INDEX `idx_title` ON `posts` (`title`)"],
     });
     db.run("INSERT INTO posts (id, title) VALUES ('a', 'hello')");
-    const renamed = store.save({ id: c.id, name: "articles" });
+    const renamed = await store.save({ id: c.id, name: "articles" });
     expect(db.get("SELECT title FROM articles")).toEqual({ title: "hello" });
     expect(
       db.get("SELECT 1 FROM sqlite_master WHERE name = 'posts'"),
@@ -172,8 +175,8 @@ describe("save", () => {
     ).toBe("articles");
   });
 
-  test("auth collection gets the system fields and unique indexes", () => {
-    const c = store.save({ name: "members", type: "auth" });
+  test("auth collection gets the system fields and unique indexes", async () => {
+    const c = await store.save({ name: "members", type: "auth" });
     expect(c.fields.filter((f) => f.system).map((f) => f.name)).toEqual([
       "id",
       "password",
@@ -191,14 +194,14 @@ describe("save", () => {
     expect(c.authRule).toBe("");
   });
 
-  test("duplicate collection name throws with the name path", () => {
-    store.save({ name: "posts" });
-    const data = validationData(() => store.save({ name: "Posts" }));
+  test("duplicate collection name throws with the name path", async () => {
+    await store.save({ name: "posts" });
+    const data = await validationData(store.save({ name: "Posts" }));
     expect(data.name.code).toBe("validation_collection_name_exists");
   });
 
-  test("invalid field name throws with the field path", () => {
-    const data = validationData(() =>
+  test("invalid field name throws with the field path", async () => {
+    const data = await validationData(
       store.save({
         name: "posts",
         fields: [text("ok"), text("bad name")] as any,
@@ -207,32 +210,33 @@ describe("save", () => {
     expect(data.fields["2"].name.code).toBe("validation_match_invalid");
   });
 
-  test("duplicate field name throws", () => {
-    const data = validationData(() =>
+  test("duplicate field name throws", async () => {
+    const data = await validationData(
       store.save({ name: "posts", fields: [text("a"), text("A")] as any }),
     );
     expect(data.fields["2"].name.code).toBe("validation_duplicated_field_name");
   });
 
-  test("invalid rule throws", () => {
-    const data = validationData(() =>
+  test("invalid rule throws", async () => {
+    const data = await validationData(
       store.save({ name: "posts", listRule: "title =" }),
     );
     expect(data.listRule.code).toBe("validation_invalid_rule");
   });
 
-  test("invalid collection name throws", () => {
+  test("invalid collection name throws", async () => {
     expect(
-      validationData(() => store.save({ name: "bad-name" })).name.code,
+      (await validationData(store.save({ name: "bad-name" }))).name.code,
     ).toBe("validation_match_invalid");
   });
 
-  test("system collection cannot be renamed or lose system fields", () => {
+  test("system collection cannot be renamed or lose system fields", async () => {
     const su = store.find("_superusers")!;
     expect(
-      validationData(() => store.save({ id: su.id, name: "admins" })).name.code,
+      (await validationData(store.save({ id: su.id, name: "admins" }))).name
+        .code,
     ).toBe("validation_collection_system_name_change");
-    const data = validationData(() =>
+    const data = await validationData(
       store.save({
         id: su.id,
         name: su.name,
@@ -242,41 +246,43 @@ describe("save", () => {
     expect(data.fields.code).toBe("validation_system_field_change");
   });
 
-  test("type cannot change", () => {
-    const c = store.save({ name: "posts" });
+  test("type cannot change", async () => {
+    const c = await store.save({ name: "posts" });
     expect(
-      validationData(() =>
-        store.save({ id: c.id, name: "posts", type: "auth" }),
+      (
+        await validationData(
+          store.save({ id: c.id, name: "posts", type: "auth" }),
+        )
       ).type.code,
     ).toBe("validation_collection_type_change");
   });
 
-  test("failed save leaves the db untouched", () => {
-    const c = store.save({ name: "posts", fields: postFields });
-    expect(() =>
+  test("failed save leaves the db untouched", async () => {
+    const c = await store.save({ name: "posts", fields: postFields });
+    await expect(
       store.save({
         id: c.id,
         name: "posts",
         indexes: ["CREATE INDEX `i` ON `posts` (`nope`)"],
       }),
-    ).toThrow();
+    ).rejects.toThrow();
     expect(store.find("posts")).toEqual(c);
     expect(columns("posts")).toEqual(["id", "title", "created", "updated"]);
   });
 });
 
 describe("delete and truncate", () => {
-  test("delete drops the table and the row", () => {
-    store.save({ name: "posts" });
-    store.delete("posts");
+  test("delete drops the table and the row", async () => {
+    await store.save({ name: "posts" });
+    await store.delete("posts");
     expect(store.find("posts")).toBeNull();
     expect(
       db.get("SELECT 1 FROM sqlite_master WHERE name = 'posts'"),
     ).toBeNull();
   });
 
-  test("delete on a system collection throws", () => {
-    expect(() => store.delete("_superusers")).toThrow(
+  test("delete on a system collection throws", async () => {
+    await expect(store.delete("_superusers")).rejects.toThrow(
       "[_superusers] system collections cannot be deleted",
     );
     expect(store.find("_superusers")).not.toBeNull();
@@ -284,37 +290,41 @@ describe("delete and truncate", () => {
 });
 
 describe("validation parity with PocketBase", () => {
-  test("a rule is parsed and resolved against the collection fields", () => {
-    const rule = (listRule: string) =>
-      validationData(() =>
-        store.save({ name: "posts", fields: [text("title")] as any, listRule }),
+  test("a rule is parsed and resolved against the collection fields", async () => {
+    const rule = async (listRule: string) =>
+      (
+        await validationData(
+          store.save({
+            name: "posts",
+            fields: [text("title")] as any,
+            listRule,
+          }),
+        )
       ).listRule?.message;
-    expect(rule("title =")).toBe(
+    expect(await rule("title =")).toBe(
       "Invalid rule. Raw error: invalid or incomplete filter expression.",
     );
-    expect(rule("nope = 1")).toBe(
+    expect(await rule("nope = 1")).toBe(
       'Invalid rule. Raw error: invalid left operand "nope" - unknown field "nope".',
     );
-    expect(() =>
-      store.save({
-        name: "ok",
-        fields: [text("title")] as any,
-        listRule: "title != ''",
-      }),
-    ).not.toThrow();
+    await store.save({
+      name: "ok",
+      fields: [text("title")] as any,
+      listRule: "title != ''",
+    });
   });
 
-  test("create with an existing id is a validation error, not an update", () => {
-    store.save({ name: "posts", id: "customid1234567" });
-    const data = validationData(() =>
+  test("create with an existing id is a validation error, not an update", async () => {
+    await store.save({ name: "posts", id: "customid1234567" });
+    const data = await validationData(
       store.save({ name: "other", id: "customid1234567" }, true),
     );
     expect(data.id.code).toBe("validation_invalid_or_existing_id");
   });
 
-  test("the superusers collection keeps password auth on and OAuth2 off", () => {
+  test("the superusers collection keeps password auth on and OAuth2 off", async () => {
     const su = store.find("_superusers")!;
-    store.save({
+    await store.save({
       ...su,
       passwordAuth: { enabled: false, identityFields: ["email"] },
       oauth2: { ...(su.oauth2 as object), enabled: false, providers: [] },
@@ -322,8 +332,8 @@ describe("validation parity with PocketBase", () => {
     expect((store.find("_superusers")!.passwordAuth as any).enabled).toBe(true);
   });
 
-  test("an autogenerate pattern that breaks the field limits is rejected", () => {
-    const data = validationData(() =>
+  test("an autogenerate pattern that breaks the field limits is rejected", async () => {
+    const data = await validationData(
       store.save({
         name: "posts",
         fields: [
@@ -341,8 +351,8 @@ describe("validation parity with PocketBase", () => {
     );
   });
 
-  test("a system field with the wrong type is replaced", () => {
-    const c = store.save({
+  test("a system field with the wrong type is replaced", async () => {
+    const c = await store.save({
       name: "people",
       type: "auth",
       fields: [text("email")] as any,
