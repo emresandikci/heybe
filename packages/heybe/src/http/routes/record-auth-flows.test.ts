@@ -48,19 +48,30 @@ const advance = (seconds: number) => {
 };
 
 describe("request routes do not wait for the mail", () => {
-  for (const path of ["request-verification", "request-password-reset"])
+  const routes = [
+    ["request-verification", 204],
+    ["request-password-reset", 204],
+    ["request-otp", 200],
+  ] as const;
+  for (const [path, status] of routes)
     test(`${path} answers known and unknown emails while the mailer hangs`, async () => {
+      app.collections.save({
+        id: users().id,
+        otp: { ...(users().otp as object), enabled: true },
+      } as any);
       await createUser("known@example.com");
       let calls = 0;
       app.mailer = { send: () => (calls++, new Promise<void>(() => {})) };
 
       const unknown = await post(path, { email: "nobody@example.com" });
-      expect(unknown.status).toBe(204);
+      expect(unknown.status).toBe(status);
       await tick();
       expect(calls).toBe(0);
 
       const known = await post(path, { email: "known@example.com" });
-      expect(known.status).toBe(204);
+      expect(known.status).toBe(status);
+      if (status === 200)
+        expect(typeof ((await known.json()) as any).otpId).toBe("string");
       expect(calls).toBe(0);
       await tick();
       expect(calls).toBe(1);

@@ -16,6 +16,8 @@ export interface SmtpCapture {
   messages(): CapturedMail[];
   // resolves with the first captured mail to `address`, already received or still to come
   waitFor(address: string): Promise<CapturedMail>;
+  // resolves once `count` mails to `address` were captured
+  waitForCount(address: string, count: number): Promise<CapturedMail[]>;
   clear(): void;
   stop(): Promise<void>;
 }
@@ -203,18 +205,26 @@ function handleConnection(
 
 export function startSmtpCapture(): Promise<SmtpCapture> {
   const store: CapturedMail[] = [];
-  const waiters: { address: string; resolve(m: CapturedMail): void }[] = [];
+  const waiters: (() => boolean)[] = [];
   const sockets = new Set<Socket>();
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
     handleConnection(socket, (m) => {
       store.push(m);
-      for (const w of waiters.splice(0))
-        if (m.recipients.includes(w.address)) w.resolve(m);
-        else waiters.push(w);
+      for (const w of waiters.splice(0)) if (!w()) waiters.push(w);
     });
   });
+  const waitForCount = (address: string, count: number) =>
+    new Promise<CapturedMail[]>((resolve) => {
+      const check = () => {
+        const found = store.filter((m) => m.recipients.includes(address));
+        if (found.length < count) return false;
+        resolve(found.slice(0, count));
+        return true;
+      };
+      if (!check()) waiters.push(check);
+    });
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -224,11 +234,9 @@ export function startSmtpCapture(): Promise<SmtpCapture> {
       resolve({
         port: address.port,
         messages: () => [...store],
-        waitFor: (address) => {
-          const found = store.find((m) => m.recipients.includes(address));
-          if (found) return Promise.resolve(found);
-          return new Promise((resolve) => waiters.push({ address, resolve }));
-        },
+        waitFor: (address) =>
+          waitForCount(address, 1).then((mails) => mails[0]!),
+        waitForCount,
         clear: () => {
           store.length = 0;
         },

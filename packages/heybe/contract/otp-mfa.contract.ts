@@ -150,7 +150,7 @@ async function requestOtp(email: string, path = otp): Promise<Requested> {
   await Promise.all(
     targetList().map(async (t) => {
       const filter = encodeURIComponent(`id='${otpId[t.name]}'&&sentTo!=''`);
-      for (;;) {
+      for (let attempt = 0; attempt < 500; attempt++) {
         const res = await api(
           t,
           "GET",
@@ -160,6 +160,7 @@ async function requestOtp(email: string, path = otp): Promise<Requested> {
           return;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
+      throw new Error(`otp ${otpId[t.name]} never got sentTo on ${t.name}`);
     }),
   );
   expect(hb.subject).toBe(pb.subject);
@@ -187,7 +188,8 @@ describe("request-otp", () => {
     const known = await requestOtp("known@example.com");
     expect(known.code.heybe).toMatch(/^\d{8}$/);
     await guest(`${otp}/request-otp`, { email: "nobody@example.com" }, 200);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await createUser("sentinel@example.com");
+    await requestOtp("sentinel@example.com");
     for (const m of [mail.pocketbase, mail.heybe])
       expect(
         m.messages().filter((x) => x.recipients.includes("nobody@example.com")),
@@ -235,17 +237,18 @@ describe("request-otp", () => {
       );
     let last = {} as Ids;
     for (let i = 0; i < 10; i++) last = await request();
-    const sentCount = () =>
-      [mail.pocketbase, mail.heybe].map(
-        (m) =>
-          m.messages().filter((x) => x.recipients.includes("many@example.com"))
-            .length,
-      );
-    while (sentCount().some((n) => n < 10))
-      await new Promise((resolve) => setTimeout(resolve, 20));
+    const count = (m: SmtpCapture) =>
+      m.messages().filter((x) => x.recipients.includes("many@example.com"))
+        .length;
+    await Promise.all(
+      [mail.pocketbase, mail.heybe].map((m) =>
+        m.waitForCount("many@example.com", 10),
+      ),
+    );
     expect(await request()).toEqual(last);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(sentCount()).toEqual([10, 10]);
+    await createUser("sentinel2@example.com");
+    await requestOtp("sentinel2@example.com");
+    expect([count(mail.pocketbase), count(mail.heybe)]).toEqual([10, 10]);
   });
 });
 
@@ -468,27 +471,30 @@ describe("mfa", () => {
   test("superusers need MFA once OTP is enabled for them", async () => {
     const su = "/api/collections/_superusers";
     await same((t) => api(t, "PATCH", su, { otp: { enabled: true } }), 200);
-    const mfaId = await capture(
-      (t) =>
-        api(
-          t,
-          "POST",
-          `${su}/auth-with-password`,
-          { identity: "test@example.com", password: "1234567890" },
-          null,
-        ),
-      "mfaId",
-      401,
-    );
-    const r = await requestOtp("test@example.com", su);
-    await same(otpWith(r, mfaId, su), 200);
-    await same(
-      (t) =>
-        api(t, "PATCH", su, {
-          otp: { enabled: false },
-          mfa: { enabled: false },
-        }),
-      200,
-    );
+    try {
+      const mfaId = await capture(
+        (t) =>
+          api(
+            t,
+            "POST",
+            `${su}/auth-with-password`,
+            { identity: "test@example.com", password: "1234567890" },
+            null,
+          ),
+        "mfaId",
+        401,
+      );
+      const r = await requestOtp("test@example.com", su);
+      await same(otpWith(r, mfaId, su), 200);
+    } finally {
+      await same(
+        (t) =>
+          api(t, "PATCH", su, {
+            otp: { enabled: false },
+            mfa: { enabled: false },
+          }),
+        200,
+      );
+    }
   });
 });

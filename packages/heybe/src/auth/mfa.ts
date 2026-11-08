@@ -1,6 +1,6 @@
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
-import { FilterError, parseFilter } from "../filter/parse";
+import { parseFilter } from "../filter/parse";
 import { ApiError } from "../http/errors";
 import type { RequestEvent } from "../http/router";
 import { buildRequestInfo, matchesRecord } from "../records/rules";
@@ -33,10 +33,8 @@ function wantsMfa(
       parseFilter(rule),
       buildRequestInfo(e, body, context),
     );
-  } catch (err) {
-    if (err instanceof FilterError || err instanceof ValidationError)
-      throw new ApiError(400, "Failed to authenticate.");
-    throw err;
+  } catch {
+    throw new ApiError(400, "Failed to authenticate.");
   }
 }
 

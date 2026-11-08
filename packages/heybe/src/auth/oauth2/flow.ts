@@ -551,7 +551,7 @@ function get(
 ): Promise<IncomingMessage> {
   const send = url.protocol === "https:" ? httpsGet : httpGet;
   return new Promise((resolve, reject) => {
-    send(url, { lookup, signal }, resolve).on("error", reject);
+    send(url, { lookup, signal, agent: false }, resolve).on("error", reject);
   });
 }
 
@@ -725,8 +725,7 @@ export async function authWithOAuth2(
   const config = providerConfigs(c).find((p) => p.name === input.provider);
   const p = config && initProvider(config);
   if (!p) throw new ApiError(500, "Missing or invalid provider config.");
-  const fetchUser = userFetchers[p.name] ?? mappers[p.name];
-  if (!fetchUser) throw new ApiError(500, `Failed to init provider ${p.name}.`);
+  const fetchUser = (userFetchers[p.name] ?? mappers[p.name])!;
 
   const signal = AbortSignal.timeout(PROVIDER_TIMEOUT_MS);
   let token: OAuth2Token;

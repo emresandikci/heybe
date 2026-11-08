@@ -121,6 +121,21 @@ describe("auth-refresh", () => {
     expect(pb.status).toBe(401);
     expectSame(pb, hb);
   });
+
+  test("malformed JSON body", async () => {
+    const [pb, hb] = await both((t) =>
+      fetch(`${base(t)}/auth-refresh`, {
+        method: "POST",
+        headers: {
+          authorization: t.superToken,
+          "content-type": "application/json",
+        },
+        body: "{",
+      }),
+    );
+    expect(pb.status).toBe(400);
+    expectSame(pb, hb);
+  });
 });
 
 describe("tokens", () => {

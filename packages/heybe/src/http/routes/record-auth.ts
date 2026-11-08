@@ -1,6 +1,6 @@
 import { toAst } from "@heybe/query";
 import type { App } from "../../app";
-import { authTokenFromRequest, realIp } from "../middlewares";
+import { authTokenFromRequest, checkSuperuserIp, realIp } from "../middlewares";
 import { recordAuthOrigin } from "../../auth/alerts";
 import { type MfaMethod, checkMfa } from "../../auth/mfa";
 import { authMethodsProviders } from "../../auth/oauth2/flow";
@@ -198,6 +198,7 @@ export async function authResponse(
   // fields added to the 200 body (OAuth2 `meta`)
   extra: Values = {},
 ): Promise<Response> {
+  if (c.name === "_superusers") checkSuperuserIp(e.app, e.req, e.remoteIp);
   if (!canAuthenticate(e, c, record, body, context))
     throw new ApiError(
       403,
@@ -315,23 +316,34 @@ export function registerRecordAuthRoutes(router: Router): void {
     },
   );
 
-  router.add("POST", "/api/collections/{collection}/auth-refresh", (e) => {
-    const c = e.app.collections.find(e.params.collection!);
-    if (!c) throw new ApiError(404, "Missing or invalid collection context.");
-    if (!e.auth)
-      throw new ApiError(
-        401,
-        "The request requires valid record authorization token.",
-      );
-    if (e.auth.collection.id !== c.id)
-      throw new ApiError(
-        403,
-        `The request requires auth record from ${e.auth.collection.name} collection.`,
-      );
-    let token = authTokenFromRequest(e.req);
-    const claims = parseUnverifiedJwt(token, e.app.now);
-    if (claims?.refreshable === true)
-      token = newAuthToken(e.app, e.auth.collection, e.auth.record);
-    return authResponse(e, c, e.auth.record, token, {}, "default", "");
-  });
+  router.add(
+    "POST",
+    "/api/collections/{collection}/auth-refresh",
+    async (e) => {
+      const c = e.app.collections.find(e.params.collection!);
+      if (!c) throw new ApiError(404, "Missing or invalid collection context.");
+      if (!e.auth)
+        throw new ApiError(
+          401,
+          "The request requires valid record authorization token.",
+        );
+      if (e.auth.collection.id !== c.id)
+        throw new ApiError(
+          403,
+          `The request requires auth record from ${e.auth.collection.name} collection.`,
+        );
+      let token = authTokenFromRequest(e.req);
+      const claims = parseUnverifiedJwt(token, e.app.now);
+      if (claims?.refreshable === true)
+        token = newAuthToken(e.app, e.auth.collection, e.auth.record);
+      const body = await e.body().catch((err) => {
+        if (err instanceof ApiError && err.status === 413) throw err;
+        throw new ApiError(
+          400,
+          "Something went wrong while processing your request.",
+        );
+      });
+      return authResponse(e, c, e.auth.record, token, body, "default", "");
+    },
+  );
 }

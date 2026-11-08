@@ -500,7 +500,11 @@ async function impersonate(e: RequestEvent): Promise<Response> {
   }
   const body = await loadBody(e);
   const duration = body.duration ?? 0;
-  if (typeof duration !== "number" || !Number.isInteger(duration))
+  if (
+    typeof duration !== "number" ||
+    !Number.isInteger(duration) ||
+    Math.abs(duration) >= 2 ** 63
+  )
     throw new ApiError(400, LOAD_FAILED);
   check({
     duration:
@@ -512,11 +516,13 @@ async function impersonate(e: RequestEvent): Promise<Response> {
           }
         : null,
   });
+  // PB multiplies int64 seconds by time.Second, which wraps; a non-positive result uses the default
+  const nanos = BigInt.asIntN(64, BigInt(duration) * 1_000_000_000n);
   const token = newAuthToken(e.app, c, record, {
-    duration: duration > 0 ? duration : undefined,
+    duration: nanos > 0n ? Number(nanos / 1_000_000_000n) : undefined,
     refreshable: false,
   });
-  return authResponse(e, c, record, token, {}, "default", "");
+  return authResponse(e, c, record, token, body, "default", "");
 }
 
 export function registerRecordAuthFlowRoutes(router: Router): void {

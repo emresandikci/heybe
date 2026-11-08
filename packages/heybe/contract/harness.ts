@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const PB_VERSION = "0.41.1";
-const SUPERUSER_EMAIL = "test@example.com";
-const SUPERUSER_PASSWORD = "1234567890";
+export const SUPERUSER_EMAIL = "test@example.com";
+export const SUPERUSER_PASSWORD = "1234567890";
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
 const CLI = resolve(import.meta.dir, "../src/cli.ts");
 const KEPT_HEADERS = /^(content-type|access-control-.*)$/;

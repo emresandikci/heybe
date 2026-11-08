@@ -177,6 +177,60 @@ describe("impersonate", () => {
     await same((t) => impersonate(t, ids.user[t.name], { duration: -1 }), 400);
     await same((t) => impersonate(t, ids.user[t.name], { duration: "x" }), 400);
     await same((t) => impersonate(t, ids.user[t.name], { duration: 1.5 }), 400);
+    await same(
+      (t) => impersonate(t, ids.user[t.name], { duration: 1e30 }),
+      400,
+    );
+  });
+
+  test("a duration that overflows int64 nanoseconds falls back to the default", async () => {
+    const exps = {} as Record<Target["name"], number>;
+    await both(async (t) => {
+      const res = await impersonate(t, ids.user[t.name], { duration: 1e10 });
+      exps[t.name] = claims(
+        ((await res.clone().json()) as { token: string }).token,
+      ).exp;
+      return res;
+    });
+    expect(Math.abs(exps.heybe - exps.pocketbase)).toBeLessThan(30);
+    expect(exps.heybe - Date.now() / 1000).toBeLessThan(2 * 365 * 86400);
+  });
+
+  test("the token stops working after the record's password changes", async () => {
+    const created = {} as Ids;
+    await both(async (t) => {
+      const res = await api(t, "POST", "/api/collections/members/records", {
+        email: "pwchange@example.com",
+        password: PASSWORD,
+        passwordConfirm: PASSWORD,
+      });
+      created[t.name] = ((await res.clone().json()) as { id: string }).id;
+      return res;
+    });
+    const tokens = {} as Ids;
+    await both(async (t) => {
+      const res = await impersonate(t, created[t.name], {});
+      tokens[t.name] = ((await res.clone().json()) as { token: string }).token;
+      return res;
+    });
+    const refresh = (t: Target) =>
+      api(
+        t,
+        "POST",
+        "/api/collections/members/auth-refresh",
+        undefined,
+        tokens[t.name],
+      );
+    await same(refresh, 200);
+    await same(
+      (t) =>
+        api(t, "PATCH", `/api/collections/members/records/${created[t.name]}`, {
+          password: "newpassword1",
+          passwordConfirm: "newpassword1",
+        }),
+      200,
+    );
+    await same(refresh, 401);
   });
 });
 

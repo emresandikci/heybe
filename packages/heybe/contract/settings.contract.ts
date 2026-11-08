@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { type Target, both, expectSame, startTargets } from "./harness";
+import {
+  SUPERUSER_EMAIL,
+  SUPERUSER_PASSWORD,
+  type Target,
+  both,
+  expectSame,
+  startTargets,
+} from "./harness";
 
 let targets: Awaited<ReturnType<typeof startTargets>>;
 
@@ -287,5 +294,44 @@ describe("superuser IP restriction", () => {
       200,
     );
     await same((t) => api(t, "GET"), 200);
+  });
+
+  test("a superuser password login outside the allowlist is 403", async () => {
+    await patch(
+      {
+        superuserIPs: ["127.0.0.1"],
+        trustedProxy: { headers: ["X-Real-IP"] },
+      },
+      200,
+    );
+    try {
+      const login = (ip: string) => (t: Target) =>
+        fetch(`${t.url}/api/collections/_superusers/auth-with-password`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-real-ip": ip },
+          body: JSON.stringify({
+            identity: SUPERUSER_EMAIL,
+            password: SUPERUSER_PASSWORD,
+          }),
+        });
+      const [pb, hb] = await both(login("5.5.5.5"));
+      expect(pb.status).toBe(403);
+      expectSame(pb, hb);
+      const [okPb, okHb] = await both(login("127.0.0.1"));
+      expect(okPb.status).toBe(200);
+      expect(okHb.status).toBe(200);
+    } finally {
+      await both((t) =>
+        fetch(`${t.url}/api/settings`, {
+          method: "PATCH",
+          headers: {
+            authorization: t.superToken,
+            "x-real-ip": "127.0.0.1",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ superuserIPs: [] }),
+        }),
+      );
+    }
   });
 });
