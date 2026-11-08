@@ -78,3 +78,8 @@ export function fakeEnv(): Env & {
     },
   };
 }
+
+export function jwt(payload: unknown): string {
+  const b64 = (s: string) => Buffer.from(s).toString("base64url");
+  return `${b64('{"alg":"HS256"}')}.${b64(JSON.stringify(payload))}.sig`;
+}

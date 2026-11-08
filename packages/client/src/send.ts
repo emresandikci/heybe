@@ -87,6 +87,12 @@ export function toBody(body: unknown): BodyInit | undefined {
   return form;
 }
 
+export function hasAuthorization(headers?: Record<string, string>): boolean {
+  return Object.keys(headers ?? {}).some(
+    (k) => k.toLowerCase() === "authorization",
+  );
+}
+
 function isAbortError(err: unknown): boolean {
   return (
     err instanceof Error &&
@@ -100,6 +106,10 @@ export interface SenderConfig {
   env: Env;
   token: () => string;
   autoCancel: () => boolean;
+  beforeSend?: (
+    path: string,
+    headers?: Record<string, string>,
+  ) => Promise<void> | undefined;
 }
 
 export function createSender(cfg: SenderConfig) {
@@ -116,6 +126,8 @@ export function createSender(cfg: SenderConfig) {
   }
 
   async function send<T>(path: string, opts: SendOptions = {}): Promise<T> {
+    const pending = cfg.beforeSend?.(path, opts.headers);
+    if (pending) await pending;
     const method = opts.method ?? "GET";
     let url = buildURL(cfg.url, path);
     const query = opts.query ? serializeQuery(opts.query) : "";
