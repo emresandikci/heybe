@@ -86,11 +86,12 @@ function operatorExprs(path: string, ops: Plain, insensitive: boolean): Expr[] {
   for (const [key, op] of OPERATORS) {
     const value = ops[key];
     if (isSkipped(value)) continue;
+    const fold = lower && typeof value === "string";
     exprs.push({
       kind: "cmp",
       op,
-      left: field(lower ? `${path}:lower` : path),
-      right: toOperand(value, lower),
+      left: field(fold ? `${path}:lower` : path),
+      right: toOperand(value, fold),
     });
   }
 
@@ -105,7 +106,13 @@ function operatorExprs(path: string, ops: Plain, insensitive: boolean): Expr[] {
 
   for (const modifier of ["length", "each"] as const) {
     if (isPlain(ops[modifier])) {
-      exprs.push(...operatorExprs(`${path}:${modifier}`, ops[modifier], lower));
+      exprs.push(
+        ...operatorExprs(
+          `${path}:${modifier}`,
+          ops[modifier],
+          modifier === "each" && lower,
+        ),
+      );
     }
   }
 

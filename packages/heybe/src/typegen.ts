@@ -8,7 +8,7 @@ function isMulti(f: Field): boolean {
   return Number(f.maxSelect) > 1;
 }
 
-function tsType(f: Field): string | null {
+function tsType(f: Field, byId: Map<string, string>): string | null {
   switch (f.type) {
     case "number":
       return "number";
@@ -25,8 +25,11 @@ function tsType(f: Field): string | null {
       const union = values.join(" | ");
       return isMulti(f) ? `(${union})[]` : union;
     }
-    case "relation":
-      return isMulti(f) ? "Relation[]" : "Relation";
+    case "relation": {
+      const target = byId.get(String(f.collectionId));
+      const type = target ? `Relation<${JSON.stringify(target)}>` : "Relation";
+      return isMulti(f) ? `${type}[]` : type;
+    }
     case "file":
       return isMulti(f) ? "string[]" : "string";
     default:
@@ -38,11 +41,11 @@ function key(name: string): string {
   return IDENTIFIER.test(name) ? name : JSON.stringify(name);
 }
 
-function render(c: Collection): string {
+function render(c: Collection, byId: Map<string, string>): string {
   const lines = c.fields
     .filter((f) => !f.hidden)
     .flatMap((f) => {
-      const type = tsType(f);
+      const type = tsType(f, byId);
       return type === null ? [] : [`      ${key(f.name)}: ${type};`];
     });
   return `    ${key(c.name)}: {\n${lines.join("\n")}\n    };`;
@@ -52,7 +55,8 @@ export function generateTypes(collections: Collection[]): string {
   const included = collections
     .filter((c) => !c.name.startsWith("_"))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const body = included.map(render).join("\n");
+  const byId = new Map(included.map((c) => [c.id, c.name]));
+  const body = included.map((c) => render(c, byId)).join("\n");
   const usesRelation = included.some((c) =>
     c.fields.some((f) => f.type === "relation" && !f.hidden),
   );

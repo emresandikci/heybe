@@ -31,4 +31,17 @@ export async function check(app: App) {
   await app.records("fx_posts").findMany({ expand: { title: true } });
   // @ts-expect-error expand of a non-relation field
   await app.records("fx_posts").findOne("id", { expand: { views: true } });
+  const expanded = await app
+    .records("fx_posts")
+    .findMany({ expand: { author: true } });
+  const authorName: string | undefined =
+    expanded.items[0]!.expand?.author?.name;
+  const one = await app
+    .records("fx_posts")
+    .findOne("id", { expand: { author: true } });
+  const oneName: string | undefined = one.expand?.author?.name;
+  const plain = await app.records("fx_posts").findMany({});
+  // @ts-expect-error no expand without an expand argument
+  plain.items[0]!.expand;
+  return [authorName, oneName];
 }

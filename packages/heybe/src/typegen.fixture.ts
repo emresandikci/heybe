@@ -7,7 +7,7 @@ declare module "@heybe/query" {
       title: string;
       views: number;
       tags: ("a" | "b")[];
-      author: Relation;
+      author: Relation<"fx_users">;
       body: string;
       location: { lon: number; lat: number };
       created: string;

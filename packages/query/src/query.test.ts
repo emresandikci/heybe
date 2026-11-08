@@ -99,6 +99,17 @@ describe("toFilter(toAst())", () => {
     );
   });
 
+  test("insensitive skips non-string values", () => {
+    expect(filter({ views: { eq: 5, insensitive: true } })).toBe("views=5");
+    expect(filter({ ok: { eq: true, insensitive: true } })).toBe("ok=true");
+  });
+
+  test("insensitive never lowers length", () => {
+    expect(filter({ tags: { length: { gt: 2 }, insensitive: true } })).toBe(
+      "tags:length>2",
+    );
+  });
+
   test("relation path", () => {
     expect(filter({ author: { name: "John" } })).toBe('author.name="John"');
     expect(filter({ author: { team: { name: { like: "a" } } } })).toBe(

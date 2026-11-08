@@ -51,6 +51,25 @@ test("generates the augmentation for base and auth collections", async () => {
   expect(generateTypes(fixtures)).toBe(expected);
 });
 
+test("relation fields name their target collection", async () => {
+  const target = await app.collections.save({
+    name: "rel_target",
+    fields: [{ name: "a", type: "text" }] as any,
+  });
+  const fields = [
+    { name: "one", type: "relation", collectionId: target.id, maxSelect: 1 },
+    { name: "many", type: "relation", collectionId: target.id, maxSelect: 3 },
+  ] as any;
+  await app.collections.save({ name: "rel_source", fields });
+  const all = app.collections.all();
+  const alone = generateTypes(all.filter((c) => c.name === "rel_source"));
+  expect(alone).toContain("one: Relation;");
+  expect(alone).toContain("many: Relation[];");
+  const full = generateTypes(all.filter((c) => c.name.startsWith("rel_")));
+  expect(full).toContain('one: Relation<"rel_target">;');
+  expect(full).toContain('many: Relation<"rel_target">[];');
+});
+
 test("maps every field type", async () => {
   await app.collections.save({
     name: "all",

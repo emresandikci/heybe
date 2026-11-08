@@ -1,8 +1,11 @@
 import {
   type Expand,
+  type ExpandOf,
   type Expr,
   type FindManyArgs,
   type ListResult,
+  type NoExtraExpand,
+  type WithExpand,
   toAst,
   toExpand,
   toSort,
@@ -29,8 +32,13 @@ import { randomByPattern } from "./pattern";
 import { serializeRecord } from "./serialize";
 
 export interface RecordService<T> {
-  findMany(args?: FindManyArgs<T>): Promise<ListResult<T>>;
-  findOne(id: string, opts?: { expand?: Expand<T> }): Promise<T>;
+  findMany<A extends FindManyArgs<T> = {}>(
+    args?: A & { expand?: NoExtraExpand<T, ExpandOf<A>> },
+  ): Promise<ListResult<WithExpand<T, ExpandOf<A>>>>;
+  findOne<E extends Expand<T> | undefined = undefined>(
+    id: string,
+    opts?: { expand?: E & NoExtraExpand<T, E> },
+  ): Promise<WithExpand<T, E>>;
   create(data: Partial<T>): Promise<T>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
@@ -244,7 +252,9 @@ export class RecordServiceImpl<T> {
     };
   }
 
-  async findMany(args: FindManyArgs<T> = {}): Promise<ListResult<T>> {
+  async findMany<A extends FindManyArgs<T> = {}>(
+    args: FindManyArgs<T> = {},
+  ): Promise<ListResult<WithExpand<T, ExpandOf<A>>>> {
     const result = this.query({
       filter: args.where ? toAst<T>(args.where) : null,
       sort: toSort<T>(args.orderBy),
@@ -252,19 +262,26 @@ export class RecordServiceImpl<T> {
       perPage: args.perPage,
       skipTotal: args.count === false,
     });
-    if (!args.expand) return result;
+    if (!args.expand) return result as ListResult<WithExpand<T, ExpandOf<A>>>;
     return {
       ...result,
-      items: await this.expand(this.collection(), result.items, args.expand),
+      items: (await this.expand(
+        this.collection(),
+        result.items,
+        args.expand,
+      )) as WithExpand<T, ExpandOf<A>>[],
     };
   }
 
-  async findOne(id: string, opts: { expand?: Expand<T> } = {}): Promise<T> {
+  async findOne<E extends Expand<T> | undefined = undefined>(
+    id: string,
+    opts: { expand?: Expand<T> } = {},
+  ): Promise<WithExpand<T, E>> {
     const c = this.collection();
     const record = this.output(c, this.load(c, id));
-    return opts.expand
-      ? (await this.expand(c, [record], opts.expand))[0]!
-      : record;
+    return (
+      opts.expand ? (await this.expand(c, [record], opts.expand))[0]! : record
+    ) as WithExpand<T, E>;
   }
 
   private async expand(

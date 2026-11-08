@@ -5,9 +5,12 @@ export type CollectionName = keyof Collections & string;
 type Scalar = string | number | boolean | Date;
 
 declare const relation: unique symbol;
-type RelationMarker = { readonly [relation]?: true };
+type RelationMarker = { readonly [relation]?: string };
+type IsMarked<V> = typeof relation extends keyof V ? true : false;
 // Plain strings stay assignable; the optional marker lets Where<T> allow relation paths only here.
-export type Relation = string & RelationMarker;
+export type Relation<C extends string = string> = string & {
+  readonly [relation]?: C;
+};
 
 type Operators<V> = {
   eq?: V | null;
@@ -18,6 +21,7 @@ type Operators<V> = {
   lte?: V | null;
   like?: string | null;
   notLike?: string | null;
+  /** On a multi-value field PocketBase's `tags?="x"` matches nothing; use `each: { eq: "x" }` (`tags:each?="x"`) instead. */
   anyEq?: V | null;
   anyNeq?: V | null;
   anyGt?: V | null;
@@ -35,7 +39,7 @@ type Operators<V> = {
 type FieldWhere<V> = [NonNullable<V>] extends [infer U]
   ? U extends readonly (infer E)[]
     ? E | Operators<Extract<E, Scalar>>
-    : [U] extends [RelationMarker]
+    : IsMarked<U> extends true
       ? U | Operators<string> | Record<string, unknown>
       : U extends Scalar
         ? U | Operators<U>
@@ -52,10 +56,10 @@ export type Where<T> = string extends keyof T
 type ExpandTree = { [key: string]: true | ExpandTree | undefined };
 
 type IsRelation<V> = [V] extends [readonly (infer E)[]]
-  ? [E] extends [RelationMarker]
+  ? IsMarked<E> extends true
     ? true
     : false
-  : [V] extends [RelationMarker]
+  : IsMarked<V> extends true
     ? true
     : false;
 
@@ -73,6 +77,46 @@ export type Expand<T> = unknown extends T
     : { [K in RelationKeys<T>]?: true | ExpandTree } & {
         [K in `${string}_via_${string}`]?: true | ExpandTree;
       };
+
+type Loose = Record<string, unknown>;
+
+type RelationTarget<V> =
+  NonNullable<V> extends readonly (infer E)[] ? E : NonNullable<V>;
+
+type Resolved<V, Sub> =
+  RelationTarget<V> extends Relation<infer C>
+    ? C extends keyof Collections
+      ? WithExpand<Collections[C], Sub extends object ? Sub : undefined>
+      : Loose
+    : Loose;
+
+type ExpandEntry<T, K, Sub> = K extends keyof T
+  ? NonNullable<T[K]> extends readonly unknown[]
+    ? Resolved<T[K], Sub>[]
+    : Resolved<T[K], Sub>
+  : Loose | Loose[];
+
+// Inferred generics skip excess property checks, so unknown expand keys are mapped to `never`.
+export type NoExtraExpand<T, E> = {
+  [K in Exclude<keyof NonNullable<E>, keyof Expand<T>>]: never;
+};
+
+export type ExpandOf<A> = "expand" extends keyof A
+  ? A["expand" & keyof A]
+  : undefined;
+
+// T plus `expand` typed from E; every entry is optional because PB omits relations the caller cannot view.
+export type WithExpand<T, E> = [NonNullable<E>] extends [never]
+  ? T
+  : T & {
+      expand?: {
+        [K in keyof NonNullable<E> & string]?: ExpandEntry<
+          T,
+          K,
+          NonNullable<E>[K]
+        >;
+      };
+    };
 
 type Direction = "asc" | "desc";
 
