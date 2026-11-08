@@ -1,7 +1,7 @@
 import { parseArgs } from "node:util";
 import { createApp } from "./app";
 import { runInstaller } from "./http/routes/installer";
-import { serve } from "./http/server";
+import { parseHttpAddr, serve } from "./http/server";
 import { writeTypes, writeTypesSafely } from "./typegen";
 
 const DEFAULT_TYPES_FILE = "./heybe-env.d.ts";
@@ -33,9 +33,14 @@ function runServe(argv: string[]) {
       dev: { type: "boolean", default: false },
     },
   });
-  const sep = values.http.lastIndexOf(":");
-  const host = values.http.slice(0, sep) || "0.0.0.0";
-  const port = Number(values.http.slice(sep + 1));
+  let addr: ReturnType<typeof parseHttpAddr>;
+  try {
+    addr = parseHttpAddr(values.http);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
+  const { host, port } = addr;
   const origins = values.origins.flatMap((o) => o.split(","));
   const app = createApp({ dir: values.dir });
   if (values.dev) {

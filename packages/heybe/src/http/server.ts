@@ -14,6 +14,20 @@ import { registerRecordAuthRoutes } from "./routes/record-auth";
 import { registerRecordRoutes } from "./routes/records";
 import { registerSettingsRoutes } from "./routes/settings";
 
+// `--http` value: "host:port", ":port" (all interfaces), "[ipv6]:port" or a bare port on 127.0.0.1.
+export function parseHttpAddr(addr: string): { host: string; port: number } {
+  const match = /^(?:(\[[^\]]*\]|[^:]*):)?(\d{1,5})$/.exec(addr);
+  const port = Number(match?.[2]);
+  if (!match || port > 65535)
+    throw new Error(
+      `Invalid --http address "${addr}": expected host:port, :port or a port`,
+    );
+  const host = match[1];
+  if (host === undefined) return { host: "127.0.0.1", port };
+  if (host === "") return { host: "0.0.0.0", port };
+  return { host: host.replace(/^\[(.*)\]$/, "$1"), port };
+}
+
 export function createRouter(): Router {
   const router = new Router();
   registerHealthRoutes(router);

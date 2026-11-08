@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createApp } from "../app";
+import { FilterError } from "../filter/parse";
+import { NotFoundError, ValidationError } from "../util";
+import { ApiError, logUnexpected } from "./errors";
 import { Router } from "./router";
-import { serve } from "./server";
+import { parseHttpAddr, serve } from "./server";
 
 const ok = () => new Response("ok");
 
@@ -70,5 +73,54 @@ describe("body limit", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ a: "x".repeat(10) });
+  });
+});
+
+describe("logUnexpected", () => {
+  test("logs only errors that are not expected API failures", () => {
+    const spy = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const err of [
+        new ApiError(400, ""),
+        new ValidationError("x", {}),
+        new FilterError("x"),
+        new NotFoundError(),
+      ])
+        logUnexpected(err);
+      expect(spy).not.toHaveBeenCalled();
+      const bug = new TypeError("boom");
+      logUnexpected(bug);
+      expect(spy).toHaveBeenCalledWith(bug);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("parseHttpAddr", () => {
+  test("host:port, :port, [ipv6]:port and a bare port", () => {
+    expect(parseHttpAddr("127.0.0.1:8090")).toEqual({
+      host: "127.0.0.1",
+      port: 8090,
+    });
+    expect(parseHttpAddr("example.com:80")).toEqual({
+      host: "example.com",
+      port: 80,
+    });
+    expect(parseHttpAddr(":8090")).toEqual({ host: "0.0.0.0", port: 8090 });
+    expect(parseHttpAddr("[::1]:8090")).toEqual({ host: "::1", port: 8090 });
+    expect(parseHttpAddr("8090")).toEqual({ host: "127.0.0.1", port: 8090 });
+  });
+
+  test("anything else is a clear error", () => {
+    for (const addr of [
+      "",
+      "localhost",
+      "a:b",
+      "1.2.3.4:",
+      "x:70000",
+      "::1:80",
+    ])
+      expect(() => parseHttpAddr(addr)).toThrow(`Invalid --http address`);
   });
 });
