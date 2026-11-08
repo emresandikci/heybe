@@ -5,6 +5,7 @@ export type {
   FindManyArgs,
   ListResult,
   OrderBy,
+  Relation,
   Where,
 } from "./types";
 export { toAst } from "./to-ast";

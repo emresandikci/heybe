@@ -128,7 +128,8 @@ function whereExprs(where: Plain, prefix: string): Expr[] {
     if (key === "AND" || key === "OR") {
       if (!Array.isArray(value)) continue;
       const items = value.flatMap((child) => {
-        const node = group("and", whereExprs(child as Plain, prefix));
+        if (!isPlain(child)) return [];
+        const node = group("and", whereExprs(child, prefix));
         return node ? [node] : [];
       });
       const node = group(key === "AND" ? "and" : "or", items);

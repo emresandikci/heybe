@@ -1130,3 +1130,36 @@ describe("protected fields from non-superusers", () => {
     }
   });
 });
+
+describe("filter string escapes", () => {
+  test("newline, tab, carriage return and quotes inside filter strings", async () => {
+    await same(
+      (t) =>
+        api(t, "POST", "/api/collections", {
+          name: "escapes",
+          type: "base",
+          listRule: "",
+          fields: [{ name: "title", type: "text" }],
+        }),
+      200,
+    );
+    for (const title of ["a\nb\tc\rd", `say "hi"`, "it's", "back\\slash"])
+      await same((t) => api(t, "POST", records("escapes"), { title }), 200);
+
+    for (const filter of [
+      String.raw`title = "a\nb\tc\rd"`,
+      String.raw`title = 'a\nb\tc\rd'`,
+      String.raw`title = "say \"hi\""`,
+      String.raw`title = 'say \"hi\"'`,
+      String.raw`title = 'it\'s'`,
+      String.raw`title = "it\'s"`,
+      String.raw`title = "back\\slash"`,
+      String.raw`title = "back\slash"`,
+      String.raw`title ~ "\t"`,
+      String.raw`title = "a\x"`,
+    ]) {
+      const q = new URLSearchParams({ filter, fields: "title" });
+      await same((t) => api(t, "GET", records("escapes", `?${q}`)), 200);
+    }
+  });
+});

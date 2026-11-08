@@ -30,6 +30,7 @@ describe("toFilter(toAst())", () => {
   test("empty groups vanish", () => {
     expect(filter({ OR: [{ title: undefined }] })).toBe("");
     expect(filter({ AND: [] })).toBe("");
+    expect(filter({ OR: [undefined, null, "x", { a: 1 }] } as any)).toBe("a=1");
   });
 
   test("operator objects with only skipped operators vanish", () => {
@@ -61,6 +62,12 @@ describe("toFilter(toAst())", () => {
 
   test("escapes quotes and backslashes", () => {
     expect(filter({ title: 'a"b\\c' })).toBe('title="a\\"b\\\\c"');
+  });
+
+  test("escapes only what the filter scanner decodes", () => {
+    expect(filter({ title: "a\nb\tc\rd'e\bf\u0001" })).toBe(
+      'title="a\\nb\\tc\\rd\'e\bf\u0001"',
+    );
   });
 
   test("macros stay bare, unknown ones are strings", () => {

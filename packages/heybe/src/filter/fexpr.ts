@@ -168,7 +168,11 @@ class Scanner {
     return { type: "number", literal };
   }
 
-  private text(preserveQuotes: boolean): Token {
+  get offset(): number {
+    return this.data.slice(0, this.pos).join("").length;
+  }
+
+  text(preserveQuotes: boolean): Token {
     const first = this.read()!;
     let literal = preserveQuotes ? first : "";
     let escapeNext = false;
@@ -408,6 +412,13 @@ const isOperand = (t: Token) =>
   t.type === "function";
 
 type Step = "beforeSign" | "sign" | "afterSign" | "join";
+
+// Reads the quoted text at input[start] with fexpr's unescaping; returns the value and the index after it.
+export function readText(input: string, start: number): [string, number] {
+  const scanner = new Scanner(input.slice(start));
+  const { literal } = scanner.text(false);
+  return [literal, start + scanner.offset];
+}
 
 // Mirrors the syntax errors of github.com/ganigeorgiev/fexpr, which PocketBase reports in rule validation.
 export function filterSyntaxError(text: string): string | null {

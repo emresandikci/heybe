@@ -38,6 +38,7 @@ describe("parseFilter", () => {
       { OR: [{ v: { gt: 1, lt: 5 } }, { v: 10 }] },
       { AND: [{ a: 1, b: 2 }, { c: 3 }] },
       { title: 'a"b\\c' },
+      { title: "x\ny\tz\r'\"\\\b\f\u0001\u2028" },
       { created: { gte: "@todayStart" } },
       { title: "@foo" },
       { created: { lt: new Date("2026-12-31T00:00:00Z") } },
@@ -142,6 +143,19 @@ describe("parseFilter", () => {
     expect(parseFilter(`a = 'it\\'s'`)).toMatchObject({
       right: { value: "it's" },
     });
+  });
+
+  test("string escapes follow fexpr", () => {
+    const value = (filter: string) =>
+      (parseFilter(filter) as { right: { value: unknown } }).right.value;
+    expect(value(String.raw`a = "x\ny\tz\r"`)).toBe("x\ny\tz\r");
+    expect(value(String.raw`a = 'x\"y'`)).toBe('x"y');
+    expect(value(String.raw`a = "x\'y"`)).toBe("x'y");
+    expect(value(String.raw`a = "x\\y"`)).toBe("x\\y");
+    expect(value(String.raw`a = "x\by\u0041"`)).toBe(String.raw`x\by\u0041`);
+    expect(parseFilter(`a = "é😀" && b = 'x'`)).toEqual(
+      toAst({ a: "é😀", b: "x" }),
+    );
   });
 
   test("inherited object keys are plain fields", () => {

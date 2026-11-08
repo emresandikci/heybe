@@ -24,6 +24,7 @@ function tsType(f: Field): string | null {
       return isMulti(f) ? `(${union})[]` : union;
     }
     case "relation":
+      return isMulti(f) ? "Relation[]" : "Relation";
     case "file":
       return isMulti(f) ? "string[]" : "string";
     default:
@@ -46,12 +47,17 @@ function render(c: Collection): string {
 }
 
 export function generateTypes(collections: Collection[]): string {
-  const body = collections
+  const included = collections
     .filter((c) => !c.name.startsWith("_") && c.type !== "view")
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-    .map(render)
-    .join("\n");
-  return `declare module "@heybe/query" {\n  interface Collections {\n${body}\n  }\n}\nexport {};\n`;
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const body = included.map(render).join("\n");
+  const usesRelation = included.some((c) =>
+    c.fields.some((f) => f.type === "relation" && !f.hidden),
+  );
+  const header = usesRelation
+    ? 'import type { Relation } from "@heybe/query";\n\n'
+    : "";
+  return `${header}declare module "@heybe/query" {\n  interface Collections {\n${body}\n  }\n}\nexport {};\n`;
 }
 
 export function writeTypes(app: App, out: string) {

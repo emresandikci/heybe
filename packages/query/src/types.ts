@@ -4,6 +4,11 @@ export type CollectionName = keyof Collections & string;
 
 type Scalar = string | number | boolean | Date;
 
+declare const relation: unique symbol;
+type RelationMarker = { readonly [relation]?: true };
+// Plain strings stay assignable; the optional marker lets Where<T> allow relation paths only here.
+export type Relation = string & RelationMarker;
+
 type Operators<V> = {
   eq?: V | null;
   neq?: V | null;
@@ -30,8 +35,8 @@ type Operators<V> = {
 type FieldWhere<V> = [NonNullable<V>] extends [infer U]
   ? U extends readonly (infer E)[]
     ? E | Operators<Extract<E, Scalar>>
-    : U extends string
-      ? U | Operators<U> | Record<string, unknown>
+    : [U] extends [RelationMarker]
+      ? U | Operators<string> | Record<string, unknown>
       : U extends Scalar
         ? U | Operators<U>
         : Record<string, unknown>

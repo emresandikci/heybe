@@ -1,3 +1,5 @@
+import type { Relation } from "@heybe/query";
+
 declare module "@heybe/query" {
   interface Collections {
     fx_posts: {
@@ -5,7 +7,7 @@ declare module "@heybe/query" {
       title: string;
       views: number;
       tags: ("a" | "b")[];
-      author: string;
+      author: Relation;
       created: string;
       updated: string;
     };

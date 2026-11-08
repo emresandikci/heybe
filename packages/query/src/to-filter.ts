@@ -1,5 +1,17 @@
 import type { Expr, Operand } from "./ast";
 
+const ESCAPES: Record<string, string> = {
+  "\\": "\\\\",
+  '"': '\\"',
+  "\n": "\\n",
+  "\t": "\\t",
+  "\r": "\\r",
+};
+
+// Only the escapes the PocketBase filter scanner (fexpr) decodes.
+const quote = (value: string) =>
+  `"${value.replace(/[\\"\n\t\r]/g, (ch) => ESCAPES[ch]!)}"`;
+
 function operand(node: Operand): string {
   switch (node.kind) {
     case "field":
@@ -10,7 +22,7 @@ function operand(node: Operand): string {
       return `${node.name}(${node.args.map(operand).join(",")})`;
     case "value":
       return typeof node.value === "string"
-        ? JSON.stringify(node.value)
+        ? quote(node.value)
         : String(node.value);
   }
 }

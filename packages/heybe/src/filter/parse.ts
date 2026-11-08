@@ -1,4 +1,4 @@
-import { filterSyntaxError } from "./fexpr";
+import { filterSyntaxError, readText } from "./fexpr";
 import type { Expr, Op, Operand } from "@heybe/query";
 
 export class FilterError extends Error {}
@@ -33,22 +33,6 @@ const NUMBER = /^[+-]?\d+(\.\d+)?(?![\w.:@])/;
 const WORD = /^[A-Za-z_@#][\w.:@]*/;
 const FIELD = new RegExp(`${WORD.source}$`);
 
-function readString(input: string, start: number): [string, number] {
-  const quote = input[start]!;
-  let value = "";
-  for (let i = start + 1; i < input.length; i++) {
-    const char = input[i]!;
-    if (char === "\\" && (input[i + 1] === quote || input[i + 1] === "\\")) {
-      value += input[++i];
-    } else if (char === quote) {
-      return [value, i + 1];
-    } else {
-      value += char;
-    }
-  }
-  throw new FilterError("Invalid filter: unterminated string");
-}
-
 function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
@@ -61,7 +45,7 @@ function tokenize(input: string): Token[] {
       const end = input.indexOf("\n", i);
       i = end === -1 ? input.length : end + 1;
     } else if (char === '"' || char === "'") {
-      const [value, next] = readString(input, i);
+      const [value, next] = readText(input, i);
       tokens.push({ type: "string", value });
       i = next;
     } else if (rest.startsWith("&&")) {
