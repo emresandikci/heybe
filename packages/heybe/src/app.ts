@@ -5,13 +5,20 @@ import type { CollectionName, Collections } from "@heybe/query";
 import { CollectionStore } from "./collections/store";
 import { type Db, openDb } from "./db";
 import { type Filesystem, localFilesystem } from "./files/storage";
+import {
+  type HookBinders,
+  type Hooks,
+  createHooks,
+  hookBinders,
+} from "./hooks/registry";
 import { type Mailer, mailerFromSettings } from "./mail/mailer";
 import { internalRecords } from "./records/internal";
 import type { RecordService } from "./records/service";
 import { Settings } from "./settings";
 
-export interface App {
+export interface App extends HookBinders {
   db: Db;
+  hooks: Hooks;
   collections: CollectionStore;
   settings: Settings;
   files: Filesystem;
@@ -33,9 +40,12 @@ export function createApp(opts: { dir: string; now?: () => Date }): App {
   const files = localFilesystem(storageRoot);
   const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
+  const hooks = createHooks();
 
   const app = {
+    ...hookBinders(hooks),
     db,
+    hooks,
     collections,
     settings,
     files,
