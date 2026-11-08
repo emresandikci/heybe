@@ -70,16 +70,33 @@ const maskNames = (value: unknown): unknown => {
   return value;
 };
 
+// file times differ between the targets, so only the format is compared
+const maskLastModified = (headers: Snapshot["headers"]) =>
+  "last-modified" in headers
+    ? {
+        ...headers,
+        "last-modified":
+          /^\w{3}, \d{2} \w{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
+            headers["last-modified"]!,
+          )
+            ? "<date>"
+            : headers["last-modified"]!,
+      }
+    : headers;
+
 async function same(
   fn: (t: Target) => Promise<Response>,
   status?: number,
+  headers?: string[],
 ): Promise<[Snapshot, Snapshot]> {
-  const [pb, hb] = await both(fn);
+  const [pb, hb] = await both(fn, { headers });
   if (status !== undefined) expect(pb.status).toBe(status);
-  expectSame(
-    { ...pb, body: maskNames(pb.body) },
-    { ...hb, body: maskNames(hb.body) },
-  );
+  const masked = (s: Snapshot) => ({
+    ...s,
+    headers: maskLastModified(maskNames(s.headers) as Snapshot["headers"]),
+    body: maskNames(s.body),
+  });
+  expectSame(masked(pb), masked(hb));
   return [pb, hb];
 }
 
@@ -452,4 +469,516 @@ describe("record delete", () => {
     );
     expect(storedFiles(targets.hb, "three")).toEqual([]);
   });
+});
+
+const SERVED_HEADERS = [
+  "accept-ranges",
+  "content-range",
+  "last-modified",
+  "content-disposition",
+  "content-security-policy",
+  "cache-control",
+  "x-frame-options",
+  "x-content-type-options",
+];
+
+const fileUrl = (t: Target, key: string, query = "", name?: string) => {
+  const r = record(t, key);
+  return `${t.url}/api/files/${id(t, "collection")}/${r.id}/${name ?? fileNames(r)[0]}${query}`;
+};
+
+describe("download", () => {
+  beforeAll(async () => {
+    const uploads: [string, [string, string | File][]][] = [
+      ["txt", [["file", fixture("a.txt")]]],
+      ["png", [["file", fixture("a.png")]]],
+      ["pdf", [["file", fixture("a.pdf")]]],
+      ["svgExt", [["file", fixture("a.txt", "note.svg")]]],
+      [
+        "svg",
+        [
+          [
+            "file",
+            new File(
+              [
+                '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>',
+              ],
+              "pic.svg",
+            ),
+          ],
+        ],
+      ],
+      [
+        "html",
+        [["file", new File(["<html><script>1</script></html>"], "page.html")]],
+      ],
+    ];
+    for (const t of [targets.pb, targets.hb])
+      for (const [key, entries] of uploads) {
+        const res = await api(t, "POST", records(), form(entries));
+        state[t.name][key] = await res.json();
+      }
+  });
+
+  test("a text file is an attachment with the sandbox headers", async () => {
+    const [pb] = await same(
+      (t) => fetch(fileUrl(t, "txt")),
+      200,
+      SERVED_HEADERS,
+    );
+    expect(pb.headers["x-frame-options"]).toBeUndefined();
+  });
+
+  test("an image is served inline", async () => {
+    const [pb] = await same(
+      (t) => fetch(fileUrl(t, "png")),
+      200,
+      SERVED_HEADERS,
+    );
+    expect(pb.headers["content-disposition"]).toStartWith("inline;");
+  });
+
+  test("a pdf is served inline", async () => {
+    await same((t) => fetch(fileUrl(t, "pdf")), 200, SERVED_HEADERS);
+  });
+
+  test.each(["1", "true", "t", "0", "false", "yes", ""])(
+    "?download=%p",
+    async (value) => {
+      await same(
+        (t) => fetch(fileUrl(t, "png", `?download=${value}`)),
+        200,
+        SERVED_HEADERS,
+      );
+    },
+  );
+
+  test("svg and html never get an inline disposition", async () => {
+    for (const key of ["svgExt", "svg", "html"]) {
+      const [pb] = await same(
+        (t) => fetch(fileUrl(t, key)),
+        200,
+        SERVED_HEADERS,
+      );
+      expect(pb.headers["content-disposition"]).toStartWith("attachment;");
+    }
+  });
+
+  test("an invalid thumb size serves the original", async () => {
+    await same(
+      (t) => fetch(fileUrl(t, "png", "?thumb=7x7")),
+      200,
+      SERVED_HEADERS,
+    );
+  });
+
+  test("a HEAD request", async () => {
+    await same(
+      (t) => fetch(fileUrl(t, "png"), { method: "HEAD" }),
+      200,
+      SERVED_HEADERS,
+    );
+  });
+
+  describe("ServeContent", () => {
+    const get = (key: string, headers: Record<string, string>) => (t: Target) =>
+      fetch(fileUrl(t, key), { headers });
+    const future = "Fri, 01 Jan 2100 00:00:00 GMT";
+
+    test("a 200 advertises ranges and Last-Modified", async () => {
+      const [pb] = await same(get("png", {}), 200, SERVED_HEADERS);
+      expect(pb.headers["accept-ranges"]).toBe("bytes");
+      expect(pb.headers["last-modified"]).toMatch(/ GMT$/);
+    });
+
+    test("If-Modified-Since newer than the file is 304", async () => {
+      await same(
+        get("png", { "if-modified-since": future }),
+        304,
+        SERVED_HEADERS,
+      );
+    });
+
+    test("If-Modified-Since older than the file is 200", async () => {
+      await same(
+        get("png", { "if-modified-since": "Thu, 01 Jan 1970 00:00:01 GMT" }),
+        200,
+        SERVED_HEADERS,
+      );
+    });
+
+    test.each([
+      ["bytes=0-3", 206],
+      ["bytes=2-", 206],
+      ["bytes=-4", 206],
+      ["bytes=0-999999", 206],
+      ["bytes=999999-", 416],
+      ["bytes=5-2", 416],
+      ["bytes=abc", 416],
+      ["items=0-3", 416],
+    ])("Range %p", async (range, status) => {
+      const [pb] = await same(get("png", { range }), status, [
+        ...SERVED_HEADERS,
+        "content-length",
+      ]);
+      if (status === 416)
+        expect(pb.headers["content-type"]).toBe("text/plain; charset=utf-8");
+    });
+
+    test("If-Range with another date ignores the range", async () => {
+      await same(
+        get("png", {
+          range: "bytes=0-3",
+          "if-range": "Thu, 01 Jan 1970 00:00:01 GMT",
+        }),
+        200,
+        SERVED_HEADERS,
+      );
+    });
+  });
+
+  test("unknown filename", async () => {
+    await same(
+      (t) => fetch(fileUrl(t, "txt", "", "missing_abcdefghij.txt")),
+      404,
+      SERVED_HEADERS,
+    );
+  });
+
+  test("unknown record", async () => {
+    await same(
+      (t) =>
+        fetch(
+          `${t.url}/api/files/${id(t, "collection")}/nonexistent12345/a.txt`,
+        ),
+      404,
+      SERVED_HEADERS,
+    );
+  });
+
+  test("unknown collection", async () => {
+    await same(
+      (t) => fetch(`${t.url}/api/files/nope/${record(t, "txt").id}/a.txt`),
+      404,
+      SERVED_HEADERS,
+    );
+  });
+
+  describe("untrusted path parameters", () => {
+    const rawGet = (t: Target, path: string) =>
+      new Promise<Response>((done, fail) => {
+        const chunks: Buffer[] = [];
+        const { hostname, port } = new URL(t.url);
+        Bun.connect({
+          hostname,
+          port: Number(port),
+          socket: {
+            open(socket) {
+              socket.write(
+                `GET ${path} HTTP/1.1\r\nHost: ${hostname}\r\nConnection: close\r\n\r\n`,
+              );
+            },
+            data(_, data) {
+              chunks.push(Buffer.from(data));
+            },
+            close() {
+              const text = Buffer.concat(chunks).toString();
+              const [head, ...rest] = text.split("\r\n\r\n");
+              const [statusLine, ...lines] = head!.split("\r\n");
+              const status = Number(/^HTTP\/1\.1 (\d+)/.exec(statusLine!)?.[1]);
+              const headers = lines.map((l): [string, string] => {
+                const [k, ...v] = l.split(":");
+                return [k!.toLowerCase(), v.join(":").trim()];
+              });
+              done(new Response(rest.join("\r\n\r\n"), { status, headers }));
+            },
+            error: (_, err) => fail(err),
+          },
+        });
+      });
+
+    const cases: [string, (t: Target) => string][] = [
+      [
+        "encoded slashes in the filename",
+        (t) =>
+          `/api/files/${id(t, "collection")}/${record(t, "txt").id}/..%2f..%2f..%2fdata.db`,
+      ],
+      [
+        "encoded backslash",
+        (t) =>
+          `/api/files/${id(t, "collection")}/${record(t, "txt").id}/..%5c..%5cdata.db`,
+      ],
+      [
+        "NUL in the filename",
+        (t) =>
+          `/api/files/${id(t, "collection")}/${record(t, "txt").id}/a%00.txt`,
+      ],
+      [
+        "traversal in the record id",
+        (t) => `/api/files/${id(t, "collection")}/..%2f..%2f/data.db`,
+      ],
+      ["traversal in the collection", (t) => `/api/files/..%2f..%2f/x/data.db`],
+    ];
+    test.each(cases)("%s", async (_, path) => {
+      const [pb, hb] = await both((t) => rawGet(t, path(t)));
+      expect(pb.status).toBe(404);
+      expectSame(pb, hb);
+    });
+
+    // Bun collapses dot segments before routing and Go's mux redirects them, so only Heybe is checked
+    test.each(["%2e%2e", "..", "."])(
+      "dot segment %p never serves a file",
+      async (seg) => {
+        const res = await rawGet(
+          targets.hb,
+          `/api/files/${id(targets.hb, "collection")}/${record(targets.hb, "txt").id}/${seg}`,
+        );
+        expect(res.status).toBe(404);
+      },
+    );
+  });
+});
+
+describe("protected files", () => {
+  const login = async (t: Target, email: string) => {
+    const res = await api(
+      t,
+      "POST",
+      "/api/collections/users/auth-with-password",
+      { identity: email, password: "1234567890" },
+      null,
+    );
+    return ((await res.json()) as Json).token as string;
+  };
+  const fileToken = async (t: Target, auth: string | null) =>
+    (
+      (await (
+        await api(t, "POST", "/api/files/token", undefined, auth)
+      ).json()) as Json
+    ).token as string;
+
+  beforeAll(async () => {
+    for (const t of [targets.pb, targets.hb]) {
+      for (const email of ["allowed@example.com", "other@example.com"]) {
+        const res = await api(t, "POST", "/api/collections/users/records", {
+          email,
+          password: "1234567890",
+          passwordConfirm: "1234567890",
+        });
+        if (!res.ok) throw new Error(`${t.name}: ${await res.text()}`);
+      }
+      const col = await api(t, "POST", "/api/collections", {
+        name: "secrets",
+        type: "base",
+        viewRule: '@request.auth.email = "allowed@example.com"',
+        createRule: "",
+        fields: [{ name: "doc", type: "file", maxSelect: 1, protected: true }],
+      });
+      if (!col.ok) throw new Error(`${t.name}: ${await col.text()}`);
+      state[t.name].secrets = ((await col.json()) as Json).id;
+      const rec = await api(
+        t,
+        "POST",
+        "/api/collections/secrets/records",
+        form([["doc", fixture("a.txt")]]),
+      );
+      state[t.name].secret = await rec.json();
+      state[t.name].allowed = await login(t, "allowed@example.com");
+      state[t.name].other = await login(t, "other@example.com");
+    }
+  });
+
+  const secretUrl = (t: Target, query = "") => {
+    const r = state[t.name].secret as Json;
+    return `${t.url}/api/files/${state[t.name].secrets}/${r.id}/${r.doc}${query}`;
+  };
+
+  test("without a token", async () => {
+    await same((t) => fetch(secretUrl(t)), 404, SERVED_HEADERS);
+  });
+
+  test("a garbage token", async () => {
+    await same((t) => fetch(secretUrl(t, "?token=garbage")), 404);
+  });
+
+  test("a user who passes the view rule", async () => {
+    await same(
+      async (t) =>
+        fetch(
+          secretUrl(
+            t,
+            `?token=${await fileToken(t, state[t.name].allowed as string)}`,
+          ),
+        ),
+      200,
+      SERVED_HEADERS,
+    );
+  });
+
+  test("a user who fails the view rule", async () => {
+    await same(
+      async (t) =>
+        fetch(
+          secretUrl(
+            t,
+            `?token=${await fileToken(t, state[t.name].other as string)}`,
+          ),
+        ),
+      404,
+    );
+  });
+
+  test("a superuser token", async () => {
+    await same(
+      async (t) =>
+        fetch(secretUrl(t, `?token=${await fileToken(t, t.superToken)}`)),
+      200,
+    );
+  });
+
+  test("an auth token is not a file token", async () => {
+    await same(
+      (t) => fetch(secretUrl(t, `?token=${state[t.name].allowed}`)),
+      404,
+    );
+  });
+
+  test("the Authorization header does not unlock the file", async () => {
+    await same(
+      (t) => fetch(secretUrl(t), { headers: { authorization: t.superToken } }),
+      404,
+    );
+  });
+
+  describe("POST /api/files/token", () => {
+    const claims = (token: string) =>
+      JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString());
+
+    test("a guest", async () => {
+      await same(
+        (t) => api(t, "POST", "/api/files/token", undefined, null),
+        401,
+      );
+    });
+
+    test("a user", async () => {
+      await same(
+        (t) =>
+          api(
+            t,
+            "POST",
+            "/api/files/token",
+            undefined,
+            state[t.name].allowed as string,
+          ),
+        200,
+      );
+    });
+
+    test("claims and duration match PB", async () => {
+      const [a, b] = await Promise.all(
+        [targets.pb, targets.hb].map(async (t) =>
+          claims(await fileToken(t, state[t.name].allowed as string)),
+        ),
+      );
+      expect(Object.keys(b)).toEqual(Object.keys(a));
+      expect(b.type).toBe("file");
+      expect(b.collectionId).toBeString();
+      expect(b.exp - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(180);
+      expect(a.exp - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(180);
+    });
+
+    test("a superuser", async () => {
+      await same((t) => api(t, "POST", "/api/files/token"), 200);
+    });
+  });
+});
+
+describe("sniffed content types", () => {
+  const probes: [string, string | Uint8Array<ArrayBuffer>][] = [
+    [
+      "invalid utf-8 after 1024 bytes",
+      new Uint8Array([...new Uint8Array(1100).fill(97), 0xe9]),
+    ],
+    ["invalid utf-8 before 1024 bytes", new Uint8Array([97, 0xe9])],
+    ["html with a newline after the tag name", "<html\n<body>"],
+    ["div with a tab", "<div\tclass=x>"],
+    ["html with a form feed", "<p\f>"],
+    ["html tag without a terminator", "<html"],
+    ["a comment first", "<!--x--><p>"],
+    ["an unterminated comment", "<!-- x -->"],
+    ["a bom before html", "\ufeff<html>"],
+    ["mixed case html", "<hTmL>"],
+    ["a doctype", "<!doctype html><title>x</title>"],
+    ["html then meta charset", '<html><meta charset="iso-8859-1">'],
+    [
+      "html then meta http-equiv",
+      '<html><meta http-equiv="Content-Type" content="text/html; charset=windows-1251">',
+    ],
+    [
+      "html then meta content only",
+      '<html><meta content="text/html; charset=windows-1251">',
+    ],
+    [
+      "html comment then meta",
+      '<html><!-- <meta charset="x"> --><meta charset="big5">',
+    ],
+    ["html then body then meta", '<body><meta charset="iso-8859-1">'],
+    ["meta charset", '<meta charset="iso-8859-1">'],
+    [
+      "meta http-equiv content",
+      '<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">',
+    ],
+    [
+      "meta content without the pragma",
+      '<meta content="text/html; charset=windows-1251">',
+    ],
+    ["meta after body", '<body><meta charset="iso-8859-1">'],
+    ["plain xml", '<?xml version="1.0"?><a/>'],
+    ["xml with an encoding", '<?xml version="1.0" encoding="ISO-8859-1"?><a/>'],
+    ["xml with a leading newline", '\n<?xml version="1.0"?><a/>'],
+    [
+      "xhtml doctype",
+      '<?xml version="1.0"?>\n<!DOCTYPE  html PUBLIC "x"><html>',
+    ],
+    [
+      "xhtml namespace",
+      '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml">',
+    ],
+  ];
+  const ids: Record<Target["name"], string[]> = { pocketbase: [], heybe: [] };
+
+  beforeAll(async () => {
+    for (const t of [targets.pb, targets.hb])
+      for (const [i, [, content]] of probes.entries()) {
+        const res = await api(
+          t,
+          "POST",
+          records(),
+          form([["file", new File([content], `probe${i}.dat`)]]),
+        );
+        ids[t.name].push(((await res.json()) as Json).file);
+        state[t.name][`probe${i}`] = await api(t, "GET", records("?perPage=1"));
+      }
+  });
+
+  test.each(probes.map(([label], i) => [label, i] as const))(
+    "%s",
+    async (_, i) => {
+      await same(
+        (t) => {
+          const name = ids[t.name][i];
+          const dir = readdirSync(join(t.dir, "storage", id(t, "collection")));
+          const recordId = dir.find((d) =>
+            existsSync(join(t.dir, "storage", id(t, "collection"), d, name!)),
+          );
+          return fetch(
+            `${t.url}/api/files/${id(t, "collection")}/${recordId}/${name}`,
+          );
+        },
+        200,
+        ["content-disposition"],
+      );
+    },
+  );
 });

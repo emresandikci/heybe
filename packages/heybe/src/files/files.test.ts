@@ -198,6 +198,62 @@ describe("sniffMime", () => {
     );
   });
 
+  test.each([
+    ["<!DOCTYPE html><title>x</title>", "text/html; charset=utf-8"],
+    ["  \n<html>", "text/html; charset=utf-8"],
+    ["<html\n<body>", "text/html; charset=utf-8"],
+    ["<div\tclass=x>", "text/html; charset=utf-8"],
+    ["<p\f>", "text/html; charset=utf-8"],
+    ["<hTmL>", "text/html; charset=utf-8"],
+    ["<script>1</script>", "text/html; charset=utf-8"],
+    ["<!-- note -->", "text/html; charset=utf-8"],
+    ["\ufeff<html>", "text/html; charset=utf-8"],
+    ["<!--x--><p>", "text/plain; charset=utf-8"],
+    ["<pre>", "text/plain; charset=utf-8"],
+    ["<p", "text/plain; charset=utf-8"],
+    ["<html", "text/plain; charset=utf-8"],
+  ])("html detection of %p", async (text, mime) => {
+    expect(await sniffMime(enc(text))).toBe(mime);
+  });
+
+  test.each([
+    ['<html><meta charset="iso-8859-1">', "text/html; charset=iso-8859-1"],
+    [
+      '<html><meta http-equiv="Content-Type" content="text/html; charset=windows-1251">',
+      "text/html; charset=windows-1251",
+    ],
+    [
+      '<html><meta content="text/html; charset=windows-1251">',
+      "text/html; charset=utf-8",
+    ],
+    ['<body><meta charset="iso-8859-1">', "text/html; charset=utf-8"],
+    [
+      '<html><!-- <meta charset="x"> --><meta charset="big5">',
+      "text/html; charset=big5",
+    ],
+  ])("html charset of %p", async (text, mime) => {
+    expect(await sniffMime(enc(text))).toBe(mime);
+  });
+
+  test.each([
+    ['<?xml version="1.0"?><a/>', "text/xml; charset=utf-8"],
+    ['\n<?xml version="1.0"?><a/>', "text/xml; charset=utf-8"],
+    [
+      '<?xml version="1.0" encoding="ISO-8859-1"?><a/>',
+      "text/xml; charset=ISO-8859-1",
+    ],
+    [
+      '<?xml version="1.0"?>\n<!DOCTYPE  html PUBLIC "x"><html>',
+      "application/xhtml+xml",
+    ],
+    [
+      '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml">',
+      "application/xhtml+xml",
+    ],
+  ])("xml detection of %p", async (text, mime) => {
+    expect(await sniffMime(enc(text))).toBe(mime);
+  });
+
   test("binary without a known signature is octet-stream", async () => {
     expect(await sniffMime(new Uint8Array([0, 1, 2, 3]))).toBe(
       "application/octet-stream",

@@ -54,6 +54,9 @@ export function cors(
   return result();
 }
 
+// Responses that may be embedded in frames (PB drops X-Frame-Options for served files).
+export const framable = new WeakSet<Response>();
+
 export function securityHeaders(): Record<string, string> {
   return {
     "x-xss-protection": "1; mode=block",

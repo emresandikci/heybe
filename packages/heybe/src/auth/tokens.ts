@@ -30,9 +30,30 @@ export function newAuthToken(
   );
 }
 
-export function authFromToken(app: App, token: string): AuthState | null {
+export function newFileToken(
+  app: App,
+  collection: Collection,
+  record: Record<string, unknown>,
+): string {
+  const config = collection.fileToken as TokenConfig;
+  return signJwt(
+    {
+      type: "file",
+      id: record.id,
+      collectionId: collection.id,
+      exp: Math.floor(app.now().getTime() / 1000) + config.duration,
+    },
+    `${record.tokenKey}${config.secret}`,
+  );
+}
+
+export function authFromToken(
+  app: App,
+  token: string,
+  type: "auth" | "file" = "auth",
+): AuthState | null {
   const claims = parseUnverifiedJwt(token, app.now);
-  if (!claims || claims.type !== "auth") return null;
+  if (!claims || claims.type !== type) return null;
   const { id, collectionId } = claims;
   if (typeof id !== "string" || typeof collectionId !== "string") return null;
 
@@ -46,7 +67,10 @@ export function authFromToken(app: App, token: string): AuthState | null {
     if (err instanceof NotFoundError) return null;
     throw err;
   }
-  const secret = `${record.tokenKey}${(collection.authToken as TokenConfig).secret}`;
+  const config = (
+    type === "auth" ? collection.authToken : collection.fileToken
+  ) as TokenConfig;
+  const secret = `${record.tokenKey}${config.secret}`;
   if (!verifyJwt(token, secret, app.now)) return null;
   return {
     record,

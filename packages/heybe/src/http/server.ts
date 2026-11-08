@@ -4,11 +4,13 @@ import {
   checkBodyLimit,
   checkSuperuserIp,
   cors,
+  framable,
   loadAuth,
   securityHeaders,
 } from "./middlewares";
 import { Router, createEvent, resolveBodyLimit } from "./router";
 import { registerCollectionRoutes } from "./routes/collections";
+import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
 import { registerRecordRoutes } from "./routes/records";
@@ -34,6 +36,7 @@ export function createRouter(): Router {
   registerRecordAuthRoutes(router);
   registerCollectionRoutes(router);
   registerRecordRoutes(router);
+  registerFileRoutes(router);
   registerSettingsRoutes(router);
   return router;
 }
@@ -60,14 +63,14 @@ export function serve(
       if (!found) throw new ApiError(404, "");
       const event = createEvent(app, req, found.params, bodyLimit);
       event.auth = loadAuth(app, req);
-      if (event.auth?.isSuperuser)
-        checkSuperuserIp(app, req, server.requestIP(req)?.address ?? "");
+      event.remoteIp = server.requestIP(req)?.address ?? "";
+      if (event.auth?.isSuperuser) checkSuperuserIp(app, req, event.remoteIp);
       res = await found.h(event);
     } catch (err) {
       res = errorResponse(err);
     }
     for (const [k, v] of Object.entries(securityHeaders()))
-      res.headers.set(k, v);
+      if (k !== "x-frame-options" || !framable.has(res)) res.headers.set(k, v);
     return c.apply(res);
   };
 

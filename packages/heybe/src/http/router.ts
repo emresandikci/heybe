@@ -16,6 +16,7 @@ export interface RequestEvent {
   params: Record<string, string>;
   query: URLSearchParams;
   auth: AuthState | null;
+  remoteIp: string;
   json(status: number, body: unknown): Response;
   body(): Promise<Record<string, unknown>>;
 }
@@ -133,6 +134,7 @@ export function createEvent(
     params,
     query: new URL(req.url).searchParams,
     auth: null,
+    remoteIp: "",
     json: (status, body) =>
       Response.json(body, {
         status,

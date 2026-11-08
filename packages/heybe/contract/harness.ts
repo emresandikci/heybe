@@ -208,14 +208,26 @@ function normalize(target: Target["name"], value: unknown, key = ""): unknown {
   return value;
 }
 
-async function snapshot(target: Target, res: Response): Promise<Snapshot> {
+async function snapshot(
+  target: Target,
+  res: Response,
+  extraHeaders: string[],
+): Promise<Snapshot> {
   const headers: Record<string, string> = {};
-  for (const [k, v] of res.headers) if (KEPT_HEADERS.test(k)) headers[k] = v;
-  const text = await res.text();
+  for (const [k, v] of res.headers)
+    if (KEPT_HEADERS.test(k) || extraHeaders.includes(k)) headers[k] = v;
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const text = new TextDecoder().decode(bytes);
   let body: unknown = text;
-  try {
-    body = JSON.parse(text);
-  } catch {}
+  if (
+    bytes.length > 0 &&
+    !headers["content-type"]?.startsWith("application/json")
+  )
+    body = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+  else
+    try {
+      body = JSON.parse(text);
+    } catch {}
   return {
     status: res.status,
     headers,
@@ -225,12 +237,14 @@ async function snapshot(target: Target, res: Response): Promise<Snapshot> {
 
 export async function both(
   fn: (t: Target) => Promise<Response>,
+  opts: { headers?: string[] } = {},
 ): Promise<[Snapshot, Snapshot]> {
+  const extra = opts.headers ?? [];
   if (!active) throw new Error("startTargets() was not called");
   const { pb, hb } = active;
   return Promise.all([
-    fn(pb).then((r) => snapshot(pb, r)),
-    fn(hb).then((r) => snapshot(hb, r)),
+    fn(pb).then((r) => snapshot(pb, r, extra)),
+    fn(hb).then((r) => snapshot(hb, r, extra)),
   ]);
 }
 

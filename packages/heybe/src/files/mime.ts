@@ -1,4 +1,11 @@
 import { fileTypeFromBuffer } from "file-type";
+import {
+  charsetFromHtml,
+  charsetFromXml,
+  isHtml,
+  isXhtml,
+  isXml,
+} from "./markup";
 
 const HEAD_SIZE = 4096;
 const SVG_NS =
@@ -169,6 +176,12 @@ function isJson(text: string, truncated: boolean): boolean {
   return status === "complete" || (truncated && status === "prefix");
 }
 
+const withCharset = (mime: string, charset: string) =>
+  charset ? `${mime}; charset=${charset}` : mime;
+
+const htmlCharset = (head: Uint8Array) =>
+  bomOf(head) || charsetFromHtml(head) || charsetOf(head);
+
 export async function sniffMime(data: Blob | Uint8Array): Promise<string> {
   const head =
     data instanceof Blob
@@ -179,10 +192,16 @@ export async function sniffMime(data: Blob | Uint8Array): Promise<string> {
   const type = await fileTypeFromBuffer(head);
   if (type && type.mime !== "application/xml") return type.mime;
   if (isSvg(text)) return "image/svg+xml";
-  if (type) return type.mime;
 
   if (!bomOf(head) && hasBinaryByte(head)) return "application/octet-stream";
   if (isJson(text, head.length >= HEAD_SIZE)) return "application/json";
+  // mimetype looks for the charset in the first 1024 bytes only
+  const start = head.subarray(0, 1024);
+  if (isHtml(head)) return withCharset("text/html", htmlCharset(start));
+  if (isXml(head))
+    return isXhtml(head)
+      ? "application/xhtml+xml"
+      : withCharset("text/xml", charsetFromXml(start) || charsetOf(start));
   const charset = charsetOf(head);
   return charset ? `text/plain; charset=${charset}` : "text/plain";
 }

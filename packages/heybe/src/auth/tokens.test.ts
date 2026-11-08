@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App, createApp } from "../app";
 import { signJwt, verifyJwt } from "./jwt";
-import { authFromToken, newAuthToken } from "./tokens";
+import { authFromToken, newAuthToken, newFileToken } from "./tokens";
 
 const start = new Date("2026-01-01T00:00:00.000Z");
 const DAY = 86400 * 1000;
@@ -95,5 +95,44 @@ describe("auth tokens", () => {
     const token = newAuthToken(app, collection, raw);
     clock = new Date(start.getTime() + DAY + 1000);
     expect(authFromToken(app, token)).toBeNull();
+  });
+});
+
+describe("file tokens", () => {
+  async function tokens() {
+    const created = await superuser();
+    const collection = app.collections.find("_superusers")!;
+    const raw = app.records("_superusers").findRaw(created.id as string);
+    return {
+      file: newFileToken(app, collection, raw),
+      auth: newAuthToken(app, collection, raw),
+    };
+  }
+
+  test("carries the file type and the collection duration", async () => {
+    const { file } = await tokens();
+    const claims = JSON.parse(
+      Buffer.from(file.split(".")[1]!, "base64url").toString(),
+    );
+    expect(claims).toMatchObject({
+      type: "file",
+      collectionId: app.collections.find("_superusers")!.id,
+      exp: start.getTime() / 1000 + 180,
+    });
+    expect(authFromToken(app, file, "file")?.isSuperuser).toBe(true);
+  });
+
+  test("expires after the fileToken duration", async () => {
+    const { file } = await tokens();
+    clock = new Date(start.getTime() + 179_000);
+    expect(authFromToken(app, file, "file")).not.toBeNull();
+    clock = new Date(start.getTime() + 181_000);
+    expect(authFromToken(app, file, "file")).toBeNull();
+  });
+
+  test("file and auth tokens are not interchangeable", async () => {
+    const { file, auth } = await tokens();
+    expect(authFromToken(app, file)).toBeNull();
+    expect(authFromToken(app, auth, "file")).toBeNull();
   });
 });
