@@ -49,6 +49,31 @@ export type Where<T> = string extends keyof T
       OR?: Where<T>[];
     };
 
+type ExpandTree = { [key: string]: true | ExpandTree | undefined };
+
+type IsRelation<V> = [V] extends [readonly (infer E)[]]
+  ? [E] extends [RelationMarker]
+    ? true
+    : false
+  : [V] extends [RelationMarker]
+    ? true
+    : false;
+
+type RelationKeys<T> = {
+  [K in keyof T & string]-?: IsRelation<NonNullable<T[K]>> extends true
+    ? K
+    : never;
+}[keyof T & string];
+
+// Relation fields of T and back-relations ("comments_via_post"); nested levels are untyped.
+export type Expand<T> = unknown extends T
+  ? ExpandTree
+  : string extends keyof T
+    ? ExpandTree
+    : { [K in RelationKeys<T>]?: true | ExpandTree } & {
+        [K in `${string}_via_${string}`]?: true | ExpandTree;
+      };
+
 type Direction = "asc" | "desc";
 
 type OrderEntry<T> = { [K in keyof T & string]?: Direction };
@@ -61,6 +86,7 @@ export interface FindManyArgs<T> {
   page?: number;
   perPage?: number;
   count?: boolean;
+  expand?: Expand<T>;
 }
 
 export interface ListResult<T> {

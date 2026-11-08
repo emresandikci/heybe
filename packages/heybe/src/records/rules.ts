@@ -7,6 +7,7 @@ import { parseFilter } from "../filter/parse";
 import { ApiError, logUnexpected } from "../http/errors";
 import type { RequestEvent } from "../http/router";
 import { randomSecret } from "../util";
+import { isSuperuser } from "./read";
 import { dbValues, draftValues } from "./service";
 
 type Values = Record<string, unknown>;
@@ -61,9 +62,6 @@ export async function requestInfo(e: RequestEvent): Promise<RequestInfo> {
   }
   return info;
 }
-
-export const isSuperuser = (info: RequestInfo) =>
-  info.authCollection === "_superusers" && info.auth !== null;
 
 // A null rule is superuser only (403). Returns the rule to apply, or null when nothing restricts the request.
 // For view/update/delete with a `recordId`, a record outside the rule is a 404.
@@ -179,15 +177,5 @@ export function hasManageAccess(
   } catch (err) {
     logUnexpected(err);
     return false;
-  }
-}
-
-export function manageRuleOf(c: Collection): Expr | null {
-  const rule = c.manageRule;
-  if (c.type !== "auth" || typeof rule !== "string" || rule === "") return null;
-  try {
-    return parseFilter(rule);
-  } catch {
-    return null;
   }
 }

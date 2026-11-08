@@ -73,7 +73,7 @@ export const plain = (id: string): Resolved => ({
 });
 const NULL = () => plain("NULL");
 
-const jsonEach = (c: string) =>
+export const jsonEach = (c: string) =>
   `json_each(CASE WHEN iif(json_valid(${c}), json_type(${c})='array', FALSE) THEN ${c} ELSE json_array(${c}) END)`;
 
 const jsonArrayLength = (c: string) =>

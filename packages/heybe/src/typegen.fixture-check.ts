@@ -16,4 +16,12 @@ export async function check(app: App) {
   });
   await app.records("fx_posts").findMany({ where: { author: "id" } });
   await app.records("fx_posts").create({ author: "id" as string });
+  await app.records("fx_posts").findMany({
+    expand: { author: true, comments_via_post: { user: true } },
+  });
+  await app.records("fx_posts").findOne("id", { expand: { author: true } });
+  // @ts-expect-error expand of a non-relation field
+  await app.records("fx_posts").findMany({ expand: { title: true } });
+  // @ts-expect-error expand of a non-relation field
+  await app.records("fx_posts").findOne("id", { expand: { views: true } });
 }

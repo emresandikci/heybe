@@ -9,10 +9,10 @@ import {
   checkCreateRule,
   checkRule,
   hasManageAccess,
-  isSuperuser,
-  manageRuleOf,
   requestInfo,
 } from "../../records/rules";
+import { isSuperuser, manageRuleOf } from "../../records/read";
+import { expandRecords } from "../../records/expand";
 import { pickFields, pickItems } from "../../records/serialize";
 import { replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
@@ -84,6 +84,8 @@ function bool(value: string | undefined): boolean {
   throw new FilterError("invalid bool");
 }
 
+const expandPaths = (info: RequestInfo) => (info.query.expand ?? "").split(",");
+
 function serialize(
   e: RequestEvent,
   c: Collection,
@@ -98,7 +100,8 @@ function serialize(
     manageRule: manageRuleOf(c),
   });
   if (items.length === 0) throw new ApiError(404, "");
-  return pickFields(items[0]!, info.query.fields);
+  const [record] = expandRecords(e.app, c, items, expandPaths(info), info);
+  return pickFields(record!, info.query.fields);
 }
 
 // Port of PB dynamicCollectionBodyLimit.
@@ -281,8 +284,15 @@ async function list(e: RequestEvent): Promise<Response> {
       request: info,
       manageRule: manageRuleOf(c),
     });
+    const items = expandRecords(
+      e.app,
+      c,
+      result.items as Values[],
+      expandPaths(info),
+      info,
+    );
     return e.json(200, {
-      items: pickItems(result.items as Values[], q.fields),
+      items: pickItems(items, q.fields),
       page: result.page,
       perPage: result.perPage,
       totalItems: result.totalItems,

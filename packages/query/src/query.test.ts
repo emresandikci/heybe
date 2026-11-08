@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { toAst, toFilter, toSort } from "./index";
-import type { Where } from "./index";
+import { toAst, toExpand, toFilter, toSort } from "./index";
+import type { Expand, Relation, Where } from "./index";
 
 const filter = (where: Where<Record<string, unknown>>) =>
   toFilter(toAst(where));
@@ -177,5 +177,38 @@ describe("typed Where", () => {
     // @ts-expect-error wrong value type
     const wrongType: Where<Post> = { views: "x" };
     expect([ok, unknownKey, wrongType]).toHaveLength(3);
+  });
+});
+
+describe("toExpand", () => {
+  test.each([
+    [undefined, ""],
+    [{}, ""],
+    [{ author: true }, "author"],
+    [
+      { author: true, comments_via_post: { user: true } },
+      "author,comments_via_post.user",
+    ],
+    [{ a: { b: { c: true, d: true } }, e: true }, "a.b.c,a.b.d,e"],
+    [{ a: {} }, "a"],
+    [{ a: undefined, b: true }, "b"],
+  ] as [Expand<unknown> | undefined, string][])("%j -> %s", (input, out) => {
+    expect(toExpand(input)).toBe(out);
+  });
+
+  test("typed keys are relations and back-relations", () => {
+    interface Post {
+      title: string;
+      author: Relation;
+      tags: Relation[];
+    }
+    const ok: Expand<Post> = {
+      author: true,
+      tags: { owner: true },
+      comments_via_post: { user: true },
+    };
+    // @ts-expect-error not a relation field
+    const plain: Expand<Post> = { title: true };
+    expect([ok, plain]).toHaveLength(2);
   });
 });

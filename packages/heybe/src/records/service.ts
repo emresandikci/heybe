@@ -1,8 +1,10 @@
 import {
+  type Expand,
   type Expr,
   type FindManyArgs,
   type ListResult,
   toAst,
+  toExpand,
   toSort,
 } from "@heybe/query";
 import { quote } from "../collections/ddl";
@@ -22,12 +24,14 @@ import {
   ValidationError,
   formatDate,
 } from "../util";
+import { expandRecords } from "./expand";
+import { decode, managedIds } from "./read";
 import { randomByPattern } from "./pattern";
 import { serializeRecord } from "./serialize";
 
 export interface RecordService<T> {
   findMany(args?: FindManyArgs<T>): Promise<ListResult<T>>;
-  findOne(id: string): Promise<T>;
+  findOne(id: string, opts?: { expand?: Expand<T> }): Promise<T>;
   create(data: Partial<T>): Promise<T>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
@@ -75,12 +79,6 @@ const storableId = (id: string) =>
 function zeroValues(c: Collection): Values {
   return Object.fromEntries(
     c.fields.map((f) => [f.name, fields[f.type].normalize(undefined, f)]),
-  );
-}
-
-function decode(c: Collection, raw: Values): Values {
-  return Object.fromEntries(
-    c.fields.map((f) => [f.name, fields[f.type].fromDb(raw[f.name], f)]),
   );
 }
 
@@ -191,18 +189,35 @@ export class RecordServiceImpl<T> implements RecordService<T> {
   ) {}
 
   async findMany(args: FindManyArgs<T> = {}): Promise<ListResult<T>> {
-    return this.query({
+    const result = this.query({
       filter: args.where ? toAst<T>(args.where) : null,
       sort: toSort<T>(args.orderBy),
       page: args.page,
       perPage: args.perPage,
       skipTotal: args.count === false,
     });
+    if (!args.expand) return result;
+    return {
+      ...result,
+      items: this.expand(this.collection(), result.items, args.expand),
+    };
   }
 
-  async findOne(id: string): Promise<T> {
+  async findOne(id: string, opts: { expand?: Expand<T> } = {}): Promise<T> {
     const c = this.collection();
-    return this.output(c, this.load(c, id));
+    const record = this.output(c, this.load(c, id));
+    return opts.expand ? this.expand(c, [record], opts.expand)[0]! : record;
+  }
+
+  private expand(c: Collection, items: T[], expand: Expand<T>): T[] {
+    const { db, store, now } = this.deps;
+    return expandRecords(
+      { db, collections: store, now },
+      c,
+      items as Values[],
+      toExpand(expand as Expand<unknown>).split(","),
+      null,
+    ) as T[];
   }
 
   async create(data: Partial<T>): Promise<T> {
@@ -329,7 +344,13 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       totalPages = Math.ceil(totalItems / perPage);
     }
 
-    const managed = this.managedIds(c, rows, request, opts.manageRule);
+    const managed = managedIds(
+      this.deps,
+      c,
+      rows.map((r) => r.id as string),
+      request,
+      opts.manageRule,
+    );
     const items = rows.map((row) => {
       const values = decode(c, row);
       return serializeRecord(c, values, {
@@ -340,27 +361,6 @@ export class RecordServiceImpl<T> implements RecordService<T> {
       });
     });
     return { page, perPage, totalItems, totalPages, items: items as T[] };
-  }
-
-  // ids of auth records the requester manages (PB autoResolveRecordsFlags)
-  private managedIds(
-    c: Collection,
-    rows: Values[],
-    request: RequestInfo | null,
-    manageRule: Expr | null | undefined,
-  ): Set<string> {
-    if (!manageRule || !request?.auth || c.type !== "auth" || rows.length === 0)
-      return new Set();
-    const { db, store, now } = this.deps;
-    const built = new QueryCompiler({ collection: c, store, request, now })
-      .filter(manageRule)
-      .build();
-    const table = quote(c.name);
-    const ids = db.query<{ id: string }>(
-      `SELECT DISTINCT ${table}.id FROM ${table} ${built.joins.join(" ")} WHERE (${built.sql}) AND ${table}.id IN (SELECT value FROM json_each(?${built.params.length + 1}))`,
-      [...built.params, JSON.stringify(rows.map((r) => r.id))],
-    );
-    return new Set(ids.map((r) => r.id));
   }
 
   findRaw(id: string): Values {

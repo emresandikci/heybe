@@ -42,7 +42,7 @@ export function pickItems(items: Json[], fields?: string | null): Json[] {
   return fields ? (pickAny(items, parseFields(fields)) as Json[]) : items;
 }
 
-const sortKeys = (obj: Json): Json =>
+export const sortKeys = (obj: Json): Json =>
   Object.fromEntries(Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : 1)));
 
 type Modifier = ((value: unknown) => unknown) | null;

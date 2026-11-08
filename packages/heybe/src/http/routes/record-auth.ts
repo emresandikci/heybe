@@ -7,6 +7,7 @@ import { quote, findSingleColumnUniqueIndex } from "../../collections/ddl";
 import type { Collection } from "../../collections/model";
 import { FilterError, parseFilter } from "../../filter/parse";
 import { buildRequestInfo } from "../../records/rules";
+import { expandRecords } from "../../records/expand";
 import { serializeRecord } from "../../records/serialize";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
@@ -189,13 +190,24 @@ function authResponse(
       403,
       "The request doesn't satisfy the collection requirements to authenticate.",
     );
-  return e.json(200, {
-    record: serializeRecord(c, record, {
-      isSuperuser: c.name === "_superusers",
-      isOwner: true,
-    }),
-    token,
+  const serialized = serializeRecord(c, record, {
+    isSuperuser: c.name === "_superusers",
+    isOwner: true,
   });
+  // like PB, relations expand as the authenticated record
+  const info = {
+    ...buildRequestInfo(e, body, context),
+    auth: record,
+    authCollection: c.name,
+  };
+  const [expanded] = expandRecords(
+    e.app,
+    c,
+    [serialized],
+    (e.query.get("expand") ?? "").split(","),
+    info,
+  );
+  return e.json(200, { record: expanded, token });
 }
 
 export function registerRecordAuthRoutes(router: Router): void {
