@@ -7,6 +7,7 @@ import {
   hasExpired,
   issueOtp,
 } from "./otp";
+import { internalRecords } from "../records/internal";
 
 let app: App;
 let clock: Date;
@@ -47,9 +48,9 @@ describe("expiry", () => {
       email: "a@example.com",
       password: "12345678",
     });
-    const raw = app.records("users").findRaw(record.id as string);
+    const raw = internalRecords(app, "users").findRaw(record.id as string);
     const { id } = await issueOtp(app, users(), raw);
-    const otp = app.records("_otps").findRaw(id);
+    const otp = internalRecords(app, "_otps").findRaw(id);
     advance(180);
     expect(hasExpired(app, otp, 180_000)).toBe(false);
     advance(1);
@@ -61,9 +62,9 @@ describe("expiry", () => {
       email: "a@example.com",
       password: "12345678",
     });
-    const raw = app.records("users").findRaw(record.id as string);
+    const raw = internalRecords(app, "users").findRaw(record.id as string);
     const { id, code } = await issueOtp(app, users(), raw);
-    const stored = app.records("_otps").findRaw(id).password as {
+    const stored = internalRecords(app, "_otps").findRaw(id).password as {
       hash: string;
     };
     expect(stored.hash).not.toContain(code!);
@@ -75,7 +76,7 @@ describe("expiry", () => {
       email: "a@example.com",
       password: "12345678",
     });
-    const raw = app.records("users").findRaw(record.id as string);
+    const raw = internalRecords(app, "users").findRaw(record.id as string);
     const old = await issueOtp(app, users(), raw);
     advance(181);
     const fresh = await issueOtp(app, users(), raw);
@@ -92,7 +93,7 @@ describe("issueOtp", () => {
       email: "a@example.com",
       password: "12345678",
     });
-    const raw = app.records("users").findRaw(record.id as string);
+    const raw = internalRecords(app, "users").findRaw(record.id as string);
     let last = "";
     for (let i = 0; i < 10; i++) {
       advance(1);

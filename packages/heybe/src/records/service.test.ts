@@ -6,6 +6,7 @@ import { type App, createApp } from "../app";
 import { type PasswordValue, fields } from "../fields";
 import { NotFoundError, ValidationError } from "../util";
 import { serializeRecord } from "./serialize";
+import { internalRecords } from "./internal";
 
 const now = () => new Date("2026-01-01T00:00:00.000Z");
 const stamp = "2026-01-01 00:00:00.000Z";
@@ -142,7 +143,7 @@ describe("findMany", () => {
   });
 
   test("query combines a rule filter with the client filter", () => {
-    const result = app.records("posts").query({
+    const result = internalRecords(app, "posts").query({
       ruleFilter: {
         kind: "cmp",
         op: ">",
@@ -312,7 +313,7 @@ describe("update and delete", () => {
     await app.records("nodes").create({ name: "a", parent: root.id });
     await app.records("nodes").create({ name: "b", parent: root.id });
 
-    await app.records("nodes").truncate();
+    await internalRecords(app, "nodes").truncate();
 
     expect((await app.records("nodes").findMany()).totalItems).toBe(0);
   });
@@ -336,7 +337,7 @@ describe("auth records", () => {
     expect(r).not.toHaveProperty("tokenKey");
     expect(r.email).toBe("a@b.co");
 
-    const raw = (app.records("users") as any).findRaw(r.id);
+    const raw = internalRecords(app, "users").findRaw(r.id as string) as any;
     expect(raw.password.hash).toMatch(/^\$2/);
     expect(raw.password.plain).toBe("");
     expect(raw.tokenKey).toHaveLength(50);
@@ -345,7 +346,7 @@ describe("auth records", () => {
   test("the plain password does not outlive validation", async () => {
     const toDb = spyOn(fields.password, "toDb");
     try {
-      const users = app.records("users") as any;
+      const users = internalRecords(app, "users") as any;
       const r = await users.create({ email: "a@b.co", password: "12345678" });
       await users.update(r.id, { password: "87654321" });
       const written = toDb.mock.calls.map(([v]) => v as PasswordValue);
@@ -360,7 +361,7 @@ describe("auth records", () => {
   });
 
   test("a password or email change refreshes the tokenKey", async () => {
-    const users = app.records("users") as any;
+    const users = internalRecords(app, "users") as any;
     const r = await users.create({ email: "a@b.co", password: "12345678" });
     const before = users.findRaw(r.id).tokenKey;
     await users.update(r.id, { name: "n" });
@@ -373,7 +374,7 @@ describe("auth records", () => {
   });
 
   test("keeps the existing password when none is given", async () => {
-    const users = app.records("users") as any;
+    const users = internalRecords(app, "users") as any;
     const r = await users.create({ email: "a@b.co", password: "12345678" });
     const hash = users.findRaw(r.id).password.hash;
     await users.update(r.id, { name: "x" });
@@ -556,7 +557,9 @@ describe("file uploads", () => {
         })
         .catch(() => {});
     });
-    expect(disk.records("docs").findRaw(r.id as string).file).toBe(r.file);
+    expect(internalRecords(disk, "docs").findRaw(r.id as string).file).toBe(
+      r.file,
+    );
     expect(stored()).toEqual(keysOf("docs", r, [r.file as string]));
   });
 
@@ -642,7 +645,7 @@ describe("file uploads", () => {
   });
 
   test("delete and truncate remove the record dirs", async () => {
-    const docs = disk.records("docs");
+    const docs = internalRecords(disk, "docs");
     const a = await docs.create({ title: "a", file: txt() } as any);
     await docs.create({ title: "b", file: txt() } as any);
     await docs.delete(a.id as string);

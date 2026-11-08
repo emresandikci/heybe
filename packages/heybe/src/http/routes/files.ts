@@ -9,6 +9,7 @@ import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
 import { checkSuperuserIp, framable } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
+import { internalRecords } from "../../records/internal";
 
 const INLINE_TYPES = new Set([
   "image/png",
@@ -101,7 +102,7 @@ async function download(e: RequestEvent): Promise<Response> {
 
   let record: Record<string, unknown>;
   try {
-    record = e.app.records(c.name).findRaw(e.params.recordId!);
+    record = internalRecords(e.app, c.name).findRaw(e.params.recordId!);
   } catch {
     throw new ApiError(404, "");
   }

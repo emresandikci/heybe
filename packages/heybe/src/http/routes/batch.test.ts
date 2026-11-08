@@ -18,6 +18,7 @@ import { toApiError } from "../errors";
 import { loadAuth } from "../middlewares";
 import { createEvent, resolveBodyLimit } from "../router";
 import { createRouter } from "../server";
+import { internalRecords } from "../../records/internal";
 
 let app: App;
 let dir: string;
@@ -118,7 +119,7 @@ async function addMember() {
     updateRule: "id = @request.auth.id",
     fields: [{ name: "name", type: "text" }],
   } as any);
-  const records = app.records("members");
+  const records = internalRecords(app, "members");
   return records
     .create({
       id: "member000000001",
@@ -138,7 +139,8 @@ const changePassword = (oldPassword: string, password: string) => ({
 });
 
 const storedHash = () =>
-  (app.records("members").findRaw("member000000001").password as any).hash;
+  (internalRecords(app, "members").findRaw("member000000001").password as any)
+    .hash;
 
 function stored(): string[] {
   const root = join(dir, "storage");
@@ -149,8 +151,7 @@ function stored(): string[] {
 }
 
 const titles = () =>
-  app
-    .records("notes")
+  internalRecords(app, "notes")
     .query({})
     .items.map((r) => r.title);
 
@@ -241,8 +242,7 @@ const updateItem = {
   body: { title: "b" },
 };
 const itemIds = () =>
-  app
-    .records("items")
+  internalRecords(app, "items")
     .query({})
     .items.map((r) => r.id);
 
@@ -292,7 +292,9 @@ describe("batch preparation", () => {
     const res = await batch({ requests: [createItem, updateItem] });
     expect(res.status).toBe(200);
     expect(prepare).toHaveBeenCalledTimes(2);
-    expect(app.records("items").findRaw("item00000000001").title).toBe("b");
+    expect(internalRecords(app, "items").findRaw("item00000000001").title).toBe(
+      "b",
+    );
   });
 
   test("stops at the first request whose rules fail: a guest makes no bcrypt calls", async () => {

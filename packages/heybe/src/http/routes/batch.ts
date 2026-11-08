@@ -23,6 +23,7 @@ import {
   updateChecks,
   writable,
 } from "./records";
+import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
 type Action = "create" | "update" | "upsert" | "delete";
@@ -195,7 +196,7 @@ function plan(e: RequestEvent, r: InternalRequest): Item {
 
 function find(app: App, c: Collection, id: string): Values | null {
   try {
-    return id === "" ? null : app.records(c.name).findRaw(id);
+    return id === "" ? null : internalRecords(app, c.name).findRaw(id);
   } catch {
     return null;
   }
@@ -227,7 +228,7 @@ function check(app: App, item: Item): void {
 async function prepare(app: App, item: Item, hashes: Hashes): Promise<void> {
   try {
     const c = writable(app, item.collection);
-    const records = app.records(c.name);
+    const records = internalRecords(app, c.name);
     if (item.action === "delete") {
       item.p = await records.prepare({}, item.id);
       hashes.set(`${c.id}/${item.id}`, null);
@@ -362,9 +363,10 @@ async function batch(e: RequestEvent): Promise<Response> {
 
   for (const item of items)
     if (item.p)
-      await e.app
-        .records(item.p.ctx.collection.name)
-        .settle(item.p, error === null);
+      await internalRecords(e.app, item.p.ctx.collection.name).settle(
+        item.p,
+        error === null,
+      );
 
   if (error === TIMEOUT || error === INTERRUPTED)
     throw new ApiError(400, "Batch transaction failed.");

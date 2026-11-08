@@ -1,6 +1,7 @@
 import type { App } from "../../app";
 import { newAuthToken } from "../../auth/tokens";
 import { INSTALLER_EMAIL, randomSecret } from "../../util";
+import { internalRecords } from "../../records/internal";
 
 const TOKEN_DURATION_SECONDS = 30 * 60;
 
@@ -15,7 +16,7 @@ function needsInstaller(app: App): boolean {
 async function findOrCreateInstaller(
   app: App,
 ): Promise<Record<string, unknown>> {
-  const users = app.records("_superusers");
+  const users = internalRecords(app, "_superusers");
   const existing = app.db.get<{ id: string }>(
     "SELECT id FROM _superusers WHERE email = ?",
     [INSTALLER_EMAIL],

@@ -1,6 +1,7 @@
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
 import { NotFoundError, formatDate, randomString } from "../util";
+import { internalRecords } from "../records/internal";
 
 type Values = Record<string, unknown>;
 
@@ -25,7 +26,7 @@ export function hasExpired(app: App, otp: Values, durationMs: number): boolean {
 
 export function findOtp(app: App, id: string): Values | null {
   try {
-    return app.records("_otps").findRaw(id);
+    return internalRecords(app, "_otps").findRaw(id);
   } catch (error) {
     if (error instanceof NotFoundError) return null;
     throw error;
@@ -39,7 +40,7 @@ function findRecordOtps(app: App, c: Collection, record: Values): Values[] {
       "SELECT id FROM _otps WHERE collectionRef = ? AND recordRef = ? ORDER BY created DESC",
       [c.id, record.id as string],
     )
-    .map((row) => app.records("_otps").findRaw(row.id));
+    .map((row) => internalRecords(app, "_otps").findRaw(row.id));
 }
 
 // Creates the OTP for a request, or returns the last issued one (without a code, so no mail) when the
@@ -57,7 +58,7 @@ export async function issueOtp(
       return { id: existing[0]!.id as string, code: null };
   }
   const code = generateOtpCode(otpOptions(c).length);
-  const created = await app.records("_otps").create({
+  const created = await internalRecords(app, "_otps").create({
     collectionRef: c.id,
     recordRef: record.id,
     password: code,

@@ -6,6 +6,7 @@ import type { RequestEvent } from "../http/router";
 import { buildRequestInfo, matchesRecord } from "../records/rules";
 import { NotFoundError, ValidationError, formatDate } from "../util";
 import { hasExpired } from "./otp";
+import { internalRecords } from "../records/internal";
 
 type Values = Record<string, unknown>;
 
@@ -55,7 +56,7 @@ function requestedMfaId(e: RequestEvent, body: Values): string {
 
 function findMfa(app: App, id: string): Values | null {
   try {
-    return app.records("_mfas").findRaw(id);
+    return internalRecords(app, "_mfas").findRaw(id);
   } catch (err) {
     if (err instanceof NotFoundError) return null;
     throw err;
@@ -98,7 +99,7 @@ export async function checkMfa(
   const mfaId = requestedMfaId(e, body);
   if (mfaId === "") {
     await deleteExpiredMfas(e.app, c);
-    const created = await e.app.records("_mfas").create({
+    const created = await internalRecords(e.app, "_mfas").create({
       collectionRef: c.id,
       recordRef: record.id,
       method,

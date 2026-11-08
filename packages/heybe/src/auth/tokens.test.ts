@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App, createApp } from "../app";
 import { signJwt, verifyJwt } from "./jwt";
 import { authFromToken, newAuthToken, newFileToken } from "./tokens";
+import { internalRecords } from "../records/internal";
 
 const start = new Date("2026-01-01T00:00:00.000Z");
 const DAY = 86400 * 1000;
@@ -67,18 +68,24 @@ describe("jwt", () => {
 describe("auth tokens", () => {
   test("a new password regenerates the tokenKey", async () => {
     const created = await superuser();
-    const before = app.records("_superusers").findRaw(created.id as string);
+    const before = internalRecords(app, "_superusers").findRaw(
+      created.id as string,
+    );
     await app
       .records("_superusers")
       .update(created.id as string, { password: "0987654321" });
-    const after = app.records("_superusers").findRaw(created.id as string);
+    const after = internalRecords(app, "_superusers").findRaw(
+      created.id as string,
+    );
     expect(after.tokenKey).not.toBe(before.tokenKey);
   });
 
   test("an old token stops working after a password change", async () => {
     const created = await superuser();
     const collection = app.collections.find("_superusers")!;
-    const raw = app.records("_superusers").findRaw(created.id as string);
+    const raw = internalRecords(app, "_superusers").findRaw(
+      created.id as string,
+    );
     const token = newAuthToken(app, collection, raw);
     expect(authFromToken(app, token)?.isSuperuser).toBe(true);
 
@@ -91,7 +98,9 @@ describe("auth tokens", () => {
   test("a token expires after the collection duration", async () => {
     const created = await superuser();
     const collection = app.collections.find("_superusers")!;
-    const raw = app.records("_superusers").findRaw(created.id as string);
+    const raw = internalRecords(app, "_superusers").findRaw(
+      created.id as string,
+    );
     const token = newAuthToken(app, collection, raw);
     clock = new Date(start.getTime() + DAY + 1000);
     expect(authFromToken(app, token)).toBeNull();
@@ -102,7 +111,9 @@ describe("file tokens", () => {
   async function tokens() {
     const created = await superuser();
     const collection = app.collections.find("_superusers")!;
-    const raw = app.records("_superusers").findRaw(created.id as string);
+    const raw = internalRecords(app, "_superusers").findRaw(
+      created.id as string,
+    );
     return {
       file: newFileToken(app, collection, raw),
       auth: newAuthToken(app, collection, raw),

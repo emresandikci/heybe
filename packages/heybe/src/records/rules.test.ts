@@ -3,6 +3,7 @@ import { createApp } from "../app";
 import { statementCacheSize } from "../db";
 import { createEvent } from "../http/router";
 import { buildRequestInfo, matchesDraft } from "./rules";
+import { internalRecords } from "./internal";
 
 describe("buildRequestInfo", () => {
   test("snake_case header keys, first query value, auth and context", () => {
@@ -43,7 +44,10 @@ describe("statement cache", () => {
       {},
     );
     const run = (i: number) => {
-      app.records("posts").query({ page: i + 1, perPage: (i % 50) + 1 });
+      internalRecords(app, "posts").query({
+        page: i + 1,
+        perPage: (i % 50) + 1,
+      });
       matchesDraft(app, c, { id: "", title: "t" }, c.createRule!, info);
     };
     run(0);

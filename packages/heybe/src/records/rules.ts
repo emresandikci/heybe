@@ -9,6 +9,7 @@ import type { RequestEvent } from "../http/router";
 import { randomSecret } from "../util";
 import { isSuperuser } from "./read";
 import { dbValues, draftValues } from "./service";
+import { internalRecords } from "./internal";
 
 type Values = Record<string, unknown>;
 export type RuleAction = "list" | "view" | "create" | "update" | "delete";
@@ -114,7 +115,7 @@ export function matchesRecord(
   rule: Expr | null,
   info: RequestInfo,
 ): boolean {
-  const { items } = app.records(c.name).query({
+  const { items } = internalRecords(app, c.name).query({
     ruleFilter: rule,
     filter: toAst({ id }),
     perPage: 1,

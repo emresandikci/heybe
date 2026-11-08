@@ -19,6 +19,7 @@ import { readText } from "./http";
 import { parseUnverified, validateClaims, validateTokenSignature } from "./jwk";
 import { mappers } from "./mappers";
 import { type ProviderInfo, providers } from "./providers";
+import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
 
@@ -710,7 +711,7 @@ function authFailed(err: unknown): ApiError {
   return new ApiError(400, "Failed to authenticate.");
 }
 
-type Service = ReturnType<App["records"]>;
+type Service = ReturnType<typeof internalRecords>;
 
 // Port of PB recordAuthWithOAuth2 and oauth2Submit: fetches the provider user, then logs in, links
 // or creates the auth record in one transaction, so a failing step keeps nothing.
@@ -745,7 +746,7 @@ export async function authWithOAuth2(
   let record: Values | null = null;
   if (link) {
     try {
-      record = app.records(c.name).findRaw(link.recordRef as string);
+      record = internalRecords(app, c.name).findRaw(link.recordRef as string);
     } catch {
       throw new ApiError(404, "");
     }
@@ -754,8 +755,8 @@ export async function authWithOAuth2(
     record = findAuthRecordByEmail(app, c, user.email);
   const isNew = record === null;
 
-  const records = app.records(c.name);
-  const links = app.records("_externalAuths");
+  const records = internalRecords(app, c.name);
+  const links = internalRecords(app, "_externalAuths");
   const pending: [Service, PreparedWrite][] = [];
   const prepare = async (service: Service, data: Values, id?: string) => {
     const prepared = await service.prepare(data, id);

@@ -24,6 +24,7 @@ import {
 } from "./flow";
 import { readText } from "./http";
 import { validateTokenSignature } from "./jwk";
+import { internalRecords } from "../../records/internal";
 
 let mock: OAuth2Mock;
 let app: App;
@@ -276,16 +277,16 @@ describe("external auth links", () => {
       provider: "github",
       providerId: "1",
     });
-    return app.records("users").findRaw(user.id as string);
+    return internalRecords(app, "users").findRaw(user.id as string);
   }
 
   test("are dropped with a new tokenKey when the record becomes verified", async () => {
     const user = await linkedUser();
     await app.records("users").update(user.id as string, { verified: true });
     expect(countLinks()).toBe(0);
-    expect(app.records("users").findRaw(user.id as string).tokenKey).not.toBe(
-      user.tokenKey,
-    );
+    expect(
+      internalRecords(app, "users").findRaw(user.id as string).tokenKey,
+    ).not.toBe(user.tokenKey);
   });
 
   test("are deleted with their record", async () => {
@@ -403,7 +404,7 @@ describe("existing record decisions", () => {
     } finally {
       spy.mockRestore();
     }
-    const saved = app.records("users").findRaw(user.id as string);
+    const saved = internalRecords(app, "users").findRaw(user.id as string);
     expect(
       await Bun.password.verify(
         "12345678",

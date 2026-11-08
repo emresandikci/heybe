@@ -34,6 +34,7 @@ import {
   findAuthCollection,
   verifyPassword,
 } from "./record-auth";
+import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
 type FieldError = {
@@ -123,7 +124,7 @@ async function save(
   message: string,
   tokenKey?: string,
 ): Promise<void> {
-  const records = app.records(c.name);
+  const records = internalRecords(app, c.name);
   const id = record.id as string;
   let committed = false;
   let p: PreparedWrite | undefined;
@@ -461,7 +462,7 @@ async function authWithOtp(e: RequestEvent): Promise<Response> {
   if (hasExpired(e.app, otp, otpDurationMs(c))) throw invalid();
   let record: Values;
   try {
-    record = e.app.records(c.name).findRaw(otp.recordRef as string);
+    record = internalRecords(e.app, c.name).findRaw(otp.recordRef as string);
   } catch (error) {
     if (error instanceof NotFoundError) throw invalid();
     throw error;
@@ -483,8 +484,8 @@ async function authWithOtp(e: RequestEvent): Promise<Response> {
     if (!(c.mfa as { enabled: boolean }).enabled)
       data.password = await randomPassword(c);
     try {
-      await e.app.records(c.name).update(record.id as string, data);
-      record = e.app.records(c.name).findRaw(record.id as string);
+      await internalRecords(e.app, c.name).update(record.id as string, data);
+      record = internalRecords(e.app, c.name).findRaw(record.id as string);
     } catch (error) {
       console.error(
         "heybe: failed to mark the record verified after OTP:",
@@ -512,7 +513,7 @@ async function impersonate(e: RequestEvent): Promise<Response> {
     throw new ApiError(404, "Missing or invalid auth collection context.");
   let record: Values;
   try {
-    record = e.app.records(c.name).findRaw(e.params.id!);
+    record = internalRecords(e.app, c.name).findRaw(e.params.id!);
   } catch (error) {
     if (error instanceof NotFoundError)
       throw new ApiError(404, "The requested resource wasn't found.");

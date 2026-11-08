@@ -3,6 +3,7 @@ import type { Collection } from "../collections/model";
 import type { AuthState } from "../http/router";
 import { NotFoundError } from "../util";
 import { parseUnverifiedJwt, signJwt, verifyJwt } from "./jwt";
+import { internalRecords } from "../records/internal";
 
 interface TokenConfig {
   secret: string;
@@ -64,7 +65,7 @@ export function authFromToken(
 
   let record: Record<string, unknown>;
   try {
-    record = app.records(collection.name).findRaw(id);
+    record = internalRecords(app, collection.name).findRaw(id);
   } catch (err) {
     if (err instanceof NotFoundError) return null;
     throw err;

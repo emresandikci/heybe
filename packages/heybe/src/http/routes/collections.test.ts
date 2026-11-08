@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App, createApp } from "../../app";
 import { newAuthToken } from "../../auth/tokens";
+import { internalRecords } from "../../records/internal";
 import { loadAuth } from "../middlewares";
 import { createEvent } from "../router";
 import { createRouter } from "../server";
@@ -27,7 +28,7 @@ async function call(
     "content-type": "application/json",
   };
   if (collection) {
-    const records = app.records(collection);
+    const records = internalRecords(app, collection);
     const created = await records.create({
       email: `a${seq++}@example.com`,
       password: "1234567890",

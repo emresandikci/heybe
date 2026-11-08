@@ -20,6 +20,7 @@ import { ValidationError } from "../../util";
 import { ApiError, logUnexpected } from "../errors";
 import { DEFAULT_MAX_BODY_SIZE } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
+import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
 type Access = "default" | "manager" | "superuser";
@@ -93,7 +94,7 @@ function bool(value: string | undefined): boolean {
 const expandPaths = (info: RequestInfo) => (info.query.expand ?? "").split(",");
 
 function serialize(app: App, c: Collection, info: RequestInfo, id: string) {
-  const { items } = app.records(c.name).query({
+  const { items } = internalRecords(app, c.name).query({
     filter: toAst({ id }),
     perPage: 1,
     skipTotal: true,
@@ -301,7 +302,7 @@ export function updateChecks(
   forbidUnlessSuperuser(info, c.updateRule);
   let original: Values;
   try {
-    original = app.records(c.name).findRaw(id);
+    original = internalRecords(app, c.name).findRaw(id);
   } catch {
     throw new ApiError(404, "");
   }
@@ -337,7 +338,7 @@ async function list(e: RequestEvent): Promise<Response> {
     if (sortFields.some((s) => s.field.length > MAX_SORT_FIELD_LENGTH))
       throw new FilterError("max sort field length limit reached");
 
-    const result = e.app.records(c.name).query({
+    const result = internalRecords(e.app, c.name).query({
       ruleFilter: rule,
       filter: parsedFilter,
       sort,
@@ -383,7 +384,7 @@ async function create(e: RequestEvent): Promise<Response> {
   let saved: Values;
   try {
     validateAuthForm(c, data, null, access, CREATE_FAILED, null);
-    saved = await e.app.records(c.name).create(data);
+    saved = await internalRecords(e.app, c.name).create(data);
   } catch (err) {
     saveFailed(CREATE_FAILED, err);
   }
@@ -399,7 +400,7 @@ async function update(e: RequestEvent): Promise<Response> {
     const manager = access !== "default";
     const old = await checkOldPassword(c, hashOf(original), data, manager);
     validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
-    await e.app.records(c.name).update(id, data);
+    await internalRecords(e.app, c.name).update(id, data);
   } catch (err) {
     saveFailed(UPDATE_FAILED, err);
   }
@@ -411,7 +412,7 @@ async function remove(e: RequestEvent): Promise<Response> {
   const id = e.params.id!;
   ruleFilter(e.app, c, c.deleteRule, "delete", await requestInfo(e), id);
   try {
-    await e.app.records(c.name).delete(id);
+    await internalRecords(e.app, c.name).delete(id);
   } catch (err) {
     logUnexpected(err);
     throw new ApiError(400, DELETE_FAILED);
@@ -436,7 +437,7 @@ export async function createPreparedChecked(
   const { data, access } = createChecks(app, c, info);
   try {
     validateAuthForm(c, data, null, access, CREATE_FAILED, null);
-    return await app.records(c.name).createPrepared(p, data);
+    return await internalRecords(app, c.name).createPrepared(p, data);
   } catch (err) {
     saveFailed(CREATE_FAILED, err);
   }
@@ -463,7 +464,7 @@ export async function batchUpdate(
   const { data, original, access } = updateChecks(app, c, id, info);
   try {
     validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
-    await app.records(c.name).updatePrepared(p, id, data);
+    await internalRecords(app, c.name).updatePrepared(p, id, data);
   } catch (err) {
     saveFailed(UPDATE_FAILED, err);
   }
@@ -479,7 +480,7 @@ export async function batchDelete(
 ): Promise<BatchResult> {
   ruleFilter(app, c, c.deleteRule, "delete", info, id);
   try {
-    await app.records(c.name).deletePrepared(p, id);
+    await internalRecords(app, c.name).deletePrepared(p, id);
   } catch (err) {
     logUnexpected(err);
     throw new ApiError(400, DELETE_FAILED);

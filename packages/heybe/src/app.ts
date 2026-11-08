@@ -6,7 +6,8 @@ import { CollectionStore } from "./collections/store";
 import { type Db, openDb } from "./db";
 import { type Filesystem, localFilesystem } from "./files/storage";
 import { type Mailer, mailerFromSettings } from "./mail/mailer";
-import { type RecordService, RecordServiceImpl } from "./records/service";
+import { internalRecords } from "./records/internal";
+import type { RecordService } from "./records/service";
 import { Settings } from "./settings";
 
 export interface App {
@@ -33,18 +34,27 @@ export function createApp(opts: { dir: string; now?: () => Date }): App {
   const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
 
-  return {
+  const app = {
     db,
     collections,
     settings,
     files,
     mailer: { send: (msg) => mailerFromSettings(settings.get()).send(msg) },
     now,
-    records: (name: string) =>
-      new RecordServiceImpl({ db, store: collections, files, now }, name),
+    records: (name: string): RecordService<Record<string, unknown>> => {
+      const r = internalRecords(app, name);
+      return {
+        findMany: (args) => r.findMany(args),
+        findOne: (id, opts) => r.findOne(id, opts),
+        create: (data) => r.create(data),
+        update: (id, data) => r.update(id, data),
+        delete: (id) => r.delete(id),
+      };
+    },
     close: () => {
       db.close();
       if (memory) rmSync(storageRoot, { recursive: true, force: true });
     },
   } as App;
+  return app;
 }

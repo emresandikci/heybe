@@ -5,6 +5,7 @@ import { errorResponse } from "../errors";
 import { createEvent } from "../router";
 import { loadAuth } from "../middlewares";
 import { createRouter } from "../server";
+import { internalRecords } from "../../records/internal";
 
 let app: App;
 let clock: Date;
@@ -84,7 +85,9 @@ describe("mfa", () => {
   test("the second method completes the login and consumes the mfaId", async () => {
     await createUser();
     const mfaId = await startMfa();
-    expect(app.records("_mfas").findRaw(mfaId).method).toBe("password");
+    expect(internalRecords(app, "_mfas").findRaw(mfaId).method).toBe(
+      "password",
+    );
     const res = await withOtp(mfaId);
     expect(res.status).toBe(200);
     expect(mfaCount()).toBe(0);

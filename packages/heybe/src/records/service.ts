@@ -35,30 +35,6 @@ export interface RecordService<T> {
   create(data: Partial<T>): Promise<T>;
   update(id: string, data: Partial<T>): Promise<T>;
   delete(id: string): Promise<void>;
-  truncate(): Promise<void>;
-  findRaw(id: string): Record<string, unknown>;
-  // Writes in parts, for batches: `prepare` before the transaction, the `*Prepared` writes
-  // inside it, `settle` after it.
-  prepare(data: Partial<T>, id?: string): Promise<PreparedWrite>;
-  createPrepared(p: PreparedWrite, data: Partial<T>): Promise<T>;
-  updatePrepared(
-    p: PreparedWrite,
-    id: string,
-    data: Partial<T>,
-    opts?: { tokenKey?: string },
-  ): Promise<T>;
-  deletePrepared(p: PreparedWrite, id: string): Promise<void>;
-  settle(p: PreparedWrite, committed: boolean): Promise<void>;
-  query(opts: {
-    filter?: Expr | null;
-    sort?: string;
-    page?: number;
-    perPage?: number;
-    skipTotal?: boolean;
-    request?: RequestInfo | null;
-    ruleFilter?: Expr | null;
-    manageRule?: Expr | null;
-  }): ListResult<T>;
 }
 
 export class StaleTokenError extends Error {}
@@ -73,6 +49,17 @@ export interface PreparedWrite {
   saved?: { saved: Values; original: Values | null };
   // storage dirs of deleted records
   removed: string[];
+}
+
+export interface QueryOpts {
+  filter?: Expr | null;
+  sort?: string;
+  page?: number;
+  perPage?: number;
+  skipTotal?: boolean;
+  request?: RequestInfo | null;
+  ruleFilter?: Expr | null;
+  manageRule?: Expr | null;
 }
 
 interface Deps {
@@ -99,13 +86,13 @@ const DISCARD: Filesystem = {
 const storableId = (id: string) =>
   id !== "" && id !== "." && id !== ".." && !/[/\\\0]/.test(id);
 
-function zeroValues(c: Collection): Values {
+export function zeroValues(c: Collection): Values {
   return Object.fromEntries(
     c.fields.map((f) => [f.name, fields[f.type].normalize(undefined, f)]),
   );
 }
 
-function modifier(
+export function modifier(
   f: Field,
   key: string,
 ): "set" | "append" | "prepend" | "subtract" | "autogenerate" | null {
@@ -119,7 +106,7 @@ function modifier(
   return null;
 }
 
-function applyModifier(
+export function applyModifier(
   f: Field,
   op: NonNullable<ReturnType<typeof modifier>>,
   current: unknown,
@@ -219,7 +206,7 @@ function insertSql(c: Collection, cols: string[]): string {
   return `INSERT INTO ${quote(c.name)} (${cols.map(quote).join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`;
 }
 
-export class RecordServiceImpl<T> implements RecordService<T> {
+export class RecordServiceImpl<T> {
   constructor(
     private readonly deps: Deps,
     private readonly name: string,
@@ -379,7 +366,7 @@ export class RecordServiceImpl<T> implements RecordService<T> {
     await this.deleteDirs(removed);
   }
 
-  query(opts: Parameters<RecordService<T>["query"]>[0]): ListResult<T> {
+  query(opts: QueryOpts): ListResult<T> {
     const c = this.collection();
     const { db, store, now } = this.deps;
     const request = opts.request ?? null;

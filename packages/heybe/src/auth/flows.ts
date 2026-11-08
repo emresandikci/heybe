@@ -6,6 +6,7 @@ import { PasswordValue } from "../fields";
 import { randomSecret } from "../util";
 import { findOtp } from "./otp";
 import { newMailToken } from "./tokens";
+import { internalRecords } from "../records/internal";
 
 type Values = Record<string, unknown>;
 
@@ -21,7 +22,7 @@ export function findAuthRecordByEmail(
     `SELECT id FROM ${quote(c.name)} WHERE "email" = ?${nocase ? " COLLATE NOCASE" : ""} LIMIT 1`,
     [email],
   );
-  return row ? app.records(c.name).findRaw(row.id) : null;
+  return row ? internalRecords(app, c.name).findRaw(row.id) : null;
 }
 
 type MailFlow = "verification" | "passwordReset" | "emailChange";
@@ -72,7 +73,7 @@ export async function sendOtpMail(
   });
   // sentTo is what lets a later OTP login mark the email verified
   if (findOtp(app, otpId)?.sentTo === "")
-    await app.records("_otps").update(otpId, { sentTo: record.email });
+    await internalRecords(app, "_otps").update(otpId, { sentTo: record.email });
 }
 
 // Like PB routine.FireAndForget: the response does not wait for the mail, so its timing does not

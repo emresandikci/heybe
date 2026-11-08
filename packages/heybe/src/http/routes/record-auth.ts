@@ -15,6 +15,7 @@ import { pickFields, serializeRecord } from "../../records/serialize";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
 import type { RequestEvent, Router } from "../router";
+import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
 
@@ -100,7 +101,7 @@ function findByIdentity(
     `SELECT id FROM ${quote(c.name)} WHERE ${quote(field)} = ?${nocase ? " COLLATE NOCASE" : ""} LIMIT 1`,
     [value],
   );
-  return row ? app.records(c.name).findRaw(row.id) : null;
+  return row ? internalRecords(app, c.name).findRaw(row.id) : null;
 }
 
 function findRecord(
@@ -172,7 +173,7 @@ function canAuthenticate(
     throw err;
   }
   try {
-    const { items } = e.app.records(c.name).query({
+    const { items } = internalRecords(e.app, c.name).query({
       ruleFilter,
       filter: toAst({ id: record.id as string }),
       perPage: 1,

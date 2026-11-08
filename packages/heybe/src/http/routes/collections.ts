@@ -16,6 +16,7 @@ import { pickFields } from "../../records/serialize";
 import { ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
 import type { RequestEvent, Router } from "../router";
+import { internalRecords } from "../../records/internal";
 
 const DEFAULT_PER_PAGE = 30;
 const MAX_PER_PAGE = 1000;
@@ -199,7 +200,7 @@ async function truncate(e: RequestEvent): Promise<Response> {
       "View collections cannot be truncated since they don't store their own records.",
     );
   try {
-    await e.app.records(c.name).truncate();
+    await internalRecords(e.app, c.name).truncate();
   } catch {
     throw new ApiError(
       400,

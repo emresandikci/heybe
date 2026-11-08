@@ -4,6 +4,7 @@ import { createRouter } from "../server";
 import { createEvent } from "../router";
 import { authTokenFromRequest, loadAuth } from "../middlewares";
 import { newAuthToken } from "../../auth/tokens";
+import { internalRecords } from "../../records/internal";
 
 let app: App;
 
@@ -100,7 +101,9 @@ describe("auth-refresh guard order", () => {
     const created = await app
       .records("_superusers")
       .create({ email: "a@example.com", password: "1234567890" });
-    const raw = app.records("_superusers").findRaw(created.id as string);
+    const raw = internalRecords(app, "_superusers").findRaw(
+      created.id as string,
+    );
     const token = newAuthToken(app, app.collections.find("_superusers")!, raw);
     expect(
       authTokenFromRequest(

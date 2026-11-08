@@ -5,6 +5,7 @@ import { errorResponse } from "../errors";
 import { createEvent } from "../router";
 import { loadAuth } from "../middlewares";
 import { createRouter } from "../server";
+import { internalRecords } from "../../records/internal";
 
 let app: App;
 let clock: Date;
@@ -74,7 +75,7 @@ describe("request-otp", () => {
     const { otpId, code } = await requestCode("a@example.com");
     expect(code).toHaveLength(8);
     expect(sent).toHaveLength(1);
-    expect(app.records("_otps").findRaw(otpId).recordRef).toBeTruthy();
+    expect(internalRecords(app, "_otps").findRaw(otpId).recordRef).toBeTruthy();
   });
 
   test("an unknown email gets a 200 with an id and no mail or row", async () => {
@@ -196,11 +197,15 @@ describe("auth-with-otp", () => {
   test("an OTP mailed to the record email verifies it and replaces the password", async () => {
     const user = await createUser("a@example.com");
     const { otpId, code } = await requestCode("a@example.com");
-    expect(app.records("_otps").findRaw(otpId).sentTo).toBe("a@example.com");
+    expect(internalRecords(app, "_otps").findRaw(otpId).sentTo).toBe(
+      "a@example.com",
+    );
     expect(
       (await post("auth-with-otp", { otpId, password: code })).status,
     ).toBe(200);
-    expect(app.records("users").findRaw(user.id as string).verified).toBe(true);
+    expect(
+      internalRecords(app, "users").findRaw(user.id as string).verified,
+    ).toBe(true);
     const login = await post("auth-with-password", {
       identity: "a@example.com",
       password: "12345678",
@@ -225,7 +230,7 @@ describe("random password after OTP verification", () => {
     expect(
       (await post("auth-with-otp", { otpId, password: code })).status,
     ).toBe(200);
-    const raw = app.records("users").findRaw(user.id as string);
+    const raw = internalRecords(app, "users").findRaw(user.id as string);
     expect(raw.verified).toBe(true);
     const login = await post("auth-with-password", {
       identity: "a@example.com",

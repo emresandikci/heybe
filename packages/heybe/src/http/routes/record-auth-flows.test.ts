@@ -6,6 +6,7 @@ import { errorResponse } from "../errors";
 import { createEvent } from "../router";
 import { loadAuth } from "../middlewares";
 import { createRouter } from "../server";
+import { internalRecords } from "../../records/internal";
 
 let app: App;
 let clock: Date;
@@ -98,7 +99,7 @@ describe("expired tokens", () => {
   for (const [kind, config, path, extra] of cases)
     test(`${kind} works until its duration ends`, async () => {
       const record = await createUser("exp@example.com");
-      const raw = app.records("users").findRaw(record.id as string);
+      const raw = internalRecords(app, "users").findRaw(record.id as string);
       const token = newMailToken(app, kind, users(), raw, "new@example.com");
       const { duration } = users()[config] as { duration: number };
 
@@ -127,7 +128,7 @@ describe("single-use tokens", () => {
   for (const [kind, path, extra] of cases)
     test(`two parallel ${path} calls with one token: statuses sorted equal [204, 400]`, async () => {
       const record = await createUser("once@example.com");
-      const raw = app.records("users").findRaw(record.id as string);
+      const raw = internalRecords(app, "users").findRaw(record.id as string);
       const token = newMailToken(app, kind, users(), raw, "new@example.com");
       const responses = await Promise.all([
         post(path, { token, ...extra }),
@@ -196,7 +197,7 @@ describe("resend window", () => {
       app,
       "verification",
       users(),
-      app.records("users").findRaw(id),
+      internalRecords(app, "users").findRaw(id),
     );
     expect((await post("confirm-verification", { token })).status).toBe(204);
     await app.records("users").update(id, { verified: false });
@@ -221,10 +222,10 @@ describe("verification with password auth disabled", () => {
       app,
       "verification",
       users(),
-      app.records("users").findRaw(id),
+      internalRecords(app, "users").findRaw(id),
     );
     expect((await post("confirm-verification", { token })).status).toBe(204);
-    const raw = app.records("users").findRaw(id);
+    const raw = internalRecords(app, "users").findRaw(id);
     expect(raw.verified).toBe(true);
     expect(
       await Bun.password.verify("12345678", (raw.password as any).hash),
