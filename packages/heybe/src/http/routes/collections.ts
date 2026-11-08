@@ -15,7 +15,17 @@ import { FilterError } from "../../filter/parse";
 import { pickFields } from "../../records/serialize";
 import { ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
-import { type RequestEvent, type Router, jsonResponse } from "../router";
+import {
+  type RequestEvent,
+  type Router,
+  jsonResponse,
+  markListResult,
+} from "../router";
+import {
+  CollectionRequestEvent,
+  CollectionsImportRequestEvent,
+  CollectionsListRequestEvent,
+} from "../../hooks/events";
 import { internalRecords } from "../../records/internal";
 
 const DEFAULT_PER_PAGE = 30;
@@ -35,7 +45,7 @@ export function requireSuperuser(e: RequestEvent): void {
     );
 }
 
-function guarded(handler: (e: RequestEvent) => Response | Promise<Response>) {
+function guarded(handler: (e: RequestEvent) => unknown) {
   return (e: RequestEvent) => {
     requireSuperuser(e);
     return handler(e);
@@ -97,7 +107,7 @@ async function save(app: App, input: Collection, action: "create" | "update") {
   }
 }
 
-function list(e: RequestEvent): Response {
+async function list(e: RequestEvent): Promise<void> {
   const { app, query } = e;
   let page: number;
   let perPage: number;
@@ -128,16 +138,82 @@ function list(e: RequestEvent): Response {
     Math.min((page - 1) * perPage, Number.MAX_SAFE_INTEGER),
   );
   const total = skipTotal ? -1 : app.collections.count(compiled);
-  return jsonResponse(200, {
+  const result = {
     page,
     perPage,
     totalItems: total,
     totalPages: skipTotal ? -1 : Math.ceil(total / perPage),
-    items: items.map((c) => picked(e, serializeCollection(c))),
+  };
+  const hook = app.hooks.onCollectionsListRequest;
+  if (hook.length === 0) {
+    e.json(
+      200,
+      markListResult({ ...result, items: items.map(serializeCollection) }),
+    );
+    return;
+  }
+  const collections = items.map(apiCollection);
+  const event = CollectionsListRequestEvent.from(e, {
+    collections,
+    result: markListResult({ ...result, items: collections }),
+  });
+  await hook.trigger(event, (le) => {
+    le.json(200, le.result);
   });
 }
 
-async function create(e: RequestEvent): Promise<Response> {
+// The collection of a request event, answered in its API form like PB's Collection.MarshalJSON
+// (no token secrets or OAuth2 client secrets).
+function apiCollection(c: Collection): Collection {
+  return Object.defineProperty({ ...c }, "toJSON", {
+    value(this: Collection) {
+      return serializeCollection(this);
+    },
+  });
+}
+
+function view(e: RequestEvent): Promise<void> | void {
+  const c = findOr404(e.app, e.params.collection!);
+  const hook = e.app.hooks.onCollectionViewRequest;
+  if (hook.length === 0) {
+    e.json(200, serializeCollection(c));
+    return;
+  }
+  const event = CollectionRequestEvent.from(e, {
+    collection: apiCollection(c),
+  });
+  return hook.trigger(event, (ve) => {
+    ve.json(200, ve.collection);
+  });
+}
+
+async function respondSaved(
+  e: RequestEvent,
+  collection: Collection,
+  action: "create" | "update",
+): Promise<void> {
+  // the spread leaves out the event's toJSON
+  const saved = await save(e.app, { ...collection }, action);
+  e.json(200, serializeCollection(saved));
+}
+
+function saveRequest(
+  e: RequestEvent,
+  collection: Collection,
+  action: "create" | "update",
+): Promise<void> {
+  const hook =
+    action === "create"
+      ? e.app.hooks.onCollectionCreateRequest
+      : e.app.hooks.onCollectionUpdateRequest;
+  if (hook.length === 0) return respondSaved(e, collection, action);
+  const event = CollectionRequestEvent.from(e, {
+    collection: apiCollection(collection),
+  });
+  return hook.trigger(event, (se) => respondSaved(se, se.collection, action));
+}
+
+async function create(e: RequestEvent): Promise<void> {
   const body = await readBody(
     e,
     "Failed to load the collection type data due to invalid formatting.",
@@ -157,13 +233,10 @@ async function create(e: RequestEvent): Promise<Response> {
   const input = decodeOrFail(blank, body);
   if (typeof body.id !== "string" || body.id === "")
     delete (input as Partial<Collection>).id;
-  return jsonResponse(
-    200,
-    picked(e, serializeCollection(await save(e.app, input, "create"))),
-  );
+  await saveRequest(e, input, "create");
 }
 
-async function update(e: RequestEvent): Promise<Response> {
+async function update(e: RequestEvent): Promise<void> {
   const existing = findOr404(e.app, e.params.collection!);
   const body = await readBody(
     e,
@@ -171,14 +244,20 @@ async function update(e: RequestEvent): Promise<Response> {
   );
   const input = decodeOrFail(existing, body);
   if (input.id !== existing.id) throw new ApiError(404, "");
-  return jsonResponse(
-    200,
-    picked(e, serializeCollection(await save(e.app, input, "update"))),
-  );
+  await saveRequest(e, input, "update");
 }
 
-async function remove(e: RequestEvent): Promise<Response> {
+function remove(e: RequestEvent): Promise<void> {
   const c = findOr404(e.app, e.params.collection!);
+  const hook = e.app.hooks.onCollectionDeleteRequest;
+  if (hook.length === 0) return removeNow(e, c);
+  const event = CollectionRequestEvent.from(e, {
+    collection: apiCollection(c),
+  });
+  return hook.trigger(event, (de) => removeNow(de, de.collection));
+}
+
+async function removeNow(e: RequestEvent, c: Collection): Promise<void> {
   try {
     await e.app.collections.delete(c.id);
   } catch {
@@ -189,7 +268,7 @@ async function remove(e: RequestEvent): Promise<Response> {
         : "";
     throw new ApiError(400, `Failed to delete collection${suffix}`);
   }
-  return new Response(null, { status: 204 });
+  e.noContent(204);
 }
 
 async function truncate(e: RequestEvent): Promise<Response> {
@@ -240,7 +319,7 @@ function scaffolds(e: RequestEvent): Response {
   return jsonResponse(200, picked(e, out));
 }
 
-async function importCollections(e: RequestEvent): Promise<Response> {
+async function importCollections(e: RequestEvent): Promise<void> {
   const loadError = "An error occurred while loading the submitted data.";
   const body = await readBody(e, loadError);
   const { collections, deleteMissing = false } = body;
@@ -265,11 +344,26 @@ async function importCollections(e: RequestEvent): Promise<Response> {
       },
     );
 
+  const data = items as Record<string, unknown>[];
+  const hook = e.app.hooks.onCollectionsImportRequest;
+  if (hook.length === 0) return runImport(e, data, deleteMissing);
+  const event = CollectionsImportRequestEvent.from(e, {
+    collectionsData: data,
+    deleteMissing,
+  });
+  // like PB, the submitted deleteMissing and not the event's
+  await hook.trigger(event, (ie) =>
+    runImport(ie, ie.collectionsData, deleteMissing),
+  );
+}
+
+async function runImport(
+  e: RequestEvent,
+  data: Record<string, unknown>[],
+  deleteMissing: boolean,
+): Promise<void> {
   try {
-    await e.app.collections.import(
-      items as Record<string, unknown>[],
-      deleteMissing,
-    );
+    await e.app.collections.import(data, deleteMissing);
   } catch (err) {
     if (err instanceof ValidationError)
       throw new ApiError(400, "Failed to import collections.", err.data);
@@ -283,7 +377,7 @@ async function importCollections(e: RequestEvent): Promise<Response> {
       },
     });
   }
-  return new Response(null, { status: 204 });
+  e.noContent(204);
 }
 
 async function dryRunViewQuery(e: RequestEvent): Promise<Response> {
@@ -324,16 +418,7 @@ async function dryRunViewQuery(e: RequestEvent): Promise<Response> {
 export function registerCollectionRoutes(router: Router): void {
   router.route("GET", "/api/collections", guarded(list));
   router.route("POST", "/api/collections", guarded(create));
-  router.route(
-    "GET",
-    "/api/collections/{collection}",
-    guarded((e) =>
-      jsonResponse(
-        200,
-        picked(e, serializeCollection(findOr404(e.app, e.params.collection!))),
-      ),
-    ),
-  );
+  router.route("GET", "/api/collections/{collection}", guarded(view));
   router.route("PATCH", "/api/collections/{collection}", guarded(update));
   router.route("DELETE", "/api/collections/{collection}", guarded(remove));
   router.route(

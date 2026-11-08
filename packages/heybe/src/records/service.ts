@@ -57,6 +57,8 @@ export interface QueryOpts {
   request?: RequestInfo | null;
   ruleFilter?: Expr | null;
   manageRule?: Expr | null;
+  // decoded values instead of serialized records
+  raw?: boolean;
 }
 
 interface Deps {
@@ -253,25 +255,31 @@ export class RecordServiceImpl<T> {
     if (!args.expand) return result;
     return {
       ...result,
-      items: this.expand(this.collection(), result.items, args.expand),
+      items: await this.expand(this.collection(), result.items, args.expand),
     };
   }
 
   async findOne(id: string, opts: { expand?: Expand<T> } = {}): Promise<T> {
     const c = this.collection();
     const record = this.output(c, this.load(c, id));
-    return opts.expand ? this.expand(c, [record], opts.expand)[0]! : record;
+    return opts.expand
+      ? (await this.expand(c, [record], opts.expand))[0]!
+      : record;
   }
 
-  private expand(c: Collection, items: T[], expand: Expand<T>): T[] {
+  private async expand(
+    c: Collection,
+    items: T[],
+    expand: Expand<T>,
+  ): Promise<T[]> {
     const { db, store, now } = this.deps;
-    return expandRecords(
+    return (await expandRecords(
       { db, collections: store, now },
       c,
       items as Values[],
       toExpand(expand as Expand<unknown>).split(","),
       null,
-    ) as T[];
+    )) as T[];
   }
 
   async create(data: Partial<T>): Promise<T> {
@@ -315,13 +323,7 @@ export class RecordServiceImpl<T> {
   }
 
   async createPrepared(p: PreparedWrite, data: Partial<T>): Promise<T> {
-    const c = this.writable();
-    const input = this.resolve(p, data as Values);
-    delete input["id:autogenerate"];
-    input.id = p.ctx.recordId;
-    const record = new RecordModel(c, byKeyLength(input));
-    await this.save(p, record, true);
-    return this.output(c, valuesOf(record));
+    return this.savePrepared(p, this.draft(p, data));
   }
 
   // `tokenKey`: the one a token was checked against; the write fails when it changed since
@@ -332,11 +334,50 @@ export class RecordServiceImpl<T> {
     opts: { tokenKey?: string } = {},
   ): Promise<T> {
     const c = this.writable();
+    return this.savePrepared(p, this.draft(p, data, this.load(c, id)), opts);
+  }
+
+  // The record a prepared create (no `original`) or update of `original` saves.
+  draft(p: PreparedWrite, data: Partial<T>, original?: Values): RecordModel {
+    const c = this.writable();
     const input = this.resolve(p, data as Values);
-    const record = new RecordModel(c, this.load(c, id), false);
-    record.load(byKeyLength(input));
+    if (original) {
+      const record = new RecordModel(c, original, false);
+      record.load(byKeyLength(input));
+      return record;
+    }
+    delete input["id:autogenerate"];
+    input.id = p.ctx.recordId;
+    return new RecordModel(c, byKeyLength(input));
+  }
+
+  async savePrepared(
+    p: PreparedWrite,
+    record: RecordModel,
+    opts: { tokenKey?: string } = {},
+  ): Promise<T> {
+    if (record.isNew()) await this.followId(p, record.id);
     await this.save(p, record, true, opts.tokenKey);
-    return this.output(c, valuesOf(record));
+    return this.output(record.collection, valuesOf(record));
+  }
+
+  // A request hook may change the id of a new record: its uploads move to the new storage dir.
+  private async followId(p: PreparedWrite, id: string): Promise<void> {
+    const { ctx } = p;
+    if (id === ctx.recordId || !storableId(id)) return;
+    const from = `${ctx.collection.id}/${ctx.recordId}/`;
+    const written: string[] = [];
+    for (const key of ctx.written) {
+      const blob = await ctx.files.file(key);
+      const to = fileKey(ctx.collection.id, id, key.slice(from.length));
+      if (blob) {
+        await ctx.files.write(to, blob);
+        written.push(to);
+      }
+      await this.quietly(ctx.files.delete(key));
+    }
+    ctx.recordId = id;
+    ctx.written = written;
   }
 
   async deletePrepared(_p: PreparedWrite, id: string): Promise<void> {
@@ -417,7 +458,7 @@ export class RecordServiceImpl<T> {
     record.markAsNotNew();
   }
 
-  private deleteRecord(record: RecordModel): Promise<void> {
+  deleteRecord(record: RecordModel): Promise<void> {
     const c = record.collection;
     const { db } = this.deps;
     return deleteModel(this.app, record, () =>
@@ -539,6 +580,10 @@ export class RecordServiceImpl<T> {
       totalPages = Math.ceil(totalItems / perPage);
     }
 
+    if (opts.raw) {
+      const items = rows.map((row) => decode(c, row));
+      return { page, perPage, totalItems, totalPages, items: items as T[] };
+    }
     const managed = managedIds(
       this.deps,
       c,
@@ -628,10 +673,7 @@ export class RecordServiceImpl<T> {
     return out;
   }
 
-  private async commit<R>(
-    p: PreparedWrite,
-    write: () => Promise<R>,
-  ): Promise<R> {
+  async commit<R>(p: PreparedWrite, write: () => Promise<R>): Promise<R> {
     // inside an outer write the files are settled once it commits or rolls back
     let settled: Promise<void> | undefined;
     try {

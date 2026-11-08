@@ -1,4 +1,4 @@
-import { toAst } from "@heybe/query";
+import { type ListResult, toAst } from "@heybe/query";
 import type { App } from "../../app";
 import type { Collection } from "../../collections/model";
 import { fields } from "../../fields";
@@ -13,7 +13,19 @@ import {
   ruleFilter,
 } from "../../records/rules";
 import { isSuperuser, manageRuleOf } from "../../records/read";
-import { expandRecords } from "../../records/expand";
+import {
+  expandModels,
+  expandRecords,
+  resolveFlags,
+} from "../../records/expand";
+import { RecordModel } from "../../records/model";
+import {
+  RecordEnrichEvent,
+  RecordRequestEvent,
+  RecordsListRequestEvent,
+} from "../../hooks/events";
+import { PasswordValue } from "../../fields/password";
+import type { Hook, HookEvent } from "../../hooks/hook";
 import { pickFields, pickItems } from "../../records/serialize";
 import { type PreparedWrite, replaceModifiers } from "../../records/service";
 import { ValidationError } from "../../util";
@@ -29,10 +41,12 @@ import {
   type RequestEvent,
   type Router,
   jsonResponse,
+  markListResult,
 } from "../router";
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
+type Finalizer = () => Promise<void>;
 type Access = "default" | "manager" | "superuser";
 
 const MAX_FILTER_LENGTH = 3500;
@@ -103,17 +117,120 @@ function bool(value: string | undefined): boolean {
 
 const expandPaths = (info: RequestInfo) => (info.query.expand ?? "").split(",");
 
-function serialize(app: App, c: Collection, info: RequestInfo, id: string) {
+// Port of PB triggerRecordEnrichHooks: each record's onRecordEnrich chain runs inside the final
+// action of the previous one, the last one runs `finalize`.
+async function triggerEnrich(
+  app: App,
+  requestInfo: RequestInfo,
+  records: RecordModel[],
+  finalize: () => void | Promise<void>,
+): Promise<void> {
+  if (records.length === 0) return;
+  const hook = app.hooks.onRecordEnrich;
+  if (hook.length === 0) return finalize();
+  const run = async (i: number): Promise<void> => {
+    if (i === records.length) return finalize();
+    await hook.trigger(
+      RecordEnrichEvent.of({ app, record: records[i]!, requestInfo }),
+      () => run(i + 1),
+    );
+  };
+  await run(0);
+}
+
+// Port of PB EnrichRecords (records of one collection): the enrich hooks around the default
+// flags and the `expand` of the request.
+export async function enrichRecords(
+  e: RequestEvent,
+  records: RecordModel[],
+): Promise<void> {
+  const info = await e.requestInfo();
+  const app = e.app;
+  await triggerEnrich(app, info, records, () => {
+    const c = records[0]!.collection;
+    resolveFlags(app, c, records, info);
+    return expandModels(
+      app,
+      c,
+      records,
+      expandPaths(info),
+      info,
+      (rc, rels, request) =>
+        triggerEnrich(app, request, rels, () =>
+          resolveFlags(app, rc, rels, request),
+        ),
+    );
+  });
+}
+
+const ENRICH_FAILED = "Failed to enrich record.";
+
+async function enrichOrFail(
+  e: RequestEvent,
+  records: RecordModel[],
+  message: string,
+): Promise<void> {
+  try {
+    await enrichRecords(e, records);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    logUnexpected(err);
+    throw new ApiError(500, message);
+  }
+}
+
+// PB optFinalizer: called at the end of the final action, or after the chain when it stopped
+// before it.
+async function triggerWithFinalizer<T extends HookEvent>(
+  hook: Hook<T>,
+  event: T,
+  final: (e: T) => Promise<void>,
+  finalizer?: Finalizer,
+): Promise<void> {
+  let called = false;
+  const finalize = async () => {
+    called = true;
+    await finalizer?.();
+  };
+  await hook.trigger(event, async (e) => {
+    await final(e);
+    await finalize();
+  });
+  if (!called) await finalize();
+}
+
+// With no list, view or enrich handlers the records are serialized without building models.
+const hooked = (app: App, handlers: number) =>
+  handlers > 0 || app.hooks.onRecordEnrich.length > 0;
+
+async function serialize(
+  app: App,
+  c: Collection,
+  info: RequestInfo,
+  id: string,
+) {
+  const items = findById(app, c, info, id, false);
+  const [record] = await expandRecords(app, c, items, expandPaths(info), info);
+  return pickFields(record!, info.query.fields);
+}
+
+function findById(
+  app: App,
+  c: Collection,
+  info: RequestInfo,
+  id: string,
+  raw: boolean,
+): Values[] {
   const { items } = internalRecords(app, c.name).query({
     filter: toAst({ id }),
     perPage: 1,
     skipTotal: true,
     request: info,
     manageRule: manageRuleOf(c),
+    raw,
   });
   if (items.length === 0) throw new ApiError(404, "");
-  const [record] = expandRecords(app, c, items, expandPaths(info), info);
-  return pickFields(record!, info.query.fields);
+  return items;
 }
 
 // Port of PB dynamicCollectionBodyLimit.
@@ -242,16 +359,17 @@ const oldPasswordOk = (
   old.hash === hashOf(original) &&
   old.ok;
 
-// Port of PB forms.RecordUpsert validateFormFields (auth collections only).
+// Port of PB forms.RecordUpsert validateFormFields (auth collections only): email and verified come
+// from the record, which request hooks may have changed, the passwords from the submitted data.
 function validateAuthForm(
-  c: Collection,
+  record: RecordModel,
   data: Values,
   original: Values | null,
   access: Access,
   message: string,
   old: OldPassword | null,
 ): void {
-  if (c.type !== "auth") return;
+  if (record.collection.type !== "auth") return;
   const isNew = original === null;
   const manage = access !== "default";
   const password = asString(data.password);
@@ -264,20 +382,33 @@ function validateAuthForm(
   const required = { code: "validation_required", message: "Cannot be blank." };
   const errors: Values = {};
 
-  const email = "email" in data ? data.email : original?.email;
-  if (!isNew && !manage && email !== original!.email) errors.email = mismatch;
-  const verified =
-    "verified" in data ? data.verified : (original?.verified ?? false);
-  if (!manage && verified !== (original?.verified ?? false))
+  if (!isNew && !manage && record.get("email") !== original!.email)
+    errors.email = mismatch;
+  if (!manage && record.get("verified") !== (original?.verified ?? false))
     errors.verified = mismatch;
 
-  if ((isNew || confirm !== "" || oldPassword !== "") && password === "")
+  const checkPasswords = !passwordSetOnRecord(record, password);
+  if (
+    checkPasswords &&
+    (isNew || confirm !== "" || oldPassword !== "") &&
+    password === ""
+  )
     errors.password = required;
-  if ((isNew || password !== "" || oldPassword !== "") && confirm === "")
+  if (
+    checkPasswords &&
+    (isNew || password !== "" || oldPassword !== "") &&
+    confirm === ""
+  )
     errors.passwordConfirm = required;
-  else if (confirm !== password) errors.passwordConfirm = mismatch;
+  else if (checkPasswords && confirm !== password)
+    errors.passwordConfirm = mismatch;
 
-  if (!isNew && !manage && (password !== "" || confirm !== "")) {
+  if (
+    checkPasswords &&
+    !isNew &&
+    !manage &&
+    (password !== "" || confirm !== "")
+  ) {
     if (oldPassword === "") errors.oldPassword = required;
     else if (!oldPasswordOk(original!, oldPassword, old))
       errors.oldPassword = {
@@ -288,6 +419,17 @@ function validateAuthForm(
 
   if (Object.keys(errors).length > 0)
     throw new ValidationError(message, errors);
+}
+
+// PB syncPasswordFields: a password set on the record other than the submitted one (or a hash set
+// on a new record) skips the form's password checks.
+function passwordSetOnRecord(record: RecordModel, submitted: string): boolean {
+  const v = record.get("password");
+  if (!(v instanceof PasswordValue)) return false;
+  return (
+    (v.plain !== "" && v.plain !== submitted) ||
+    (v.plain === "" && v.hash !== "" && record.isNew())
+  );
 }
 
 function saveFailed(message: string, err: unknown): never {
@@ -334,13 +476,15 @@ export function updateChecks(
   return { data, original, access };
 }
 
-async function list(e: RequestEvent): Promise<Response> {
+async function list(e: RequestEvent): Promise<Response | void> {
   const c = findCollection(e);
   const info = await requestInfo(e);
   forbidUnlessSuperuser(info, c.listRule);
   checkClientFilterFields(info);
   const rule = await checkRule(e.app, c, c.listRule, "list", e);
+  const raw = hooked(e.app, e.app.hooks.onRecordsListRequest.length);
 
+  let result: ListResult<Values>;
   try {
     const q = info.query;
     const skipTotal = bool(q.skipTotal);
@@ -357,7 +501,7 @@ async function list(e: RequestEvent): Promise<Response> {
     if (sortFields.some((s) => s.field.length > MAX_SORT_FIELD_LENGTH))
       throw new FilterError("max sort field length limit reached");
 
-    const result = internalRecords(e.app, c.name).query({
+    result = internalRecords(e.app, c.name).query({
       ruleFilter: rule,
       filter: parsedFilter,
       sort,
@@ -366,87 +510,197 @@ async function list(e: RequestEvent): Promise<Response> {
       skipTotal,
       request: info,
       manageRule: manageRuleOf(c),
+      raw,
     });
-    const items = expandRecords(
-      e.app,
-      c,
-      result.items as Values[],
-      expandPaths(info),
-      info,
-    );
-    return jsonResponse(200, {
-      items: pickItems(items, q.fields),
-      page: result.page,
-      perPage: result.perPage,
-      totalItems: result.totalItems,
-      totalPages: result.totalPages,
-    });
+    if (!raw) {
+      const items = await expandRecords(
+        e.app,
+        c,
+        result.items,
+        expandPaths(info),
+        info,
+      );
+      return jsonResponse(200, {
+        ...result,
+        items: pickItems(items, q.fields),
+      });
+    }
   } catch (err) {
     if (err instanceof ApiError) throw err;
     logUnexpected(err);
     throw new ApiError(400, "");
   }
+
+  const records = result.items.map((v) => new RecordModel(c, v, false));
+  const event = RecordsListRequestEvent.from(e, {
+    collection: c,
+    records,
+    result: markListResult({ ...result, items: records }),
+  });
+  await e.app.hooks.onRecordsListRequest.trigger(event, async (le) => {
+    await enrichOrFail(le, le.records, "Failed to enrich records.");
+    le.json(200, le.result);
+  });
 }
 
-async function view(e: RequestEvent): Promise<Response> {
+async function view(e: RequestEvent): Promise<Response | void> {
   const c = findCollection(e);
   const id = e.params.id!;
   const info = await requestInfo(e);
   await checkRule(e.app, c, c.viewRule, "view", e, id);
-  return jsonResponse(200, serialize(e.app, c, info, id));
+  if (!hooked(e.app, e.app.hooks.onRecordViewRequest.length))
+    return jsonResponse(200, await serialize(e.app, c, info, id));
+  const [values] = findById(e.app, c, info, id, true);
+  const event = RecordRequestEvent.from(e, {
+    collection: c,
+    record: new RecordModel(c, values!, false),
+  });
+  await e.app.hooks.onRecordViewRequest.trigger(event, async (ve) => {
+    await enrichOrFail(ve, [ve.record], ENRICH_FAILED);
+    ve.json(200, ve.record);
+  });
 }
 
-async function create(e: RequestEvent): Promise<Response> {
+async function prepareOrFail(
+  app: App,
+  c: Collection,
+  data: Values,
+  message: string,
+  id?: string,
+): Promise<PreparedWrite> {
+  try {
+    return await internalRecords(app, c.name).prepare(data, id);
+  } catch (err) {
+    saveFailed(message, err);
+  }
+}
+
+async function create(e: RequestEvent): Promise<void> {
   const c = writable(e.app, e.params.collection!, BODY_LIMIT_MISSING);
   const info = await requestInfo(e);
   const { data, access } = createChecks(e.app, c, info);
-  let saved: Values;
-  try {
-    validateAuthForm(c, data, null, access, CREATE_FAILED, null);
-    saved = await internalRecords(e.app, c.name).create(data);
-  } catch (err) {
-    saveFailed(CREATE_FAILED, err);
-  }
-  return jsonResponse(200, serialize(e.app, c, info, saved.id as string));
+  const p = await prepareOrFail(e.app, c, data, CREATE_FAILED);
+  await internalRecords(e.app, c.name).commit(p, () =>
+    createRecord(e, c, p, data, access),
+  );
 }
 
-async function update(e: RequestEvent): Promise<Response> {
+async function update(e: RequestEvent): Promise<void> {
   const c = writable(e.app, e.params.collection!, BODY_LIMIT_MISSING);
   const id = e.params.id!;
   const info = await requestInfo(e);
   const { data, original, access } = updateChecks(e.app, c, id, info);
-  try {
-    const manager = access !== "default";
-    const old = await checkOldPassword(c, hashOf(original), data, manager);
-    validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
-    await internalRecords(e.app, c.name).update(id, data);
-  } catch (err) {
-    saveFailed(UPDATE_FAILED, err);
-  }
-  return jsonResponse(200, serialize(e.app, c, info, id));
+  const old = await checkOldPassword(
+    c,
+    hashOf(original),
+    data,
+    access !== "default",
+  );
+  const p = await prepareOrFail(e.app, c, data, UPDATE_FAILED, id);
+  await internalRecords(e.app, c.name).commit(p, () =>
+    updateRecord(e, c, p, data, original, access, old),
+  );
 }
 
-async function remove(e: RequestEvent): Promise<Response> {
+async function remove(e: RequestEvent): Promise<void> {
   const c = writable(e.app, e.params.collection!);
-  const id = e.params.id!;
-  ruleFilter(e.app, c, c.deleteRule, "delete", await requestInfo(e), id);
+  await deleteRecord(e, c, e.params.id!);
+}
+
+// The rest of PB recordCreate: the create request hook around the form submit, enrich and response.
+function createRecord(
+  e: RequestEvent,
+  c: Collection,
+  p: PreparedWrite,
+  data: Values,
+  access: Access,
+  finalizer?: Finalizer,
+): Promise<void> {
+  const record = internalRecords(e.app, c.name).draft(p, data);
+  const event = RecordRequestEvent.from(e, { collection: c, record });
+  return triggerWithFinalizer(
+    e.app.hooks.onRecordCreateRequest,
+    event,
+    async (re) => {
+      try {
+        validateAuthForm(re.record, data, null, access, CREATE_FAILED, null);
+        await internalRecords(re.app, c.name).savePrepared(p, re.record);
+      } catch (err) {
+        saveFailed(CREATE_FAILED, err);
+      }
+      await enrichOrFail(re, [re.record], ENRICH_FAILED);
+      re.json(200, re.record);
+    },
+    finalizer,
+  );
+}
+
+function updateRecord(
+  e: RequestEvent,
+  c: Collection,
+  p: PreparedWrite,
+  data: Values,
+  original: Values,
+  access: Access,
+  old: OldPassword | null,
+  finalizer?: Finalizer,
+): Promise<void> {
+  const record = internalRecords(e.app, c.name).draft(p, data, original);
+  const event = RecordRequestEvent.from(e, { collection: c, record });
+  return triggerWithFinalizer(
+    e.app.hooks.onRecordUpdateRequest,
+    event,
+    async (re) => {
+      try {
+        validateAuthForm(re.record, data, original, access, UPDATE_FAILED, old);
+        await internalRecords(re.app, c.name).savePrepared(p, re.record);
+      } catch (err) {
+        saveFailed(UPDATE_FAILED, err);
+      }
+      await enrichOrFail(re, [re.record], ENRICH_FAILED);
+      re.json(200, re.record);
+    },
+    finalizer,
+  );
+}
+
+async function deleteRecord(
+  e: RequestEvent,
+  c: Collection,
+  id: string,
+  finalizer?: Finalizer,
+): Promise<void> {
+  const info = await requestInfo(e);
+  ruleFilter(e.app, c, c.deleteRule, "delete", info, id);
+  const records = internalRecords(e.app, c.name);
+  let values: Values;
   try {
-    await internalRecords(e.app, c.name).delete(id);
-  } catch (err) {
-    logUnexpected(err);
-    throw new ApiError(400, DELETE_FAILED);
+    values = records.findRaw(id);
+  } catch {
+    throw new ApiError(404, "");
   }
-  return new Response(null, { status: 204 });
+  const event = RecordRequestEvent.from(e, {
+    collection: c,
+    record: new RecordModel(c, values, false),
+  });
+  await triggerWithFinalizer(
+    e.app.hooks.onRecordDeleteRequest,
+    event,
+    async (de) => {
+      try {
+        await records.deleteRecord(de.record);
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        logUnexpected(err);
+        throw new ApiError(400, DELETE_FAILED);
+      }
+      de.noContent(204);
+    },
+    finalizer,
+  );
 }
 
-// Batch versions of the write routes: the same checks, written inside the batch transaction with
-// the uploads and hashes prepared before it.
-export interface BatchResult {
-  body: unknown;
-  status: number;
-}
-
-// The create route's checks and write on a prepared record (batch and OAuth2 sign-up).
+// The create route's checks and write on a prepared record (OAuth2 sign-up).
 export async function createPreparedChecked(
   app: App,
   c: Collection,
@@ -454,58 +708,43 @@ export async function createPreparedChecked(
   p: PreparedWrite,
 ): Promise<Values> {
   const { data, access } = createChecks(app, c, info);
+  const records = internalRecords(app, c.name);
   try {
-    validateAuthForm(c, data, null, access, CREATE_FAILED, null);
-    return await internalRecords(app, c.name).createPrepared(p, data);
+    const record = records.draft(p, data);
+    validateAuthForm(record, data, null, access, CREATE_FAILED, null);
+    return await records.savePrepared(p, record);
   } catch (err) {
     saveFailed(CREATE_FAILED, err);
   }
 }
 
+// The write routes for batch sub-requests (`e` from RequestEvent.internal), with the uploads and
+// hashes prepared before the batch transaction.
+// `next` runs the next sub-request (PB optFinalizer).
 export async function batchCreate(
-  app: App,
+  e: RequestEvent,
   c: Collection,
-  info: RequestInfo,
   p: PreparedWrite,
-): Promise<BatchResult> {
-  const saved = await createPreparedChecked(app, c, info, p);
-  return { body: serialize(app, c, info, saved.id as string), status: 200 };
+  next: Finalizer,
+): Promise<void> {
+  const { data, access } = createChecks(e.app, c, await requestInfo(e));
+  await createRecord(e, c, p, data, access, next);
 }
 
 export async function batchUpdate(
-  app: App,
+  e: RequestEvent,
   c: Collection,
   id: string,
-  info: RequestInfo,
   p: PreparedWrite,
   old: OldPassword | null,
-): Promise<BatchResult> {
-  const { data, original, access } = updateChecks(app, c, id, info);
-  try {
-    validateAuthForm(c, data, original, access, UPDATE_FAILED, old);
-    await internalRecords(app, c.name).updatePrepared(p, id, data);
-  } catch (err) {
-    saveFailed(UPDATE_FAILED, err);
-  }
-  return { body: serialize(app, c, info, id), status: 200 };
+  next: Finalizer,
+): Promise<void> {
+  const info = await requestInfo(e);
+  const { data, original, access } = updateChecks(e.app, c, id, info);
+  await updateRecord(e, c, p, data, original, access, old, next);
 }
 
-export async function batchDelete(
-  app: App,
-  c: Collection,
-  id: string,
-  info: RequestInfo,
-  p: PreparedWrite,
-): Promise<BatchResult> {
-  ruleFilter(app, c, c.deleteRule, "delete", info, id);
-  try {
-    await internalRecords(app, c.name).deletePrepared(p, id);
-  } catch (err) {
-    logUnexpected(err);
-    throw new ApiError(400, DELETE_FAILED);
-  }
-  return { body: null, status: 204 };
-}
+export const batchDelete = deleteRecord;
 
 export function registerRecordRoutes(router: Router): void {
   const base = "/api/collections/{collection}/records";

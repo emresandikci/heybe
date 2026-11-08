@@ -1,5 +1,6 @@
 import type { ListResult } from "@heybe/query";
 import type { App } from "../app";
+import type { RecordModel } from "./model";
 import {
   type PreparedWrite,
   type QueryOpts,
@@ -26,6 +27,20 @@ export interface InternalRecords<
     opts?: { tokenKey?: string },
   ): Promise<T>;
   deletePrepared(p: PreparedWrite, id: string): Promise<void>;
+  // The same writes on a record, which request hooks see before it is saved.
+  draft(
+    p: PreparedWrite,
+    data: Partial<T>,
+    original?: Record<string, unknown>,
+  ): RecordModel;
+  savePrepared(
+    p: PreparedWrite,
+    record: RecordModel,
+    opts?: { tokenKey?: string },
+  ): Promise<T>;
+  deleteRecord(record: RecordModel): Promise<void>;
+  // runs `write` and settles `p` once the outermost write ended
+  commit<R>(p: PreparedWrite, write: () => Promise<R>): Promise<R>;
   settle(p: PreparedWrite): Promise<void>;
 }
 

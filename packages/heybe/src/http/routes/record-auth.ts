@@ -217,7 +217,7 @@ export async function authResponse(
     auth: record,
     authCollection: c.name,
   };
-  const [expanded] = expandRecords(
+  const [expanded] = await expandRecords(
     e.app,
     c,
     [serialized],

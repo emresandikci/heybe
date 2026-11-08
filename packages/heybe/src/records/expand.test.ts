@@ -62,17 +62,19 @@ beforeEach(async () => {
 
 afterEach(() => app.close());
 
-const expandOne = (
+const expandOne = async (
   record: Record<string, unknown>,
   paths: string[],
   request: RequestInfo | null = guest,
 ) =>
-  expandRecords(
-    app,
-    app.collections.find("posts")!,
-    [record],
-    paths,
-    request,
+  (
+    await expandRecords(
+      app,
+      app.collections.find("posts")!,
+      [record],
+      paths,
+      request,
+    )
   )[0]!;
 
 describe("expandRecords", () => {
@@ -85,7 +87,7 @@ describe("expandRecords", () => {
           post.id,
         ]);
     });
-    const out = expandOne(post, ["comments_via_post"]) as any;
+    const out = (await expandOne(post, ["comments_via_post"])) as any;
     const list = out.expand.comments_via_post as { id: string }[];
     expect(list).toHaveLength(1000);
     expect(list[0]!.id).toBe("c00000000000000");
@@ -95,19 +97,19 @@ describe("expandRecords", () => {
   test("a guest gets no expand for a superuser-only collection", async () => {
     const secret = await app.records("secrets").create({ name: "s" });
     const post = await app.records("posts").create({ secret: secret.id });
-    expect(expandOne(post, ["secret"])).not.toHaveProperty("expand");
-    expect((expandOne(post, ["secret"], null) as any).expand.secret.id).toBe(
-      secret.id,
-    );
+    expect(await expandOne(post, ["secret"])).not.toHaveProperty("expand");
+    expect(
+      ((await expandOne(post, ["secret"], null)) as any).expand.secret.id,
+    ).toBe(secret.id);
   });
 
   test("invalid paths are dropped without logging", async () => {
     const post = await app.records("posts").create({ title: "p" });
     const log = spyOn(console, "error");
     try {
-      expect(expandOne(post, ["nope", "title", "secret"])).not.toHaveProperty(
-        "expand",
-      );
+      expect(
+        await expandOne(post, ["nope", "title", "secret"]),
+      ).not.toHaveProperty("expand");
       expect(log).not.toHaveBeenCalled();
     } finally {
       log.mockRestore();
@@ -119,7 +121,7 @@ describe("expandRecords", () => {
     const many = [];
     for (let i = 0; i < 5; i++)
       many.push(await app.records("posts").create({ author: author.id }));
-    expandRecords(
+    await expandRecords(
       app,
       app.collections.find("posts")!,
       many.slice(0, 1),
@@ -127,7 +129,7 @@ describe("expandRecords", () => {
       guest,
     );
     const size = statementCacheSize(app.db);
-    expandRecords(
+    await expandRecords(
       app,
       app.collections.find("posts")!,
       many,

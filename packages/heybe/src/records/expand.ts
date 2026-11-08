@@ -6,18 +6,26 @@ import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { parseFilter } from "../filter/parse";
 import { jsonEach } from "../filter/resolve";
 import { logUnexpected } from "../http/errors";
+import { type Expand, RecordModel } from "./model";
 import { serializeRecord, sortKeys } from "./serialize";
 import { decode, isSuperuser, manageRuleOf, managedIds } from "./read";
 
 type Values = Record<string, unknown>;
 type ExpandApp = Pick<App, "db" | "collections" | "now">;
 type Expanded = Map<string, Node | Node[]>;
+// runs the onRecordEnrich chains of fetched records, with PB's default flags as the final action
+type Enrich = (
+  c: Collection,
+  records: RecordModel[],
+  request: RequestInfo,
+) => Promise<void>;
 
 interface Node {
   id: string;
   // relation ids are read from here
   values: Values;
   out: Values;
+  model?: RecordModel;
   expand?: Expanded;
 }
 
@@ -25,6 +33,7 @@ interface Ctx {
   app: ExpandApp;
   request: RequestInfo | null;
   superuser: boolean;
+  enrich?: Enrich;
 }
 
 const MAX_NESTED_RELS = 6;
@@ -36,13 +45,13 @@ class PathError extends Error {}
 
 // Port of PB ExpandRecords with the apis expandFetch: every expanded collection is filtered by its
 // view rule for the requester (a null request is a superuser). `records` are serialized records.
-export function expandRecords(
+export async function expandRecords(
   app: ExpandApp,
   collection: Collection,
   records: Values[],
   paths: string[],
   request: RequestInfo | null,
-): Values[] {
+): Promise<Values[]> {
   const normalized = normalizeExpands(paths);
   if (records.length === 0 || normalized.length === 0) return records;
   const ctx: Ctx = {
@@ -52,15 +61,74 @@ export function expandRecords(
   };
   const nodes = records.map((r) => ({ id: String(r.id), values: r, out: r }));
   loadHiddenRelations(app, collection, nodes);
-  for (const path of normalized) {
+  await expandPaths(ctx, collection, nodes, normalized);
+  return nodes.map(toJson);
+}
+
+// The same on records: the expanded records go through `enrich` and are set as their expand.
+export async function expandModels(
+  app: ExpandApp,
+  collection: Collection,
+  records: RecordModel[],
+  paths: string[],
+  request: RequestInfo,
+  enrich: Enrich,
+): Promise<void> {
+  const normalized = normalizeExpands(paths);
+  if (records.length === 0 || normalized.length === 0) return;
+  const ctx: Ctx = {
+    app,
+    request: { ...request, context: "expand" },
+    superuser: isSuperuser(request),
+    enrich,
+  };
+  const nodes = records.map(modelNode);
+  await expandPaths(ctx, collection, nodes, normalized);
+  for (const node of nodes) attach(node);
+}
+
+async function expandPaths(
+  ctx: Ctx,
+  c: Collection,
+  nodes: Node[],
+  paths: string[],
+): Promise<void> {
+  for (const path of paths) {
     try {
-      expandLevel(ctx, collection, nodes, path, 1);
+      await expandLevel(ctx, c, nodes, path, 1);
     } catch (err) {
       // like PB, a failed path is left out; rule errors are FilterErrors, also not logged
       if (!(err instanceof PathError)) logUnexpected(err);
     }
   }
-  return nodes.map(toJson);
+}
+
+// PB autoResolveRecordsFlags: superusers see hidden fields, owners and managers the email.
+export function resolveFlags(
+  app: ExpandApp,
+  c: Collection,
+  records: RecordModel[],
+  request: RequestInfo,
+): void {
+  if (records.length === 0) return;
+  if (isSuperuser(request)) {
+    const names = c.fields.map((f) => f.name);
+    for (const r of records) {
+      r.unhide(...names);
+      r.ignoreEmailVisibility(true);
+    }
+  }
+  if (c.type !== "auth") return;
+  const managed = managedIds(
+    { db: app.db, store: app.collections, now: app.now },
+    c,
+    records.map((r) => r.id),
+    request,
+    manageRuleOf(c),
+  );
+  for (const r of records)
+    if (r.id === request.auth?.id || managed.has(r.id))
+      r.ignoreEmailVisibility(true);
 }
 
 // Port of PB normalizeExpands: drops spaces and incomplete paths, keeps only the longest of nested paths.
@@ -89,19 +157,20 @@ function loadHiddenRelations(app: ExpandApp, c: Collection, nodes: Node[]) {
   for (const n of missing) n.values = { ...byId.get(n.id), ...n.values };
 }
 
-function expandLevel(
+async function expandLevel(
   ctx: Ctx,
   c: Collection,
   nodes: Node[],
   path: string,
   level: number,
-): void {
+): Promise<void> {
   if (path === "" || level > MAX_NESTED_RELS || nodes.length === 0) return;
   const dot = path.indexOf(".");
   const name = dot < 0 ? path : path.slice(0, dot);
   const { target, multiple, idsOf } = relation(ctx.app, c, nodes, name);
-  const rels = fetch(ctx, target, [...new Set(nodes.flatMap(idsOf))]);
-  if (dot >= 0) expandLevel(ctx, target, rels, path.slice(dot + 1), level + 1);
+  const rels = await fetch(ctx, target, [...new Set(nodes.flatMap(idsOf))]);
+  if (dot >= 0)
+    await expandLevel(ctx, target, rels, path.slice(dot + 1), level + 1);
 
   const byId = new Map(rels.map((r) => [r.id, r]));
   for (const node of nodes) {
@@ -177,8 +246,8 @@ function backRelationIds(
   return ids;
 }
 
-function fetch(ctx: Ctx, c: Collection, ids: string[]): Node[] {
-  const { app, request, superuser } = ctx;
+async function fetch(ctx: Ctx, c: Collection, ids: string[]): Promise<Node[]> {
+  const { app, request, superuser, enrich } = ctx;
   if (!superuser && c.viewRule === null)
     throw new PathError(
       `only superusers can view collection "${c.name}" records`,
@@ -199,6 +268,11 @@ function fetch(ctx: Ctx, c: Collection, ids: string[]): Node[] {
   );
 
   const records = rows.map((r) => decode(c, r));
+  if (enrich) {
+    const models = records.map((v) => new RecordModel(c, v, false));
+    await enrich(c, models, request!);
+    return models.map(modelNode);
+  }
   const managed = managedIds(
     { db: app.db, store: app.collections, now: app.now },
     c,
@@ -216,6 +290,24 @@ function fetch(ctx: Ctx, c: Collection, ids: string[]): Node[] {
       out: serializeRecord(c, values, { isSuperuser: superuser, isOwner }),
     };
   });
+}
+
+function modelNode(model: RecordModel): Node {
+  const values: Values = {};
+  for (const f of model.collection.fields) values[f.name] = model.get(f.name);
+  return { id: model.id, values, out: {}, model };
+}
+
+function attach(node: Node): void {
+  if (!node.expand) return;
+  const expand: Expand = {};
+  for (const [key, value] of node.expand) {
+    for (const n of asList(value)) attach(n);
+    expand[key] = Array.isArray(value)
+      ? value.map((n) => n.model!)
+      : value.model!;
+  }
+  node.model!.setExpand(expand);
 }
 
 const asList = (v: Node | Node[] | undefined): Node[] =>

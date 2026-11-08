@@ -48,6 +48,27 @@ export class RequestEvent extends HookEvent {
     return Object.assign(new this(re.state), fields);
   }
 
+  // PB processInternalRequest: a batch sub-request with its own request, params, request info and
+  // response, and the auth and a copy of the store of `re`.
+  static internal(
+    re: RequestEvent,
+    req: Request,
+    params: Record<string, string>,
+    info: RequestInfo,
+  ): RequestEvent {
+    return new RequestEvent({
+      ...re.state,
+      req,
+      params,
+      query: new URL(req.url).searchParams,
+      response: null,
+      responseHeaders: new Headers(),
+      store: new Map(re.state.store),
+      body: Promise.resolve(info.body),
+      info: Promise.resolve(info),
+    });
+  }
+
   get app(): App {
     return this.state.app;
   }

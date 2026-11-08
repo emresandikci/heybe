@@ -3,6 +3,7 @@ import { applyModifier, modifier, zeroValues } from "./service";
 import { plain, sortKeys } from "./serialize";
 
 type Values = Record<string, unknown>;
+export type Expand = Record<string, RecordModel | RecordModel[]>;
 
 const INTERNAL_PREFIX = "@pbInternal";
 
@@ -14,6 +15,7 @@ export class RecordModel {
   private fresh: boolean;
   private customData = false;
   private emailVisible = false;
+  private expanded: Expand | null = null;
 
   constructor(collection: Collection, data: Values = {}, isNew = true) {
     this.collection = collection;
@@ -63,6 +65,14 @@ export class RecordModel {
     this.fresh = false;
   }
 
+  expand(): Expand {
+    return { ...this.expanded };
+  }
+
+  setExpand(expand: Expand): void {
+    this.expanded = { ...expand };
+  }
+
   hide(...fields: string[]): void {
     for (const name of fields) this.visibility.set(name, false);
   }
@@ -101,6 +111,14 @@ export class RecordModel {
       delete out.tokenKey;
       if (!this.emailVisible && this.get("emailVisibility") !== true)
         delete out.email;
+    }
+    if (this.expanded && visible("expand", true)) {
+      const expand: Values = {};
+      for (const [key, rel] of Object.entries(this.expanded))
+        expand[key] = Array.isArray(rel)
+          ? rel.map((r) => r.toJSON())
+          : rel.toJSON();
+      out.expand = sortKeys(expand);
     }
     if (visible("collectionId", true)) out.collectionId = c.id;
     if (visible("collectionName", true)) out.collectionName = c.name;

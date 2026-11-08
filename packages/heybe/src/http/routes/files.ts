@@ -9,6 +9,11 @@ import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
 import { checkSuperuserIp } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
+import {
+  FileDownloadRequestEvent,
+  FileTokenRequestEvent,
+} from "../../hooks/events";
+import { RecordModel } from "../../records/model";
 import { internalRecords } from "../../records/internal";
 
 const INLINE_TYPES = new Set([
@@ -96,7 +101,10 @@ function canView(
   }
 }
 
-async function download(e: RequestEvent): Promise<Response> {
+const readFile = (e: RequestEvent, key: string) =>
+  e.app.files.file(key).catch(() => null);
+
+async function download(e: RequestEvent): Promise<void> {
   const c = e.app.collections.find(e.params.collection!);
   if (!c) throw new ApiError(404, "Missing or invalid collection context.");
 
@@ -139,54 +147,77 @@ async function download(e: RequestEvent): Promise<Response> {
   }
 
   const originalKey = fileKey(base.collectionId, base.recordId, filename);
-  let servedName = filename;
-  let blob: Blob | null;
-  try {
-    blob = await e.app.files.file(originalKey);
-  } catch {
-    blob = null;
-  }
-  if (!blob) throw new ApiError(404, "");
+  const served = {
+    servedPath: originalKey,
+    servedName: filename,
+    thumbError: null as Error | null,
+  };
 
   const thumb = e.query.get("thumb") ?? "";
   const thumbsOf = Array.isArray(field.thumbs) ? field.thumbs : [];
   if (
     thumb !== "" &&
-    (DEFAULT_THUMB_SIZES.includes(thumb) || thumbsOf.includes(thumb)) &&
-    THUMB_TYPES.has(await sniffMime(blob))
+    (DEFAULT_THUMB_SIZES.includes(thumb) || thumbsOf.includes(thumb))
   ) {
-    const thumbName = `${thumb}_${filename}`;
-    const thumbKey = fileKey(
-      base.collectionId,
-      base.recordId,
-      `thumbs_${filename}/${thumbName}`,
-    );
-    let thumbBlob = await e.app.files.file(thumbKey).catch(() => null);
-    if (!thumbBlob) {
-      try {
-        await generateThumb(e.app.files, originalKey, thumbKey, thumb);
-        if (await e.app.files.file(originalKey)) {
-          thumbBlob = await e.app.files.file(thumbKey);
-        } else {
-          await e.app.files.deletePrefix(
-            fileKey(base.collectionId, base.recordId, `thumbs_${filename}`),
+    const original = await readFile(e, originalKey);
+    if (!original) throw new ApiError(404, "");
+    if (THUMB_TYPES.has(await sniffMime(original))) {
+      served.servedName = `${thumb}_${filename}`;
+      served.servedPath = fileKey(
+        base.collectionId,
+        base.recordId,
+        `thumbs_${filename}/${served.servedName}`,
+      );
+      if (!(await readFile(e, served.servedPath))) {
+        try {
+          await generateThumb(
+            e.app.files,
+            originalKey,
+            served.servedPath,
+            thumb,
           );
-          throw new ApiError(404, "");
+          if (!(await e.app.files.file(originalKey))) {
+            await e.app.files.deletePrefix(
+              fileKey(base.collectionId, base.recordId, `thumbs_${filename}`),
+            );
+            throw new ApiError(404, "");
+          }
+        } catch (err) {
+          if (err instanceof ApiError) throw err;
+          console.warn(
+            `Fallback to original - failed to create thumb ${served.servedName}`,
+            err,
+          );
+          served.thumbError = err as Error;
+          served.servedName = filename;
+          served.servedPath = originalKey;
         }
-      } catch (err) {
-        if (err instanceof ApiError) throw err;
-        console.warn(
-          `Fallback to original - failed to create thumb ${thumbName}`,
-          err,
-        );
       }
     }
-    if (thumbBlob) {
-      blob = thumbBlob;
-      servedName = thumbName;
-    }
   }
+  if (thumb !== "" && !served.thumbError && served.servedPath === originalKey)
+    served.thumbError = new Error(
+      `the thumb size "${thumb}" or the original file format are not supported`,
+    );
 
+  e.responseHeaders.delete("x-frame-options");
+  const hook = e.app.hooks.onFileDownloadRequest;
+  if (hook.length === 0) return serve(e, served);
+  const event = FileDownloadRequestEvent.from(e, {
+    collection: c,
+    record: new RecordModel(c, record, false),
+    fileField: field,
+    ...served,
+  });
+  await hook.trigger(event, (fe) => serve(fe, fe));
+}
+
+async function serve(
+  e: RequestEvent,
+  { servedPath, servedName }: { servedPath: string; servedName: string },
+): Promise<void> {
+  const blob = await readFile(e, servedPath);
+  if (!blob) throw new ApiError(404, "");
   const type = await sniffMime(blob);
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
@@ -197,8 +228,7 @@ async function download(e: RequestEvent): Promise<Response> {
       "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "max-age=2592000, stale-while-revalidate=86400",
   });
-  e.responseHeaders.delete("x-frame-options");
-  return serveContent(e.req, blob, headers);
+  e.response = serveContent(e.req, blob, headers);
 }
 
 const NO_OVERLAP = "invalid range: failed to overlap";
@@ -308,8 +338,16 @@ export function registerFileRoutes(router: Router): void {
         401,
         "The request requires valid record authorization token.",
       );
-    return e.json(200, {
-      token: newFileToken(e.app, e.auth.collection, e.auth.record),
+    const { collection, record } = e.auth;
+    const token = newFileToken(e.app, collection, record);
+    const hook = e.app.hooks.onFileTokenRequest;
+    if (hook.length === 0) return e.json(200, { token });
+    const event = FileTokenRequestEvent.from(e, {
+      record: new RecordModel(collection, record, false),
+      token,
+    });
+    return hook.trigger(event, (te) => {
+      te.json(200, { token: te.token });
     });
   });
   router.route(

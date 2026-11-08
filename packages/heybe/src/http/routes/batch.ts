@@ -11,9 +11,9 @@ import { NotFoundError, ValidationError } from "../../util";
 import { ApiError, logUnexpected, toApiError } from "../errors";
 import { BODY_LIMIT_ID, applyBodyLimit } from "../middlewares";
 import { requestFiles } from "../multipart";
-import type { RequestEvent, Router } from "../router";
+import { RequestEvent, type Router } from "../router";
+import { BatchRequestEvent, type InternalRequest } from "../../hooks/events";
 import {
-  type BatchResult,
   type OldPassword,
   batchCreate,
   batchDelete,
@@ -31,11 +31,9 @@ type Action = "create" | "update" | "upsert" | "delete";
 // latest password hash per auth record ("<collectionId>/<id>"), null when it does not exist
 type Hashes = Map<string, string | null>;
 
-interface InternalRequest {
-  method: string;
-  url: string;
-  body: Values;
-  headers: Record<string, string>;
+interface BatchResult {
+  body: unknown;
+  status: number;
 }
 
 interface Item {
@@ -43,6 +41,7 @@ interface Item {
   collection: string;
   id: string;
   body: Values;
+  headers: Record<string, string>;
   info: RequestInfo;
   c?: Collection;
   p?: PreparedWrite;
@@ -183,13 +182,21 @@ function plan(e: RequestEvent, r: InternalRequest): Item {
     for (const [k, v] of new URLSearchParams(groups.q ?? ""))
       info.query[k] ??= v;
     const { c, id = "" } = groups;
-    return { action, collection: c!, id, body: r.body, info };
+    return {
+      action,
+      collection: c!,
+      id,
+      body: r.body,
+      headers: r.headers,
+      info,
+    };
   }
   return {
     action: "create",
     collection: "",
     id: "",
     body: r.body,
+    headers: r.headers,
     info,
     error: UNKNOWN_ACTION,
   };
@@ -271,30 +278,69 @@ async function trackPassword(
   else if (!update) hashes.set(key, "");
 }
 
-function write(app: App, item: Item): Promise<BatchResult> {
+// Runs the record route of a request on its own event, the result is what it answered.
+async function write(
+  e: RequestEvent,
+  item: Item,
+  next: () => Promise<void>,
+): Promise<BatchResult> {
   const c = item.c!;
   const p = item.p!;
-  const old = item.old ?? null;
   const info = { ...item.info };
-  if (item.action === "delete") return batchDelete(app, c, item.id, info, p);
-  if (item.action === "update")
-    return batchUpdate(app, c, item.id, info, p, old);
-  const id = upsertTarget(app, c, item);
-  if (id !== null)
-    return batchUpdate(app, c, id, { ...info, method: "PATCH" }, p, old);
-  return batchCreate(app, c, { ...info, method: "POST" }, p);
+  let action = item.action;
+  let id = item.id;
+  if (action === "upsert") {
+    const target = upsertTarget(e.app, c, item);
+    action = target === null ? "create" : "update";
+    id = target ?? "";
+    info.method = target === null ? "POST" : "PATCH";
+  }
+  const headers = new Headers(e.req.headers);
+  for (const [k, v] of Object.entries(item.headers))
+    if (k.toLowerCase() !== "authorization") headers.set(k, v);
+  headers.set("content-type", "multipart/form-data");
+  const path = `/api/collections/${item.collection}/records${id ? `/${id}` : ""}`;
+  const search = new URLSearchParams(info.query).toString();
+  const req = new Request(
+    new URL(`${path}${search ? `?${search}` : ""}`, e.req.url),
+    { method: info.method, headers },
+  );
+  const sub = RequestEvent.internal(
+    e,
+    req,
+    { collection: item.collection, id },
+    info,
+  );
+  if (action === "delete") await batchDelete(sub, c, id, next);
+  else if (action === "update")
+    await batchUpdate(sub, c, id, p, item.old ?? null, next);
+  else await batchCreate(sub, c, p, next);
+  const res = sub.response;
+  if (!res) return { body: null, status: 200 };
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text === "" ? null : JSON.parse(text);
+  } catch {}
+  return { body, status: res.status };
 }
 
-function responseError(err: unknown, index: number): ApiError {
-  if (
-    err instanceof ApiError ||
-    err instanceof ValidationError ||
-    err instanceof NotFoundError
-  )
-    return toApiError(err);
+const isApiLike = (err: unknown) =>
+  err instanceof ApiError ||
+  err instanceof ValidationError ||
+  err instanceof NotFoundError;
+
+function responseError(err: unknown): ApiError {
+  if (isApiLike(err)) return toApiError(err);
   if (err !== UNKNOWN_ACTION) logUnexpected(err);
-  // in PB the request before the failed one hands a plain error back wrapped in a 500
-  return new ApiError(index === 0 ? 400 : 500, "");
+  return new ApiError(400, "");
+}
+
+// the error of a later request as the earlier one hands it back (PB firstApiError with a 500)
+function nestedError(err: unknown): unknown {
+  if (isApiLike(err)) return err;
+  if (err !== UNKNOWN_ACTION) logUnexpected(err);
+  return new ApiError(500, "");
 }
 
 // Port of PB batchTransaction: every request runs with the batch caller's auth and the collection
@@ -302,7 +348,7 @@ function responseError(err: unknown, index: number): ApiError {
 // settled after it. Preparing stops at the first request whose checks fail on the database as it
 // is (PB stops there too); the transaction checks such a request again after the earlier writes and
 // prepares it there when it passes.
-async function batch(e: RequestEvent): Promise<Response> {
+async function batch(e: RequestEvent): Promise<void> {
   const settings = e.app.settings.get().batch;
   if (!settings.enabled || settings.maxRequests <= 0)
     throw new ApiError(403, "Batch requests are not allowed.");
@@ -317,16 +363,28 @@ async function batch(e: RequestEvent): Promise<Response> {
   );
 
   const requests = await readRequests(e, settings.maxRequests);
+  const event = BatchRequestEvent.from(e, { batch: requests });
+  await e.app.hooks.onBatchRequest.trigger(event, (be) =>
+    run(be, be.batch, timeout),
+  );
+}
+
+async function run(
+  e: RequestEvent,
+  requests: InternalRequest[],
+  timeout: number,
+): Promise<void> {
   const items = requests.map((r) => plan(e, r));
 
   const started = e.app.now().getTime();
   const signal = e.req.signal;
-  const checkTime = () => {
-    if (e.app.now().getTime() - started >= timeout) throw TIMEOUT;
-  };
-  const checkpoint = () => {
-    if (signal.aborted) throw INTERRUPTED;
-    checkTime();
+  // PB stops processing on a timeout or a client disconnect, the transaction then fails with it
+  let stop: Error | null = null;
+  const timedOut = () => e.app.now().getTime() - started >= timeout;
+  const halted = (checkTime = true) => {
+    if (signal.aborted) stop ??= INTERRUPTED;
+    else if (checkTime && timedOut()) stop ??= TIMEOUT;
+    return stop !== null;
   };
   const interrupted = new Promise<never>((_, reject) => {
     if (signal.aborted) reject(INTERRUPTED);
@@ -339,6 +397,23 @@ async function batch(e: RequestEvent): Promise<Response> {
   const results: BatchResult[] = [];
   let failed = 0;
   let error: unknown = null;
+
+  // Port of PB batchProcessor.process: request i+1 runs from request i's finalizer, so later
+  // requests run inside the earlier request hooks and their errors come back through them.
+  const process = async (i: number): Promise<void> => {
+    const item = items[i];
+    if (!item || halted(i > 0)) return;
+    const result = await runItem(e, item, hashes, halted, async () => {
+      try {
+        await process(i + 1);
+      } catch (err) {
+        if (failed === 0) failed = i + 1;
+        throw nestedError(err);
+      }
+    });
+    if (result) results[i] = result;
+  };
+
   try {
     for (const item of items) {
       try {
@@ -347,23 +422,20 @@ async function batch(e: RequestEvent): Promise<Response> {
         break;
       }
       await prepare(e.app, item, hashes);
-      checkTime();
+      if (timedOut()) throw TIMEOUT;
       if (item.error) break;
     }
     await e.app.db.write(async () => {
-      for (const [i, item] of items.entries()) {
-        failed = i;
-        if (signal.aborted) throw INTERRUPTED;
-        const run = runItem(e.app, item, hashes, checkpoint);
-        try {
-          results.push(await Promise.race([run, interrupted]));
-        } catch (err) {
-          // an interrupted request finishes inside the transaction, so it is rolled back with it
-          await run.catch(() => {});
-          throw err;
-        }
-        checkTime();
+      const running = process(0);
+      try {
+        await Promise.race([running, interrupted]);
+      } catch (err) {
+        // an interrupted request finishes inside the transaction, so it is rolled back with it
+        await running.catch(() => {});
+        throw err;
       }
+      halted();
+      if (stop) throw stop;
     });
   } catch (err) {
     error = err;
@@ -376,7 +448,7 @@ async function batch(e: RequestEvent): Promise<Response> {
   if (error === TIMEOUT || error === INTERRUPTED)
     throw new ApiError(400, "Batch transaction failed.");
   if (error !== null) {
-    const response = responseError(error, failed);
+    const response = responseError(error);
     throw new ApiError(400, "Batch transaction failed.", {
       requests: {
         [failed]: {
@@ -391,25 +463,27 @@ async function batch(e: RequestEvent): Promise<Response> {
       },
     });
   }
-  return e.json(200, results);
+  e.json(200, results);
 }
 
 // One request inside the transaction: its checks come before its prepare error, like the route.
 async function runItem(
-  app: App,
+  e: RequestEvent,
   item: Item,
   hashes: Hashes,
-  checkpoint: () => void,
-): Promise<BatchResult> {
+  halted: () => boolean,
+  next: () => Promise<void>,
+): Promise<BatchResult | null> {
+  const app = e.app;
   if (!item.p) {
     check(app, item);
     if (!item.error) {
       await prepare(app, item, hashes);
-      checkpoint();
+      if (halted()) return null;
     }
   }
   if (item.error) throw item.error;
-  return write(app, item);
+  return write(e, item, next);
 }
 
 export function registerBatchRoutes(router: Router): void {

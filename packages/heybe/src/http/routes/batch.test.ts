@@ -198,9 +198,9 @@ describe("batch transaction", () => {
 describe("batch interruption", () => {
   test("client abort mid-batch rolls back", async () => {
     const controller = new AbortController();
-    const original = RecordServiceImpl.prototype.createPrepared;
-    spy(RecordServiceImpl.prototype, "createPrepared").mockImplementation(
-      function (this: RecordServiceImpl<any>, ...args: [any, any]) {
+    const original = RecordServiceImpl.prototype.savePrepared;
+    spy(RecordServiceImpl.prototype, "savePrepared").mockImplementation(
+      function (this: RecordServiceImpl<any>, ...args: [any, any, any]) {
         controller.abort();
         return original.apply(this, args);
       },
@@ -259,7 +259,7 @@ describe("requests prepared inside the transaction", () => {
       if (++calls === 2) controller.abort();
       return original.apply(this, args);
     });
-    const update = spy(RecordServiceImpl.prototype, "updatePrepared");
+    const save = spy(RecordServiceImpl.prototype, "savePrepared");
     const res = await batch(
       { requests: [createItem, updateItem] },
       undefined,
@@ -269,7 +269,7 @@ describe("requests prepared inside the transaction", () => {
       status: 400,
       body: { message: "Batch transaction failed.", data: {} },
     });
-    expect(update).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1);
     expect(itemIds()).toEqual([]);
   });
 
@@ -375,5 +375,31 @@ describe("update route old password", () => {
     expect(res.status).toBe(400);
     expect(res.body.data.password.code).toBe("validation_required");
     expect(verify).not.toHaveBeenCalled();
+  });
+});
+
+describe("batch request hooks", () => {
+  test("later requests run inside the earlier request hooks", async () => {
+    const log: string[] = [];
+    app.onRecordCreateRequest("notes", async (e) => {
+      const title = e.record.get("title");
+      log.push(`before ${title}`);
+      try {
+        await e.next();
+        log.push(`after ${title}`);
+      } catch (err) {
+        log.push(`${title} saw ${toApiError(err).status}`);
+        throw err;
+      }
+    });
+    const ok = await batch({ requests: [create("a"), create("b")] });
+    expect(ok.body.map((r: any) => r.body.title)).toEqual(["a", "b"]);
+    expect(log).toEqual(["before a", "before b", "after b", "after a"]);
+
+    log.length = 0;
+    const failed = await batch({ requests: [create("c"), create("")] });
+    expect(Object.keys(failed.body.data.requests)).toEqual(["1"]);
+    expect(log).toEqual(["before c", "before ", " saw 400", "c saw 400"]);
+    expect(titles()).toEqual(["a", "b"]);
   });
 });

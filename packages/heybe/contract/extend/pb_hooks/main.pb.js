@@ -72,3 +72,99 @@ onRecordAfterCreateSuccess((e) => {
   e.app.save(audit);
   e.next();
 }, "hooked");
+
+onRecordCreateRequest((e) => {
+  const title = e.record.getString("title");
+  if (title === "skip") return;
+  if (title === "fail") throw new BadRequestError("Rejected.");
+  if (title === "moved") e.record.set("id", "itemmoved000001");
+  e.record.set("title", title.toUpperCase());
+  e.next();
+}, "req_items");
+
+onRecordUpdateRequest((e) => {
+  const title = e.record.getString("title");
+  if (title === "skip") return;
+  if (title === "fail") throw new BadRequestError("Rejected.");
+  e.next();
+}, "req_items");
+
+onRecordUpdateRequest((e) => {
+  if (e.record.getString("name") === "verify") e.record.set("verified", true);
+  e.next();
+}, "users");
+
+onRecordViewRequest((e) => {
+  if (e.record.getString("title") === "CUSTOM")
+    return e.json(200, { custom: true, title: e.record.getString("title") });
+  e.next();
+}, "req_items");
+
+onRecordsListRequest((e) => {
+  e.result.items = e.records.filter((r) => r.getString("title") !== "DROP");
+  e.next();
+}, "req_items");
+
+onRecordDeleteRequest((e) => {
+  if (e.record.getString("title") === "PROTECTED")
+    throw new ForbiddenError("Protected.");
+  e.next();
+}, "req_items");
+
+onRecordEnrich(
+  (e) => {
+    e.next();
+    e.record.hide("secret");
+    e.record.withCustomData(true);
+    e.record.set("label", "enriched " + e.record.collection().name);
+  },
+  "req_items",
+  "req_tags",
+);
+
+onCollectionCreateRequest((e) => {
+  if (e.collection.name.startsWith("blocked_"))
+    throw new BadRequestError("Blocked name.");
+  e.next();
+});
+
+onCollectionViewRequest((e) => {
+  if (e.collection.name === "req_members")
+    return e.json(200, { wrapped: e.collection });
+  e.next();
+});
+
+onCollectionsListRequest((e) => {
+  if (e.requestInfo().query["nosystem"])
+    e.result.items = e.collections.filter((c) => !c.system);
+  e.next();
+});
+
+onCollectionUpdateRequest((e) => {
+  if (e.collection.name === "req_locked") throw new BadRequestError("Locked.");
+  e.next();
+});
+
+onCollectionDeleteRequest((e) => {
+  if (e.collection.name === "req_locked") throw new ForbiddenError("Locked.");
+  e.next();
+});
+
+onCollectionsImportRequest((e) => {
+  if (e.deleteMissing) throw new BadRequestError("No deleteMissing imports.");
+  e.next();
+});
+
+onBatchRequest((e) => {
+  if (e.batch.length > 2) throw new BadRequestError("Too many requests.");
+  e.next();
+});
+
+onFileDownloadRequest((e) => {
+  e.servedName = "renamed.txt";
+  e.next();
+}, "req_items");
+
+onFileTokenRequest((e) => {
+  throw new ForbiddenError("No file tokens for users.");
+}, "users");
