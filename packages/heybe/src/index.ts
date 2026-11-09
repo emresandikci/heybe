@@ -56,6 +56,7 @@ export type {
   RouteAction,
   RouteHandle,
 } from "./http/router";
+export { LOCAL_BACKUPS_DIR, LOCAL_TEMP_DIR } from "./backups/create";
 export { importCollections } from "./collections/import";
 export { LogLevel } from "./logs/logger";
 export type { Logger } from "./logs/logger";

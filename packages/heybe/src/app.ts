@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CollectionName, Collections } from "@heybe/query";
@@ -7,6 +8,9 @@ import { migrateCommand } from "./commands/migrate";
 import { serveCommand } from "./commands/serve";
 import { superuserCommand } from "./commands/superuser";
 import { typegenCommand } from "./commands/typegen";
+import { registerAutoBackup } from "./backups/auto";
+import { LOCAL_TEMP_DIR, createBackup } from "./backups/create";
+import { restoreBackup } from "./backups/restore";
 import { CollectionStore } from "./collections/store";
 import { CronScheduler } from "./cron/scheduler";
 import { registerCronJobs } from "./cron/system";
@@ -56,6 +60,11 @@ export interface AppOptions {
   now?: () => Date;
   timers?: Timers;
   argv?: string[];
+  execve?: (
+    path: string,
+    args: string[],
+    env: Record<string, string | undefined>,
+  ) => void;
 }
 
 export type CommandHandler = (args: string[], app: App) => unknown;
@@ -105,6 +114,12 @@ export interface App extends HookBinders, RouterMethods {
   records(name: string): RecordService<Record<string, unknown>>;
   bootstrap(): Promise<void>;
   terminate(isRestart?: boolean): Promise<void>;
+  // PB Restart: re-executes the process; a failed execve bootstraps the app again and rethrows
+  restart(): Promise<void>;
+  createBackup(name?: string): Promise<void>;
+  restoreBackup(name: string): Promise<void>;
+  // the name of the running backup or restore (PB store key "@activeBackup")
+  readonly activeBackup: string | null;
   command(
     name: string,
     run: CommandHandler,
@@ -234,18 +249,72 @@ export function createApp(opts: AppOptions = {}): App {
   let cronCount = 0;
   let closed = false;
   let bootstrapped = false;
+  let activeBackup: string | null = null;
+  const execve = opts.execve ?? ((...args) => process.execve!(...args));
 
-  // PB app.ClearBootstrap
-  const clearBootstrap = async () => {
+  // PB app.ClearBootstrap; a restart keeps the handles open until execve
+  const clearBootstrap = async (close = true) => {
     if (!bootstrapped) return;
     await hooks.onBootstrapClear.trigger(
       BootstrapEvent.of({ app }),
       async () => {
-        if (!closed) await db.write(() => {});
         bootstrapped = false;
-        app.close();
+        if (!closed) await db.write(() => {});
+        if (close) app.close();
       },
     );
+  };
+
+  // A failed restart bootstraps again without removing the temp dir, which holds the data a
+  // failed restore moves back.
+  const bootstrap = async (removeTemp: boolean) => {
+    if (bootstrapped) return;
+    bootstrapped = true;
+    await hooks.onBootstrap.trigger(BootstrapEvent.of({ app }), async () => {
+      await settings.reload();
+      if (removeTemp)
+        await rm(join(dataDir, LOCAL_TEMP_DIR), {
+          recursive: true,
+          force: true,
+        });
+    });
+  };
+
+  // `revert` runs before the bootstrap that follows a failed execve
+  const restart = async (revert?: () => Promise<void>) => {
+    if (process.platform === "win32")
+      throw new Error("restart is not supported on windows");
+    await hooks.onTerminate.trigger(
+      TerminateEvent.of({ app, isRestart: true }),
+      async () => {
+        await clearBootstrap(false).catch(() => {});
+        try {
+          execve(process.execPath, process.argv, process.env);
+        } catch (err) {
+          await revert?.();
+          await bootstrap(false).catch((error) =>
+            app.logger.error(
+              "Failed to rebootstrap the application after failed app.Restart()",
+              { error },
+            ),
+          );
+          throw err;
+        }
+      },
+    );
+  };
+
+  const backupOperation = async (name: string, run: () => Promise<void>) => {
+    if (activeBackup !== null)
+      throw new Error(
+        "try again later - another backup/restore operation has already been started",
+      );
+    activeBackup = name;
+    try {
+      await run();
+    } finally {
+      activeBackup = null;
+    }
   };
 
   const app = {
@@ -292,17 +361,19 @@ export function createApp(opts: AppOptions = {}): App {
         delete: (id) => r.delete(id),
       };
     },
-    bootstrap: async () => {
-      if (bootstrapped) return;
-      bootstrapped = true;
-      await hooks.onBootstrap.trigger(BootstrapEvent.of({ app }), () =>
-        settings.reload(),
-      );
-    },
+    bootstrap: () => bootstrap(true),
     terminate: (isRestart = false) =>
       hooks.onTerminate.trigger(TerminateEvent.of({ app, isRestart }), () =>
         clearBootstrap(),
       ),
+    restart: () => restart(),
+    createBackup: (name = "") =>
+      backupOperation(name, () => createBackup(app, name)),
+    restoreBackup: (name) =>
+      backupOperation(name, () => restoreBackup(app, name, restart)),
+    get activeBackup() {
+      return activeBackup;
+    },
     command: (name, run, opts) => {
       if (commands.has(name))
         throw new Error(`Command "${name}" is already registered`);
@@ -401,6 +472,7 @@ export function createApp(opts: AppOptions = {}): App {
   registerSystemHooks(app);
   registerRealtimeHooks(app);
   registerCronJobs(app);
+  registerAutoBackup(app);
 
   app.command("serve", serveCommand, { description: "Starts the web server" });
   app.command("superuser", superuserCommand, {

@@ -10,7 +10,7 @@ import {
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type App, createApp } from "../app";
+import { type App, type AppOptions, createApp } from "../app";
 import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
 import { superuserCommand } from "./superuser";
@@ -318,10 +318,14 @@ describe("lifecycle", () => {
     expect(await failure()).toStartWith("usage: superuser");
   });
 
-  const startServe = async (clock = fakeClock()) => {
+  const startServe = async (
+    clock = fakeClock(),
+    execve?: AppOptions["execve"],
+  ) => {
     const cli = testApp({
       timers: clock.timers,
       argv: ["serve", "--http", "127.0.0.1:0"],
+      execve,
     });
     let url = "";
     const started = new Promise<void>((resolve) => {
@@ -364,6 +368,17 @@ describe("lifecycle", () => {
     expect(s.events).toEqual(["handler:down", "after"]);
     expect(warn).not.toHaveBeenCalled();
     expect(await s.up()).toBe("down");
+  });
+
+  test("a restart whose execve fails ends serve, like PB", async () => {
+    const warn = spyOn(console, "warn");
+    const s = await startServe(fakeClock(), () => {
+      throw new Error("boom");
+    });
+    await expect(s.cli.restart()).rejects.toThrow("boom");
+    expect(await s.done).toBe(0);
+    expect(await s.up()).toBe("down");
+    expect(warn).not.toHaveBeenCalled();
   });
 
   test("an in-flight request finishes before the server stops", async () => {

@@ -116,20 +116,28 @@ export const statementCacheSize = (db: Db): number => cacheSizes.get(db)!();
 
 const exclusives = new WeakMap<
   Db,
-  <T>(fn: (sqlite: Database) => T) => Promise<T>
+  (fn: (sqlite: Database) => unknown) => Promise<unknown>
 >();
 
 // For statements that cannot run in a transaction, like VACUUM: waits for the write mutex and
-// hands over the writer's raw handle, no transaction is opened.
-export const exclusive = <T>(db: Db, fn: (sqlite: Database) => T): Promise<T> =>
-  exclusives.get(db)!(fn);
+// hands over the writer's raw handle, no transaction is opened. An async fn holds the mutex until it settles.
+export const exclusive = <T>(
+  db: Db,
+  fn: (sqlite: Database) => T,
+): Promise<Awaited<T>> => exclusives.get(db)!(fn) as Promise<Awaited<T>>;
+
+const reopens = new WeakMap<Db, () => void>();
+
+// Opens the connections again, for db files that were renamed while open: macOS system SQLite fails
+// every later call on such a connection, even after the file is moved back. Call it holding `exclusive`.
+export const reopen = (db: Db): void => reopens.get(db)!();
 
 // One writer connection behind a FIFO mutex and a query_only reader connection. Inside `write`
 // (tracked with AsyncLocalStorage) every query goes to the writer; elsewhere reads see only
 // committed data.
 export function openDb(path: string, busyTimeoutMs = 10_000): Db {
-  const writer = connection(path, false, busyTimeoutMs);
-  const reader = connection(path, true, busyTimeoutMs);
+  let writer = connection(path, false, busyTimeoutMs);
+  let reader = connection(path, true, busyTimeoutMs);
   const mutex = fifoLock();
   const als = new AsyncLocalStorage<Context>();
   let syncDepth = 0;
@@ -302,11 +310,17 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
     },
   };
   cacheSizes.set(db, () => writer.cache.size + reader.cache.size);
+  reopens.set(db, () => {
+    reader.close();
+    writer.close();
+    writer = connection(path, false, busyTimeoutMs);
+    reader = connection(path, true, busyTimeoutMs);
+  });
   exclusives.set(db, async (fn) => {
     if (onWriter()) throw new Error("heybe: exclusive inside db.write");
     await mutex.acquire();
     try {
-      return fn(writer.sqlite);
+      return await fn(writer.sqlite);
     } finally {
       mutex.release();
     }

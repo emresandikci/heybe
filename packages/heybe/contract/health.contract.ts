@@ -18,6 +18,20 @@ describe("health", () => {
     expectSame(pb, hb);
   });
 
+  test.each<Record<string, string>>([{}, { "X-Forwarded-For": "5.5.5.5" }])(
+    "superuser GET /api/health with %p",
+    async (headers) => {
+      const [pb, hb] = await both((t) =>
+        fetch(`${t.url}/api/health`, {
+          headers: { ...headers, authorization: t.superToken },
+        }),
+      );
+      expect(pb.status).toBe(200);
+      expect((pb.body as any).data.canBackup).toBe(true);
+      expectSame(pb, hb);
+    },
+  );
+
   test("GET /api/nope returns the same 404", async () => {
     const [pb, hb] = await both((t) => fetch(`${t.url}/api/nope`));
     expect(pb.status).toBe(404);

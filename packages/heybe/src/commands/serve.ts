@@ -29,11 +29,14 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   const installer = runInstaller(app, server.url).catch((error) =>
     app.logger.warn("Failed to initialize installer", { error }),
   );
+  // a terminate without a signal, like a restart whose execve failed, also ends serve
+  const terminated = Promise.withResolvers<void>();
   app.onTerminate(
     async (e) => {
       for (const client of app.realtime.clients()) client.discard();
       await server.stop().catch((err) => console.warn("Failed to stop", err));
       await installer;
+      terminated.resolve();
       await e.next();
     },
     { id: "pbGracefulShutdown", priority: -9999 },
@@ -46,5 +49,6 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
     };
     process.on("SIGINT", onSignal);
     process.on("SIGTERM", onSignal);
+    void terminated.promise.then(onSignal);
   });
 }

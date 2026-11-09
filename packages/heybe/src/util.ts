@@ -24,6 +24,9 @@ export function randomSecret(length = 50): string {
   return randomString(length, SECRET_ALPHABET);
 }
 
+export const errorMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 export function formatDate(d: Date): string {
   return d.toISOString().replace("T", " ");
 }

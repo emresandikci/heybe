@@ -191,6 +191,12 @@ export function createLogger(app: App): Logger & { stop(): void } {
     },
   };
 
+  // a failed restart bootstraps the app again
+  app.onBootstrap((e) => {
+    stopped = false;
+    return e.next();
+  });
+
   app.onBootstrapClear(
     async (e) => {
       await logger.flush();
