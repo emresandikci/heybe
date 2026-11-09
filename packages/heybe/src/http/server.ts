@@ -13,6 +13,7 @@ import {
 } from "./middlewares";
 import { rateLimit } from "./rate-limit";
 import { type Mux, Router, createEvent } from "./router";
+import { registerBackupRoutes } from "./routes/backups";
 import { registerBatchRoutes } from "./routes/batch";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerCronRoutes } from "./routes/crons";
@@ -68,6 +69,7 @@ export function createRouter(): Router {
   registerSettingsRoutes(router);
   registerLogsRoutes(router);
   registerSqlRoutes(router);
+  registerBackupRoutes(router);
   return router;
 }
 

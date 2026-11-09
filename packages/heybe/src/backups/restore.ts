@@ -116,6 +116,8 @@ export async function restoreBackup(
       checkDataDb(join(extracted, "data.db"));
 
       const old = join(tempDir, `old_pb_data_${randomSecret(8)}`);
+      // queued entries would otherwise hit the moved auxiliary.db on the restart flush
+      await e.app.logger.flush();
       await swap(e.app, () => {
         try {
           moveDirContent(dataDir, old, e.exclude);

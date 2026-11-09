@@ -3,7 +3,7 @@ import type { Collection } from "../../collections/model";
 import { findRecordByViewFile } from "../../collections/view";
 import { uniqueStrings } from "../../fields/shared";
 import { sniffMime } from "../../files/mime";
-import { type StoredFile, fileKey } from "../../files/storage";
+import { type Filesystem, type StoredFile, fileKey } from "../../files/storage";
 import { createThumb, thumbGenerator } from "../../files/thumbs";
 import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
@@ -15,6 +15,7 @@ import {
   FileTokenRequestEvent,
 } from "../../hooks/events";
 import { RecordModel } from "../../records/model";
+import { NotFoundError } from "../../util";
 import { internalRecords } from "../../records/internal";
 
 const INLINE_TYPES = new Set([
@@ -217,14 +218,28 @@ async function serve(
   e: RequestEvent,
   { servedPath, servedName }: { servedPath: string; servedName: string },
 ): Promise<void> {
-  const file = await readFile(e, servedPath);
-  if (!file) throw new ApiError(404, "");
+  try {
+    await serveStoredFile(e, e.app.files, servedPath, servedName);
+  } catch {
+    throw new ApiError(404, "");
+  }
+}
+
+// Port of PB filesystem.Serve
+export async function serveStoredFile(
+  e: RequestEvent,
+  fs: Filesystem,
+  key: string,
+  name: string,
+): Promise<void> {
+  const file = await fs.file(key);
+  if (!file) throw new NotFoundError();
   const type = await sniffMime(file.blob);
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
   const headers = new Headers({
-    "content-disposition": `${inline ? "inline" : "attachment"}; filename=${JSON.stringify(servedName)}`,
-    "content-type": EXTENSION_TYPES[extensionOf(servedName)] ?? type,
+    "content-disposition": `${inline ? "inline" : "attachment"}; filename=${JSON.stringify(name)}`,
+    "content-type": EXTENSION_TYPES[extensionOf(key)] ?? type,
     "content-security-policy":
       "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "max-age=2592000, stale-while-revalidate=86400",
