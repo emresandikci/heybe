@@ -55,7 +55,7 @@ function fifoLock(): Lock {
   };
 }
 
-function connection(path: string, readonly: boolean, busyTimeoutMs: number) {
+function openSqlite(path: string, busyTimeoutMs: number): Database {
   const sqlite = new Database(path, { create: true, strict: true });
   sqlite.run("PRAGMA journal_mode = WAL");
   sqlite.run(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
@@ -63,6 +63,20 @@ function connection(path: string, readonly: boolean, busyTimeoutMs: number) {
   sqlite.run("PRAGMA synchronous = NORMAL");
   // macOS system SQLite defaults to legacy mode, where renames skip views and dropping a column a view reads is allowed
   sqlite.run("PRAGMA legacy_alter_table = OFF");
+  return sqlite;
+}
+
+// A short-lived connection to the same file with the same pragmas, for SQL that may leave
+// connection state behind (an open BEGIN, PRAGMA query_only). The caller closes it.
+export function openSibling(sqlite: Database): Database {
+  const { timeout } = sqlite
+    .query<{ timeout: number }, []>("PRAGMA busy_timeout")
+    .get()!;
+  return openSqlite(sqlite.filename, timeout);
+}
+
+function connection(path: string, readonly: boolean, busyTimeoutMs: number) {
+  const sqlite = openSqlite(path, busyTimeoutMs);
   if (readonly) sqlite.run("PRAGMA query_only = ON");
 
   const cache = new Map<string, Statement>();
@@ -100,11 +114,15 @@ const cacheSizes = new WeakMap<Db, () => number>();
 
 export const statementCacheSize = (db: Db): number => cacheSizes.get(db)!();
 
-const exclusives = new WeakMap<Db, (sql: string) => Promise<void>>();
+const exclusives = new WeakMap<
+  Db,
+  <T>(fn: (sqlite: Database) => T) => Promise<T>
+>();
 
-// For statements that cannot run in a transaction, like PRAGMA wal_checkpoint: waits for the writer.
-export const runExclusive = (db: Db, sql: string): Promise<void> =>
-  exclusives.get(db)!(sql);
+// For statements that cannot run in a transaction, like VACUUM: waits for the write mutex and
+// hands over the writer's raw handle, no transaction is opened.
+export const exclusive = <T>(db: Db, fn: (sqlite: Database) => T): Promise<T> =>
+  exclusives.get(db)!(fn);
 
 // One writer connection behind a FIFO mutex and a query_only reader connection. Inside `write`
 // (tracked with AsyncLocalStorage) every query goes to the writer; elsewhere reads see only
@@ -284,11 +302,11 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
     },
   };
   cacheSizes.set(db, () => writer.cache.size + reader.cache.size);
-  exclusives.set(db, async (sql) => {
-    if (onWriter()) throw new Error("heybe: runExclusive inside db.write");
+  exclusives.set(db, async (fn) => {
+    if (onWriter()) throw new Error("heybe: exclusive inside db.write");
     await mutex.acquire();
     try {
-      exec(sql);
+      return fn(writer.sqlite);
     } finally {
       mutex.release();
     }

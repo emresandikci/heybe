@@ -1,5 +1,5 @@
 import type { App } from "../../app";
-import { runExclusive } from "../../db";
+import { exclusive } from "../../db";
 import { type SimpleFields, compileSimpleQuery } from "../../filter/simple";
 import { requireSuperuserAuth, skipSuccessActivityLog } from "../middlewares";
 import { checkFilterAndSortLimits, parseListQuery } from "../list-query";
@@ -105,7 +105,7 @@ async function truncate(app: App, e: RequestEvent) {
     throw e.internalServerError("Failed to truncate all logs.");
   }
   try {
-    await runExclusive(app.auxDb, "VACUUM");
+    await exclusive(app.auxDb, (s) => s.run("VACUUM"));
   } catch (error) {
     app.logger.warn("Failed to VACUUM aux database", { error });
   }

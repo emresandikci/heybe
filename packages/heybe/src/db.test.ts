@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { statementCacheSize } from "./db";
+import { exclusive, statementCacheSize } from "./db";
 import { tempDb } from "./test-db";
 
 const deferred = () => Promise.withResolvers<void>();
@@ -329,5 +329,28 @@ test("tx outside write throws while a write is open", async () => {
   expect(db.committed(() => ids(db))).toEqual([]);
   gate.resolve();
   await writing;
+  db.close();
+});
+
+test("exclusive waits for an open write and runs outside a transaction", async () => {
+  const db = withTable();
+  const release = deferred();
+  const order: string[] = [];
+  const write = db.write(async () => {
+    db.run("INSERT INTO t (id) VALUES (1)");
+    await release.promise;
+    order.push("write");
+  });
+  const done = exclusive(db, (sqlite) => {
+    order.push(sqlite.inTransaction ? "in transaction" : "exclusive");
+    sqlite.run("VACUUM");
+    return ids(db);
+  });
+  await Promise.resolve();
+  expect(order).toEqual([]);
+  release.resolve();
+  await write;
+  expect(await done).toEqual([1]);
+  expect(order).toEqual(["write", "exclusive"]);
   db.close();
 });

@@ -24,6 +24,7 @@ import { registerRecordAuthFlowRoutes } from "./routes/record-auth-flows";
 import { registerRecordAuthOAuth2Routes } from "./routes/record-auth-oauth2";
 import { registerRecordRoutes } from "./routes/records";
 import { registerSettingsRoutes } from "./routes/settings";
+import { registerSqlRoutes } from "./routes/sql";
 
 const SHUTDOWN_TIMEOUT = 1000;
 
@@ -64,6 +65,7 @@ export function createRouter(): Router {
   registerBatchRoutes(router);
   registerSettingsRoutes(router);
   registerLogsRoutes(router);
+  registerSqlRoutes(router);
   return router;
 }
 

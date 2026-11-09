@@ -1,5 +1,5 @@
 import type { App } from "../app";
-import { runExclusive } from "../db";
+import { exclusive } from "../db";
 import { formatDate, newId } from "../util";
 
 // Port of PB core/base.go initLogger, core/log_model.go, core/log_printer.go and tools/logger/batch_handler.go.
@@ -216,7 +216,7 @@ export function createLogger(app: App): Logger & { stop(): void } {
       }
       if (maxDays !== 0) return;
       try {
-        await runExclusive(app.auxDb, "VACUUM");
+        await exclusive(app.auxDb, (s) => s.run("VACUUM"));
       } catch (error) {
         app.logger.debug("Failed to VACUUM aux database", { error });
       }
