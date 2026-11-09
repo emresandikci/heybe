@@ -346,6 +346,27 @@ function bindOTPHooks(app: App) {
   );
 }
 
+// PB core/settings_model.go: rate limit rules of a renamed collection follow its new name
+function bindSettingsHooks(app: App) {
+  app.hooks.onCollectionUpdate.bind(
+    async (e) => {
+      const oldName = e.app.collections.find(e.collection.id)?.name;
+      await e.next();
+      if (oldName === undefined || oldName === e.collection.name) return;
+      const prefix = `${oldName}:`;
+      const settings = e.app.settings.get();
+      const renamed = settings.rateLimits.rules.filter((r) =>
+        r.label.startsWith(prefix),
+      );
+      if (renamed.length === 0) return;
+      for (const r of renamed)
+        r.label = `${e.collection.name}:${r.label.slice(prefix.length)}`;
+      await e.app.settings.save(settings);
+    },
+    { id: "__pbSettingsSystemHook__", priority: 99 },
+  );
+}
+
 // PB core/base.go registerBaseHooks order
 export function registerSystemHooks(app: App): void {
   bindBridge(app, "Collection");
@@ -357,4 +378,5 @@ export function registerSystemHooks(app: App): void {
   bindPasswordChangeHook(app, "_mfas", false);
   bindOTPHooks(app);
   bindPasswordChangeHook(app, "_authOrigins", true);
+  bindSettingsHooks(app);
 }

@@ -63,6 +63,7 @@ export class RequestEvent extends HookEvent {
       ...re.state,
       req,
       params,
+      pattern: "",
       query: new URL(req.url).searchParams,
       response: null,
       responseHeaders: new Headers(),

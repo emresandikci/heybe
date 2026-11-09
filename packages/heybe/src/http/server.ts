@@ -11,6 +11,7 @@ import {
   securityHeaders,
   superuserIPsWhitelist,
 } from "./middlewares";
+import { rateLimit } from "./rate-limit";
 import { type Mux, Router, createEvent } from "./router";
 import { registerBatchRoutes } from "./routes/batch";
 import { registerCollectionRoutes } from "./routes/collections";
@@ -42,7 +43,7 @@ export function parseHttpAddr(addr: string): { host: string; port: number } {
   return { host: host.replace(/^\[(.*)\]$/, "$1"), port };
 }
 
-// Port of PB apis.NewRouter (the rate limit comes with Task 7).
+// Port of PB apis.NewRouter.
 export function createRouter(): Router {
   const router = new Router();
   router.use(
@@ -51,6 +52,7 @@ export function createRouter(): Router {
     loadAuthToken(),
     superuserIPsWhitelist(),
     securityHeaders(),
+    rateLimit(),
     bodyLimit(DEFAULT_MAX_BODY_SIZE),
   );
   registerHealthRoutes(router);

@@ -144,6 +144,9 @@ describe("auth-with-otp", () => {
       await post("auth-with-otp", { otpId, password: "x" });
     const limited = await post("auth-with-otp", { otpId, password: code });
     expect(limited.status).toBe(429);
+    expect(((await limited.json()) as { message: string }).message).toBe(
+      "Too many attempts, please try again later with a new OTP.",
+    );
     advance(180);
     expect(
       (await post("auth-with-otp", { otpId, password: code })).status,

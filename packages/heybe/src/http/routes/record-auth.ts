@@ -20,6 +20,7 @@ import {
 } from "../../hooks/events";
 import { ValidationError } from "../../util";
 import { ApiError } from "../errors";
+import { collectionPathRateLimit } from "../rate-limit";
 import type { RequestEvent, Router } from "../router";
 import { internalRecords } from "../../records/internal";
 import { enrichExpanded, triggerEnrich } from "./records";
@@ -282,33 +283,38 @@ export async function authResponse(
 }
 
 export function registerRecordAuthRoutes(router: Router): void {
-  router.route("GET", "/api/collections/{collection}/auth-methods", (e) => {
-    const c = findAuthCollection(e);
-    const password = c.passwordAuth as PasswordAuth;
-    const otp = c.otp as { enabled: boolean; duration: number };
-    const mfa = c.mfa as { enabled: boolean; duration: number };
-    const emailPassword =
-      password.enabled && password.identityFields.includes("email");
-    const usernamePassword =
-      password.enabled && password.identityFields.includes("username");
-    const oauth2 = (c.oauth2 as { enabled: boolean }).enabled;
-    const providers = oauth2 ? authMethodsProviders(c) : [];
-    return e.json(200, {
-      password: {
-        identityFields: password.enabled ? password.identityFields : [],
-        enabled: password.enabled,
-      },
-      oauth2: { providers, enabled: oauth2 },
-      mfa: { enabled: mfa.enabled, duration: mfa.enabled ? mfa.duration : 0 },
-      otp: {
-        enabled: otp.enabled,
-        duration: otp.enabled ? otp.duration : 0,
-      },
-      authProviders: providers.map((p) => ({ ...p, logo: "" })),
-      usernamePassword,
-      emailPassword,
-    });
-  });
+  router.route(
+    "GET",
+    "/api/collections/{collection}/auth-methods",
+    (e) => {
+      const c = findAuthCollection(e);
+      const password = c.passwordAuth as PasswordAuth;
+      const otp = c.otp as { enabled: boolean; duration: number };
+      const mfa = c.mfa as { enabled: boolean; duration: number };
+      const emailPassword =
+        password.enabled && password.identityFields.includes("email");
+      const usernamePassword =
+        password.enabled && password.identityFields.includes("username");
+      const oauth2 = (c.oauth2 as { enabled: boolean }).enabled;
+      const providers = oauth2 ? authMethodsProviders(c) : [];
+      return e.json(200, {
+        password: {
+          identityFields: password.enabled ? password.identityFields : [],
+          enabled: password.enabled,
+        },
+        oauth2: { providers, enabled: oauth2 },
+        mfa: { enabled: mfa.enabled, duration: mfa.enabled ? mfa.duration : 0 },
+        otp: {
+          enabled: otp.enabled,
+          duration: otp.enabled ? otp.duration : 0,
+        },
+        authProviders: providers.map((p) => ({ ...p, logo: "" })),
+        usernamePassword,
+        emailPassword,
+      });
+    },
+    collectionPathRateLimit("collection", "listAuthMethods"),
+  );
 
   router.route(
     "POST",
@@ -372,6 +378,7 @@ export function registerRecordAuthRoutes(router: Router): void {
       });
       await hook.trigger(event, (pe) => login(pe.record, pe.password));
     },
+    collectionPathRateLimit("collection", "authWithPassword", "auth"),
   );
 
   router.route(
@@ -414,5 +421,6 @@ export function registerRecordAuthRoutes(router: Router): void {
       });
       await hook.trigger(event, (re) => refresh(re.record));
     },
+    collectionPathRateLimit("collection", "authRefresh"),
   );
 }

@@ -8,6 +8,7 @@ import { createThumb, thumbGenerator } from "../../files/thumbs";
 import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
 import { checkSuperuserIp } from "../middlewares";
+import { collectionPathRateLimit } from "../rate-limit";
 import type { RequestEvent, Router } from "../router";
 import {
   FileDownloadRequestEvent,
@@ -387,5 +388,6 @@ export function registerFileRoutes(router: Router): void {
     "GET",
     "/api/files/{collection}/{recordId}/{filename}",
     download,
+    collectionPathRateLimit("collection", "file"),
   );
 }

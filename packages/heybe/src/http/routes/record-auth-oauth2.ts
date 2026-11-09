@@ -11,6 +11,7 @@ import { buildRequestInfo } from "../../records/rules";
 import { valuesOf } from "../../records/service";
 import { ApiError } from "../errors";
 import { skipSuccessActivityLog } from "../middlewares";
+import { collectionPathRateLimit } from "../rate-limit";
 import type { RequestEvent, Router } from "../router";
 import { authResponse, findAuthCollection } from "./record-auth";
 
@@ -189,5 +190,6 @@ export function registerRecordAuthOAuth2Routes(router: Router): void {
     "POST",
     "/api/collections/{collection}/auth-with-oauth2",
     authWithOAuth2Route,
+    collectionPathRateLimit("collection", "authWithOAuth2", "auth"),
   );
 }

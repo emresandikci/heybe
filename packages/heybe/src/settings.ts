@@ -24,6 +24,27 @@ export interface RateLimitRule {
   maxRequests: number;
 }
 
+// Port of PB RateLimitsConfig.FindRateLimitRule: direct matches over the labels in order, prefix
+// rules (ending in "/") collected on the first label, an empty audiences list allows any audience.
+export function findRateLimitRule(
+  c: SettingsData["rateLimits"],
+  labels: string[],
+  audiences: string[] = [],
+): RateLimitRule | null {
+  const allowed = (r: RateLimitRule) =>
+    audiences.length === 0 || audiences.includes(r.audience);
+  const prefixRules: RateLimitRule[] = [];
+  for (const [i, label] of labels.entries()) {
+    for (const r of c.rules) {
+      if (label === r.label && allowed(r)) return r;
+      if (i === 0 && r.label.endsWith("/")) prefixRules.push(r);
+    }
+    for (const r of prefixRules)
+      if (`${label}/`.startsWith(r.label) && allowed(r)) return r;
+  }
+  return null;
+}
+
 export interface S3Config {
   enabled: boolean;
   bucket: string;

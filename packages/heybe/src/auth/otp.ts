@@ -9,9 +9,6 @@ type Values = Record<string, unknown>;
 const DIGITS = "0123456789";
 // PB creates a new OTP per request but reuses the latest one after this many unexpired ones
 const MAX_RECENT = 9;
-const ATTEMPTS = 5;
-const ATTEMPT_WINDOW_MS = 180 * 1000;
-const PRUNE_AT = 10_000;
 
 const otpOptions = (c: Collection) =>
   c.otp as { enabled: boolean; duration: number; length: number };
@@ -91,33 +88,4 @@ export async function deleteExpiredOtps(app: App, c: Collection) {
       formatDate(oldest),
     ]),
   );
-}
-
-// PB limits OTP guesses per record and client IP, since the codes are short digit strings.
-const attempts = new WeakMap<
-  App,
-  Map<string, { start: number; left: number }>
->();
-
-export function consumeOtpAttempt(
-  app: App,
-  record: Values,
-  ip: string,
-): boolean {
-  if (ip === "") return true;
-  let windows = attempts.get(app);
-  if (!windows) attempts.set(app, (windows = new Map()));
-  const now = app.now().getTime();
-  if (windows.size >= PRUNE_AT)
-    for (const [key, w] of windows)
-      if (now - w.start >= ATTEMPT_WINDOW_MS) windows.delete(key);
-  const key = `${record.id}|${ip}`;
-  let w = windows.get(key);
-  if (!w || now - w.start >= ATTEMPT_WINDOW_MS) {
-    w = { start: now, left: ATTEMPTS };
-    windows.set(key, w);
-  }
-  if (w.left === 0) return false;
-  w.left--;
-  return true;
 }

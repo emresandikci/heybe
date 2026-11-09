@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App } from "../app";
 import { testApp } from "../test-app";
 import {
-  consumeOtpAttempt,
   deleteExpiredOtps,
   generateOtpCode,
   hasExpired,
@@ -104,26 +103,5 @@ describe("issueOtp", () => {
     const reused = await issueOtp(app, users(), raw);
     expect(reused).toEqual({ id: last, code: null });
     expect(app.db.query("SELECT id FROM _otps")).toHaveLength(10);
-  });
-});
-
-describe("consumeOtpAttempt", () => {
-  const record = { id: "rec" };
-
-  test("allows 5 attempts per 180 seconds per record and ip", () => {
-    for (let i = 0; i < 5; i++)
-      expect(consumeOtpAttempt(app, record, "1.1.1.1")).toBe(true);
-    expect(consumeOtpAttempt(app, record, "1.1.1.1")).toBe(false);
-    expect(consumeOtpAttempt(app, record, "2.2.2.2")).toBe(true);
-    expect(consumeOtpAttempt(app, { id: "other" }, "1.1.1.1")).toBe(true);
-    advance(179);
-    expect(consumeOtpAttempt(app, record, "1.1.1.1")).toBe(false);
-    advance(1);
-    expect(consumeOtpAttempt(app, record, "1.1.1.1")).toBe(true);
-  });
-
-  test("an empty ip is not limited, as in PB", () => {
-    for (let i = 0; i < 20; i++)
-      expect(consumeOtpAttempt(app, record, "")).toBe(true);
   });
 });

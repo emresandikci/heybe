@@ -44,6 +44,12 @@ import {
   markListResult,
 } from "../router";
 import { checkFilterAndSortLimits, parseListQuery } from "../list-query";
+import {
+  RATE_LIMIT_ID,
+  checkCollectionRateLimit,
+  checkRateLimit,
+  randomizedThrottle,
+} from "../rate-limit";
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
@@ -467,8 +473,36 @@ export function updateChecks(
   return { data, original, access };
 }
 
+const LIST_TIMING_RULE = {
+  label: "",
+  audience: "",
+  maxRequests: 3,
+  duration: 3,
+};
+
+// PB recordsList: a randomized delay when a client keeps sending filtered searches that find
+// nothing, an extra guard against filter timing attacks.
+async function throttleEmptySearches(
+  e: RequestEvent,
+  c: Collection,
+  filter: string,
+  found: number,
+): Promise<void> {
+  if (e.hasSuperuserAuth() || !c.listRule || filter === "" || found > 0) return;
+  try {
+    checkRateLimit(e, `@pb_list_timing_check_${c.id}`, LIST_TIMING_RULE);
+  } catch {
+    e.app.logger.debug(
+      "Randomized throttle because of too many failed searches",
+      { collectionId: c.id },
+    );
+    await randomizedThrottle(e.app, 500);
+  }
+}
+
 async function list(e: RequestEvent): Promise<Response | void> {
   const c = findCollection(e);
+  checkCollectionRateLimit(e, c, "list");
   const info = await requestInfo(e);
   forbidUnlessSuperuser(info, c.listRule);
   checkClientFilterFields(info);
@@ -503,6 +537,7 @@ async function list(e: RequestEvent): Promise<Response | void> {
         expandPaths(info),
         info,
       );
+      await throttleEmptySearches(e, c, filter, items.length);
       return jsonResponse(200, {
         ...result,
         items: pickItems(items, q.fields),
@@ -522,12 +557,19 @@ async function list(e: RequestEvent): Promise<Response | void> {
   });
   await e.app.hooks.onRecordsListRequest.trigger(event, async (le) => {
     await enrichOrFail(le, le.records, "Failed to enrich records.");
+    await throttleEmptySearches(
+      le,
+      c,
+      info.query.filter ?? "",
+      le.records.length,
+    );
     le.json(200, le.result);
   });
 }
 
 async function view(e: RequestEvent): Promise<Response | void> {
   const c = findCollection(e);
+  checkCollectionRateLimit(e, c, "view");
   const id = e.params.id!;
   const info = await requestInfo(e);
   await checkRule(e.app, c, c.viewRule, "view", e, id);
@@ -560,6 +602,7 @@ async function prepareOrFail(
 
 async function create(e: RequestEvent): Promise<void> {
   const c = writable(e.app, e.params.collection!, BODY_LIMIT_MISSING);
+  checkCollectionRateLimit(e, c, "create");
   const info = await requestInfo(e);
   const { data, access } = createChecks(e.app, c, info);
   const p = await prepareOrFail(e.app, c, data, CREATE_FAILED);
@@ -570,6 +613,7 @@ async function create(e: RequestEvent): Promise<void> {
 
 async function update(e: RequestEvent): Promise<void> {
   const c = writable(e.app, e.params.collection!, BODY_LIMIT_MISSING);
+  checkCollectionRateLimit(e, c, "update");
   const id = e.params.id!;
   const info = await requestInfo(e);
   const { data, original, access } = updateChecks(e.app, c, id, info);
@@ -587,6 +631,7 @@ async function update(e: RequestEvent): Promise<void> {
 
 async function remove(e: RequestEvent): Promise<void> {
   const c = writable(e.app, e.params.collection!);
+  checkCollectionRateLimit(e, c, "delete");
   await deleteRecord(e, c, e.params.id!);
 }
 
@@ -717,6 +762,7 @@ export async function batchCreate(
   p: PreparedWrite,
   next: Finalizer,
 ): Promise<void> {
+  checkCollectionRateLimit(e, c, "create");
   const { data, access } = createChecks(e.app, c, await requestInfo(e));
   await createRecord(e, c, p, data, access, next);
 }
@@ -729,18 +775,30 @@ export async function batchUpdate(
   old: OldPassword | null,
   next: Finalizer,
 ): Promise<void> {
+  checkCollectionRateLimit(e, c, "update");
   const info = await requestInfo(e);
   const { data, original, access } = updateChecks(e.app, c, id, info);
   await updateRecord(e, c, p, data, original, access, old, next);
 }
 
-export const batchDelete = deleteRecord;
+export function batchDelete(
+  e: RequestEvent,
+  c: Collection,
+  id: string,
+  next?: Finalizer,
+): Promise<void> {
+  checkCollectionRateLimit(e, c, "delete");
+  return deleteRecord(e, c, id, next);
+}
 
 export function registerRecordRoutes(router: Router): void {
+  // the rate limit is checked in the handlers, since batches run them too (PB)
   const base = "/api/collections/{collection}/records";
-  router.route("GET", base, list);
-  router.route("GET", `${base}/{id}`, view);
-  router.route("POST", base, create, collectionBodyLimit);
-  router.route("PATCH", `${base}/{id}`, update, collectionBodyLimit);
-  router.route("DELETE", `${base}/{id}`, remove);
+  router.route("GET", base, list).unbind(RATE_LIMIT_ID);
+  router.route("GET", `${base}/{id}`, view).unbind(RATE_LIMIT_ID);
+  router.route("POST", base, create, collectionBodyLimit).unbind(RATE_LIMIT_ID);
+  router
+    .route("PATCH", `${base}/{id}`, update, collectionBodyLimit)
+    .unbind(RATE_LIMIT_ID);
+  router.route("DELETE", `${base}/{id}`, remove).unbind(RATE_LIMIT_ID);
 }

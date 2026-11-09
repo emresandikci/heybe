@@ -11,7 +11,6 @@ import {
 } from "../../auth/flows";
 import { decodeJwtClaims } from "../../auth/jwt";
 import {
-  consumeOtpAttempt,
   deleteExpiredOtps,
   deleteOtp,
   findOtp,
@@ -39,8 +38,8 @@ import {
 } from "../../hooks/events";
 import { NotFoundError, ValidationError, newId } from "../../util";
 import { ApiError, logUnexpected } from "../errors";
-import { realIp } from "../middlewares";
-import type { AuthState, RequestEvent, Router } from "../router";
+import { checkRateLimit, collectionPathRateLimit } from "../rate-limit";
+import type { AuthState, RequestEvent, RouteAction, Router } from "../router";
 import { requireSuperuser } from "./collections";
 import {
   authResponse,
@@ -78,6 +77,7 @@ const lengthError = (min: number, max: number): FieldIssue => ({
 });
 
 const noContent = () => new Response(null, { status: 204 });
+const OTP_ATTEMPTS = { label: "", audience: "", maxRequests: 5, duration: 180 };
 
 async function loadBody(e: RequestEvent): Promise<Values> {
   try {
@@ -548,11 +548,15 @@ async function authWithOtp(e: RequestEvent): Promise<void> {
     throw error;
   }
 
-  if (!consumeOtpAttempt(e.app, record, realIp(e.app, e.req, e.remoteIp)))
+  // OTPs are short digit strings, so an extra limit guards against enumeration (PB)
+  try {
+    checkRateLimit(e, `@pb_otp_${record.id}`, OTP_ATTEMPTS);
+  } catch {
     throw new ApiError(
       429,
       "Too many attempts, please try again later with a new OTP.",
     );
+  }
   if (!(await verifyPassword(otp.password, form.password))) throw invalid();
 
   const event = RecordAuthWithOTPRequestEvent.from(e, {
@@ -638,13 +642,28 @@ async function impersonate(e: RequestEvent): Promise<void> {
 
 export function registerRecordAuthFlowRoutes(router: Router): void {
   const base = "/api/collections/{collection}";
-  router.route("POST", `${base}/request-verification`, requestVerification);
-  router.route("POST", `${base}/confirm-verification`, confirmVerification);
-  router.route("POST", `${base}/request-password-reset`, requestPasswordReset);
-  router.route("POST", `${base}/confirm-password-reset`, confirmPasswordReset);
-  router.route("POST", `${base}/request-email-change`, requestEmailChange);
-  router.route("POST", `${base}/confirm-email-change`, confirmEmailChange);
-  router.route("POST", `${base}/request-otp`, requestOtp);
-  router.route("POST", `${base}/auth-with-otp`, authWithOtp);
+  const limited = (path: string, action: RouteAction, ...tags: string[]) =>
+    router.route(
+      "POST",
+      `${base}/${path}`,
+      action,
+      collectionPathRateLimit("collection", ...tags),
+    );
+  limited("request-verification", requestVerification, "requestVerification");
+  limited("confirm-verification", confirmVerification, "confirmVerification");
+  limited(
+    "request-password-reset",
+    requestPasswordReset,
+    "requestPasswordReset",
+  );
+  limited(
+    "confirm-password-reset",
+    confirmPasswordReset,
+    "confirmPasswordReset",
+  );
+  limited("request-email-change", requestEmailChange, "requestEmailChange");
+  limited("confirm-email-change", confirmEmailChange, "confirmEmailChange");
+  limited("request-otp", requestOtp, "requestOTP");
+  limited("auth-with-otp", authWithOtp, "authWithOTP", "auth");
   router.route("POST", `${base}/impersonate/{id}`, impersonate);
 }

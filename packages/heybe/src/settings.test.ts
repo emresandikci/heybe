@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App, createApp } from "./app";
 import { testApp } from "./test-app";
-import { SettingsLoadError } from "./settings";
+import {
+  type RateLimitRule,
+  SettingsLoadError,
+  findRateLimitRule,
+} from "./settings";
 
 let app: App;
 
@@ -273,5 +277,51 @@ describe("onSettingsReload", () => {
     ).rejects.toBe(failure);
     expect(seen).toEqual([]);
     expect(app.settings.get().meta.appName).toBe("Acme");
+  });
+});
+
+describe("findRateLimitRule (PB TestRateLimitsFindRateLimitRule)", () => {
+  const rule = (label: string, audience = ""): RateLimitRule => ({
+    label,
+    audience,
+    duration: 0,
+    maxRequests: 0,
+  });
+  const limits = {
+    enabled: true,
+    excludedIPs: [],
+    rules: [
+      rule("abc"),
+      rule("def", "@guest"),
+      rule("/test/a", "@guest"),
+      rule("POST /test/a"),
+      rule("/test/a/", "@auth"),
+      rule("POST /test/a/"),
+    ],
+  };
+
+  test.each([
+    [[], [], ""],
+    [["missing"], [], ""],
+    [["abc"], [], "abc"],
+    [["abc"], ["@guest"], ""],
+    [["abc"], ["@auth"], ""],
+    [["def"], ["@guest"], "def"],
+    [["def"], ["@auth"], ""],
+    [["/test"], [], ""],
+    [["/test/a"], [], "/test/a"],
+    [["/test/a"], ["@auth"], "/test/a/"],
+    [["/test/a"], ["@guest"], "/test/a"],
+    [["GET /test/a"], [], ""],
+    [["POST /test/a"], [], "POST /test/a"],
+    [["/test/a/b/c"], [], "/test/a/"],
+    [["/test/a/b/c"], ["@auth"], "/test/a/"],
+    [["/test/a/b/c"], ["@guest"], ""],
+    [["GET /test/a/b/c"], [], ""],
+    [["POST /test/a/b/c"], [], "POST /test/a/"],
+    [["/test/a", "abc"], [], "/test/a"],
+  ])("%j %j -> %j", (labels, audiences, expected) => {
+    const found = findRateLimitRule(limits, labels, audiences);
+    expect(found?.label ?? "").toBe(expected);
   });
 });

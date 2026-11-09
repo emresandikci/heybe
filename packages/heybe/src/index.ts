@@ -47,6 +47,7 @@ export {
   requireSuperuserOrOwnerAuth,
   skipSuccessActivityLog,
 } from "./http/middlewares";
+export { RATE_LIMIT_ID, RATE_LIMIT_PRIORITY } from "./http/rate-limit";
 export { RequestEvent, Router, RouterGroup } from "./http/router";
 export type {
   AuthState,
