@@ -10,6 +10,7 @@ import { IP_KEY } from "../../realtime/broadcast";
 import { buildRequestInfo } from "../../records/rules";
 import { valuesOf } from "../../records/service";
 import { ApiError } from "../errors";
+import { skipSuccessActivityLog } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
 import { authResponse, findAuthCollection } from "./record-auth";
 
@@ -172,8 +173,18 @@ async function oauth2Redirect(e: RequestEvent): Promise<Response> {
 }
 
 export function registerRecordAuthOAuth2Routes(router: Router): void {
-  router.route("GET", "/api/oauth2-redirect", oauth2Redirect);
-  router.route("POST", "/api/oauth2-redirect", oauth2Redirect);
+  router.route(
+    "GET",
+    "/api/oauth2-redirect",
+    oauth2Redirect,
+    skipSuccessActivityLog(),
+  );
+  router.route(
+    "POST",
+    "/api/oauth2-redirect",
+    oauth2Redirect,
+    skipSuccessActivityLog(),
+  );
   router.route(
     "POST",
     "/api/collections/{collection}/auth-with-oauth2",

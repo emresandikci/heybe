@@ -45,7 +45,7 @@ function toJson(value: unknown): string | undefined {
 }
 
 // a cut inside a multi-byte character drops that character
-function cutBytes(text: string, max: number): string {
+export function cutBytes(text: string, max: number): string {
   const buf = Buffer.from(text);
   if (buf.length <= max) return text;
   let end = max;
@@ -75,7 +75,7 @@ function exportData(data: Record<string, unknown>, maxSize: number): string {
 export function logRow(
   app: App,
   entry: Entry,
-  maxDataSize = app.settings.get().logs.maxDataSize,
+  maxDataSize = app.settings.current().logs.maxDataSize,
 ): unknown[] {
   const maxSize = maxDataSize || DEFAULT_MAX_DATA_SIZE;
   return [
@@ -134,7 +134,7 @@ export function createLogger(app: App): Logger & { stop(): void } {
 
   // like PB, a batch is dropped when logs are disabled or its write fails
   const write = async (entries: Entry[]) => {
-    const { maxDays, maxDataSize } = app.settings.get().logs;
+    const { maxDays, maxDataSize } = app.settings.current().logs;
     if (maxDays <= 0) return;
     try {
       await app.auxDb.write(() => {
@@ -160,7 +160,7 @@ export function createLogger(app: App): Logger & { stop(): void } {
     message: string,
     data: Record<string, unknown> = {},
   ) => {
-    const { logs } = app.settings.get();
+    const { logs } = app.settings.current();
     const entry = { time: app.now(), level, message, data };
     if (app.dev) printLog(entry);
     if (level < logs.minLevel || logs.maxDays <= 0) return;

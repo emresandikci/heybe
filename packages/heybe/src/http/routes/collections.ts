@@ -5,7 +5,8 @@ import { sqliteMessage } from "../../collections/ddl";
 import { importCollections } from "../../collections/import";
 import { DecodeError, withDefaults } from "../../collections/field-settings";
 import { type Collection, type CollectionType } from "../../collections/model";
-import { compileCollectionsQuery } from "../../collections/search";
+import { compileSimpleQuery } from "../../filter/simple";
+import { parseListQuery } from "../list-query";
 import { dryRunView } from "../../collections/view";
 import {
   authSystemFields,
@@ -29,9 +30,14 @@ import {
 } from "../../hooks/events";
 import { internalRecords } from "../../records/internal";
 
-const DEFAULT_PER_PAGE = 30;
-const MAX_PER_PAGE = 1000;
-const INT64_MAX = 2n ** 63n - 1n;
+const COLLECTION_COLUMNS = [
+  "id",
+  "created",
+  "updated",
+  "name",
+  "system",
+  "type",
+];
 
 export function requireSuperuser(e: RequestEvent): void {
   if (!e.auth)
@@ -89,13 +95,6 @@ function findOr404(app: App, nameOrId: string): Collection {
   return c;
 }
 
-function integer(value: string | null, fallback: number): number {
-  if (value === null || value === "") return fallback;
-  if (!/^[+-]?\d+$/.test(value) || BigInt(value) > INT64_MAX)
-    throw new FilterError("invalid number");
-  return Number(value);
-}
-
 async function save(app: App, input: Collection, action: "create" | "update") {
   try {
     return await app.collections.save(input, action === "create");
@@ -110,29 +109,22 @@ async function save(app: App, input: Collection, action: "create" | "update") {
 
 async function list(e: RequestEvent): Promise<void> {
   const { app, query } = e;
-  let page: number;
-  let perPage: number;
-  let skipTotal: boolean;
-  let compiled: ReturnType<typeof compileCollectionsQuery>;
+  let paging: ReturnType<typeof parseListQuery>;
+  let compiled: ReturnType<typeof compileSimpleQuery>;
   try {
-    page = Math.max(integer(query.get("page"), 1), 1);
-    perPage = integer(query.get("perPage"), DEFAULT_PER_PAGE);
-    if (perPage < 1) perPage = DEFAULT_PER_PAGE;
-    perPage = Math.min(perPage, MAX_PER_PAGE);
-    const skip = query.get("skipTotal") ?? "";
-    if (!/^(1|t|T|TRUE|true|True|0|f|F|FALSE|false|False|)$/.test(skip))
-      throw new FilterError("invalid skipTotal");
-    skipTotal = /^(1|t|T|TRUE|true|True)$/.test(skip);
-    compiled = compileCollectionsQuery(
+    paging = parseListQuery(query);
+    compiled = compileSimpleQuery(
       query.get("filter") ?? "",
       query.get("sort") ?? "",
       app.now,
+      { columns: COLLECTION_COLUMNS },
     );
   } catch (err) {
     if (err instanceof FilterError) throw new ApiError(400, "");
     throw err;
   }
 
+  const { page, perPage, skipTotal } = paging;
   const items = app.collections.search(
     compiled,
     perPage,

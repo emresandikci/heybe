@@ -4,6 +4,7 @@ import { deleteModel, saveModel } from "../hooks/system";
 import type { Filesystem } from "../files/storage";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
 import { filterSyntaxError } from "../filter/fexpr";
+import type { SimpleQuery } from "../filter/simple";
 import { FilterError, parseFilter } from "../filter/parse";
 import { ValidationError, formatDate, randomSecret } from "../util";
 import {
@@ -32,7 +33,7 @@ import {
   required,
 } from "./errors";
 import { decodeCollection } from "./codec";
-import type { CollectionsQuery } from "./search";
+
 import {
   addFields,
   validateFieldSettings,
@@ -245,7 +246,7 @@ export class CollectionStore {
       .map(fromRow);
   }
 
-  search(q: CollectionsQuery, limit: number, offset: number): Collection[] {
+  search(q: SimpleQuery, limit: number, offset: number): Collection[] {
     return this.db
       .query<Row>(
         `SELECT * FROM _collections WHERE ${q.where}${q.orderBy ? ` ORDER BY ${q.orderBy}` : ""} LIMIT ?${q.params.length + 1} OFFSET ?${q.params.length + 2}`,
@@ -254,7 +255,7 @@ export class CollectionStore {
       .map(fromRow);
   }
 
-  count(q: CollectionsQuery): number {
+  count(q: SimpleQuery): number {
     return this.db.get<{ n: number }>(
       `SELECT count(*) AS n FROM _collections WHERE ${q.where}`,
       q.params,

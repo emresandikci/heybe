@@ -276,6 +276,15 @@ export async function waitUntil<T>(
   }
 }
 
+// both servers write a batch of 200 log entries at once, so 200 cheap requests flush every earlier entry
+export async function flushLogs(t: Target): Promise<void> {
+  await Promise.all(
+    Array.from({ length: 200 }, () =>
+      fetch(`${t.url}/api/health?__flush`).then((r) => r.arrayBuffer()),
+    ),
+  );
+}
+
 export function expectSame(a: Snapshot, b: Snapshot): void {
   expect(b).toEqual(a);
 }

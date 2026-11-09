@@ -3,6 +3,7 @@ import { ServeEvent } from "../hooks/events";
 import { ApiError, errorResponse } from "./errors";
 import {
   DEFAULT_MAX_BODY_SIZE,
+  activityLogger,
   bodyLimit,
   cors,
   loadAuthToken,
@@ -16,6 +17,7 @@ import { registerCollectionRoutes } from "./routes/collections";
 import { registerCronRoutes } from "./routes/crons";
 import { registerFileRoutes } from "./routes/files";
 import { registerHealthRoutes } from "./routes/health";
+import { registerLogsRoutes } from "./routes/logs";
 import { registerRealtimeRoutes } from "./routes/realtime";
 import { registerRecordAuthRoutes } from "./routes/record-auth";
 import { registerRecordAuthFlowRoutes } from "./routes/record-auth-flows";
@@ -39,10 +41,11 @@ export function parseHttpAddr(addr: string): { host: string; port: number } {
   return { host: host.replace(/^\[(.*)\]$/, "$1"), port };
 }
 
-// Port of PB apis.NewRouter (the activity logger and rate limit come with phase 7).
+// Port of PB apis.NewRouter (the rate limit comes with Task 7).
 export function createRouter(): Router {
   const router = new Router();
   router.use(
+    activityLogger(),
     panicRecover(),
     loadAuthToken(),
     superuserIPsWhitelist(),
@@ -60,6 +63,7 @@ export function createRouter(): Router {
   registerFileRoutes(router);
   registerBatchRoutes(router);
   registerSettingsRoutes(router);
+  registerLogsRoutes(router);
   return router;
 }
 

@@ -538,6 +538,11 @@ export class Settings {
 
   constructor(private readonly db: Db) {}
 
+  // The cached settings without a copy, for hot paths: callers must not modify them.
+  current(): Readonly<SettingsData> {
+    return (this.cached ??= this.db.committed(() => this.load()));
+  }
+
   get(): SettingsData {
     this.cached ??= this.db.committed(() => this.load());
     return structuredClone(this.cached);

@@ -2,12 +2,18 @@ import type { App } from "../app";
 import { authFromToken } from "../auth/tokens";
 import { isIP } from "node:net";
 import { isIpInList } from "../ip";
+import { LogLevel, cutBytes } from "../logs/logger";
 import { ApiError, toApiError } from "./errors";
 import type { AuthState, Middleware, RequestEvent } from "./router";
 
 export const DEFAULT_MAX_BODY_SIZE = 32 << 20;
 
 // PB apis/middlewares.go ids and priorities (DefaultRateLimitMiddlewarePriority is -1000).
+export const ACTIVITY_LOGGER_ID = "pbActivityLogger";
+export const ACTIVITY_LOGGER_PRIORITY = -1040;
+export const SKIP_SUCCESS_ACTIVITY_LOG_ID = "pbSkipSuccessActivityLog";
+export const LOG_META_KEY = "pbLogMeta";
+const SKIP_SUCCESS_ACTIVITY_LOG_KEY = "pbSkipSuccessActivityLog";
 export const CORS_ID = "pbCors";
 export const CORS_PRIORITY = -1041;
 export const PANIC_RECOVER_ID = "pbPanicRecover";
@@ -69,6 +75,86 @@ export function cors(allowed: string[]): Middleware {
       const requested = e.req.headers.get("access-control-request-headers");
       if (requested) headers.set("access-control-allow-headers", requested);
       return e.noContent(204);
+    },
+  };
+}
+
+const cutStr = (text: string, max: number) =>
+  Buffer.byteLength(text) > max ? `${cutBytes(text, max)}...` : text;
+
+function logRequest(e: RequestEvent, started: number, err: unknown): void {
+  const { logs } = e.app.settings.current();
+  if (logs.maxDays === 0) return;
+  if (err === undefined && e.get(SKIP_SUCCESS_ACTIVITY_LOG_KEY) !== undefined)
+    return;
+
+  const data: Record<string, unknown> = {
+    type: "request",
+    execTime: performance.now() - started,
+  };
+  const meta = e.get(LOG_META_KEY);
+  if (meta !== undefined && meta !== null) data.meta = meta;
+
+  const method = cutStr(e.req.method.toUpperCase(), 50);
+  const { pathname, search } = new URL(e.req.url);
+  const url = cutStr(pathname + search, 3000);
+  let status = e.status();
+  if (err !== undefined) {
+    if (err instanceof ApiError) {
+      if (status === 0) status = err.status;
+      data.error = err.message;
+      data.details = err.data;
+    } else data.error = err instanceof Error ? err.message : String(err);
+  }
+  Object.assign(data, {
+    url,
+    method,
+    status,
+    referer: cutStr(e.req.headers.get("referer") ?? "", 2000),
+    userAgent: cutStr(e.req.headers.get("user-agent") ?? "", 2000),
+    auth: e.auth?.collection.name ?? "",
+  });
+  if (e.auth && logs.logAuthId) data.authId = e.auth.record.id;
+  if (logs.logIP) {
+    data.userIP = e.realIp();
+    data.remoteIP = e.remoteIp;
+  }
+
+  let message = url;
+  try {
+    message = decodeURIComponent(url);
+  } catch {}
+  e.app.logger.log(
+    err === undefined ? LogLevel.info : LogLevel.error,
+    `${method} ${message}`,
+    data,
+  );
+}
+
+// Port of PB apis/middlewares.go activityLogger.
+export function activityLogger(): Middleware {
+  return {
+    id: ACTIVITY_LOGGER_ID,
+    priority: ACTIVITY_LOGGER_PRIORITY,
+    fn: async (e) => {
+      const started = performance.now();
+      try {
+        await e.next();
+      } catch (err) {
+        logRequest(e, started, err ?? new Error("unknown error"));
+        throw err;
+      }
+      logRequest(e, started, undefined);
+    },
+  };
+}
+
+export function skipSuccessActivityLog(): Middleware {
+  return {
+    id: SKIP_SUCCESS_ACTIVITY_LOG_ID,
+    fn: (e) => {
+      e.set(SKIP_SUCCESS_ACTIVITY_LOG_KEY, true);
+      return e.next();
     },
   };
 }
@@ -258,7 +344,7 @@ export function loadAuth(app: App, req: Request): AuthState | null {
 }
 
 export function realIp(app: App, req: Request, remote: string): string {
-  const { headers, useLeftmostIP } = app.settings.get().trustedProxy;
+  const { headers, useLeftmostIP } = app.settings.current().trustedProxy;
   for (const name of headers) {
     const ips = (req.headers.get(name) ?? "")
       .split(",")

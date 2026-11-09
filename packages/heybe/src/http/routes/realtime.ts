@@ -12,6 +12,7 @@ import {
 } from "../../realtime/broadcast";
 import { Client, type Message } from "../../realtime/broker";
 import { ApiError, logUnexpected } from "../errors";
+import { skipSuccessActivityLog } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
 
 // Port of PB apis/realtime.go routes.
@@ -199,6 +200,11 @@ async function realtimeSetSubscriptions(e: RequestEvent): Promise<void> {
 }
 
 export function registerRealtimeRoutes(router: Router): void {
-  router.route("GET", "/api/realtime", realtimeConnect);
+  router.route(
+    "GET",
+    "/api/realtime",
+    realtimeConnect,
+    skipSuccessActivityLog(),
+  );
   router.route("POST", "/api/realtime", realtimeSetSubscriptions);
 }

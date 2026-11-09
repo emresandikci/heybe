@@ -43,16 +43,13 @@ import {
   jsonResponse,
   markListResult,
 } from "../router";
+import { checkFilterAndSortLimits, parseListQuery } from "../list-query";
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
 type Finalizer = (record: RecordModel) => Promise<void>;
 type Access = "default" | "manager" | "superuser";
 
-const MAX_FILTER_LENGTH = 3500;
-const MAX_SORT_FIELDS = 8;
-const MAX_SORT_FIELD_LENGTH = 255;
-const INT64_MAX = 2n ** 63n - 1n;
 const SUPERUSER_ONLY_FIELDS = ["@collection.", "@request."];
 const CREATE_FAILED = "Failed to create record.";
 const UPDATE_FAILED = "Failed to update record.";
@@ -101,20 +98,6 @@ export function checkClientFilterFields(info: RequestInfo): void {
 }
 
 // strconv.Atoi and strconv.ParseBool, as PB search.Provider.Parse
-function int(value: string | undefined, fallback: number): number {
-  if (value === undefined || value === "") return fallback;
-  if (!/^[+-]?\d+$/.test(value) || BigInt(value) > INT64_MAX)
-    throw new FilterError("invalid number");
-  return Number(value);
-}
-
-function bool(value: string | undefined): boolean {
-  if (value === undefined || value === "") return false;
-  if (/^(1|t|T|TRUE|true|True)$/.test(value)) return true;
-  if (/^(0|f|F|FALSE|false|False)$/.test(value)) return false;
-  throw new FilterError("invalid bool");
-}
-
 const expandPaths = (info: RequestInfo) => (info.query.expand ?? "").split(",");
 
 // Port of PB triggerRecordEnrichHooks: each record's onRecordEnrich chain runs inside the final
@@ -495,19 +478,11 @@ async function list(e: RequestEvent): Promise<Response | void> {
   let result: ListResult<Values>;
   try {
     const q = info.query;
-    const skipTotal = bool(q.skipTotal);
-    const page = int(q.page, 1);
-    const perPage = int(q.perPage, 0);
+    const { page, perPage, skipTotal } = parseListQuery(e.query);
     const sort = q.sort ?? "";
     const filter = q.filter ?? "";
-    if (Buffer.byteLength(filter) > MAX_FILTER_LENGTH)
-      throw new FilterError("max filter length limit reached");
+    checkFilterAndSortLimits(filter, sort);
     const parsedFilter = parseFilter(filter);
-    const sortFields = parseSort(sort);
-    if (sortFields.length > MAX_SORT_FIELDS)
-      throw new FilterError("max sort expressions limit reached");
-    if (sortFields.some((s) => s.field.length > MAX_SORT_FIELD_LENGTH))
-      throw new FilterError("max sort field length limit reached");
 
     result = internalRecords(e.app, c.name).query({
       ruleFilter: rule,

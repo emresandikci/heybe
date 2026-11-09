@@ -18,12 +18,15 @@ export type { CollectionTag, HookEvents, HookName } from "./hooks/registry";
 export { ApiError } from "./http/errors";
 export { FieldError } from "./util";
 export {
+  ACTIVITY_LOGGER_ID,
+  ACTIVITY_LOGGER_PRIORITY,
   BODY_LIMIT_ID,
   BODY_LIMIT_PRIORITY,
   CORS_ID,
   CORS_PRIORITY,
   LOAD_AUTH_TOKEN_ID,
   LOAD_AUTH_TOKEN_PRIORITY,
+  LOG_META_KEY,
   PANIC_RECOVER_ID,
   PANIC_RECOVER_PRIORITY,
   REQUIRE_AUTH_ID,
@@ -33,6 +36,7 @@ export {
   REQUIRE_SUPERUSER_OR_OWNER_AUTH_ID,
   SECURITY_HEADERS_ID,
   SECURITY_HEADERS_PRIORITY,
+  SKIP_SUCCESS_ACTIVITY_LOG_ID,
   SUPERUSER_IPS_WHITELIST_ID,
   SUPERUSER_IPS_WHITELIST_PRIORITY,
   bodyLimit,
@@ -41,6 +45,7 @@ export {
   requireSameCollectionContextAuth,
   requireSuperuserAuth,
   requireSuperuserOrOwnerAuth,
+  skipSuccessActivityLog,
 } from "./http/middlewares";
 export { RequestEvent, Router, RouterGroup } from "./http/router";
 export type {
