@@ -4,7 +4,10 @@ import { testApp } from "../test-app";
 import { FilterError } from "../filter/parse";
 import { RecordRequestEvent } from "../hooks/events";
 import { Hook } from "../hooks/hook";
-import { NotFoundError, ValidationError } from "../util";
+import { FieldError, NotFoundError, ValidationError } from "../util";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Route } from "../extend/route";
 import { ApiError, errorResponse, logUnexpected, toApiError } from "./errors";
 import { DEFAULT_MAX_BODY_SIZE, bodyLimit } from "./middlewares";
@@ -30,6 +33,11 @@ async function call(router: Router, method: string, path: string) {
   } catch (err) {
     return e.response ?? errorResponse(err);
   }
+}
+
+function eventFor(init: Request | string = "http://x/p", pattern = "") {
+  const req = typeof init === "string" ? new Request(init) : init;
+  return createEvent(app, req, {}, "", pattern);
 }
 
 const text = async (router: Router, method: string, path: string) =>
@@ -566,5 +574,131 @@ describe("parseHttpAddr", () => {
       "::1:80",
     ])
       expect(() => parseHttpAddr(addr)).toThrow(`Invalid --http address`);
+  });
+});
+
+describe("RequestEvent parity", () => {
+  test("status and written before and after a response", () => {
+    const e = eventFor();
+    expect(e.status()).toBe(0);
+    expect(e.written()).toBe(false);
+    e.json(201, {});
+    expect(e.status()).toBe(201);
+    expect(e.written()).toBe(true);
+  });
+
+  test("pattern is the matched route", async () => {
+    const router = new Router();
+    router.get("/api/c/{collection}/records", () => {});
+    router.any("/any/{id}", () => {});
+    const mux = router.build();
+    expect(mux.match("GET", "/api/c/a/records")!.pattern).toBe(
+      "GET /api/c/{collection}/records",
+    );
+    expect(mux.match("POST", "/any/1")!.pattern).toBe("/any/{id}");
+    const found = mux.match("GET", "/api/c/a/records")!;
+    const e = createEvent(
+      app,
+      new Request("http://x/api/c/a/records"),
+      found.params,
+      "",
+      found.pattern,
+    );
+    expect(e.pattern).toBe("GET /api/c/{collection}/records");
+  });
+
+  test("findUploadedFiles returns the files of one key with base names", async () => {
+    const form = new FormData();
+    form.append("file", new File(["z"], "a/../b.zip"));
+    form.append("name", "x");
+    const e = eventFor(
+      new Request("http://x/p", { method: "POST", body: form }),
+    );
+    const files = await e.findUploadedFiles("file");
+    expect(files.map((f) => f.name)).toEqual(["b.zip"]);
+    expect(await files[0].text()).toBe("z");
+    expect(await e.findUploadedFiles("missing")).toEqual([]);
+    expect(await e.findUploadedFiles("name")).toEqual([]);
+  });
+
+  test("setCookie appends Set-Cookie on error responses too", async () => {
+    const router = new Router();
+    router.get("/c", (e) => {
+      e.setCookie({ name: "a", value: "1", path: "/" });
+      e.setCookie({ name: "b", value: "2" });
+      throw new ApiError(400, "no");
+    });
+    const req = new Request("http://x/c");
+    const found = router.build().match("GET", "/c")!;
+    const ev = createEvent(app, req, found.params);
+    await expect(found.run(ev)).rejects.toThrow("No.");
+    expect(ev.responseHeaders.getSetCookie()).toEqual(["a=1; Path=/", "b=2"]);
+    const e = eventFor();
+    e.setCookie({ name: "c", value: "3", sameSite: "strict", httpOnly: true });
+    expect(e.responseHeaders.getSetCookie()).toEqual([
+      "c=3; HttpOnly; SameSite=Strict",
+    ]);
+  });
+
+  test("getAll and setAll", () => {
+    const e = eventFor();
+    e.set("a", 1);
+    e.setAll({ b: 2, a: 3 });
+    expect(e.getAll()).toEqual({ a: 3, b: 2 });
+    expect(e.get("b")).toBe(2);
+  });
+
+  test("xml body and content type", async () => {
+    const res = eventFor().xml(200, "<a/>");
+    expect(res.headers.get("content-type")).toBe(
+      "application/xml; charset=utf-8",
+    );
+    expect(await res.text()).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?>\n<a/>',
+    );
+  });
+
+  test("fileFS serves index.html for a dir and rejects ../", async () => {
+    const root = await mkdtemp(join(tmpdir(), "heybe-filefs-"));
+    try {
+      await mkdir(join(root, "pub", "sub"), { recursive: true });
+      await Bun.write(join(root, "pub", "index.html"), "home");
+      await Bun.write(join(root, "pub", "sub", "index.html"), "sub");
+      await Bun.write(join(root, "pub", "a.txt"), "a");
+      await Bun.write(join(root, "secret.txt"), "s");
+      const dir = join(root, "pub");
+      expect(await (await eventFor().fileFS(dir, "")).text()).toBe("home");
+      expect(await (await eventFor().fileFS(dir, "sub")).text()).toBe("sub");
+      expect(await (await eventFor().fileFS(dir, "a.txt")).text()).toBe("a");
+      for (const name of ["../secret.txt", "missing.txt"])
+        expect(
+          (
+            await eventFor()
+              .fileFS(dir, name)
+              .catch((e) => e)
+          ).status,
+        ).toBe(404);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  test("isTLS", () => {
+    expect(eventFor("https://x/p").isTLS()).toBe(true);
+    expect(eventFor("http://x/p").isTLS()).toBe(false);
+  });
+
+  test("badRequestError data with FieldError gives {code,message}", () => {
+    const err = eventFor().badRequestError("x", {
+      title: new FieldError("custom_code", "bad title"),
+      nested: { a: new FieldError("c2", "M2."), b: new Error("x") },
+    });
+    expect(err.data).toEqual({
+      title: { code: "custom_code", message: "Bad title." },
+      nested: {
+        a: { code: "c2", message: "M2." },
+        b: { code: "validation_invalid_value", message: "Invalid value." },
+      },
+    });
   });
 });

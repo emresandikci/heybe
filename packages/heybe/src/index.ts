@@ -16,6 +16,7 @@ export { HookEvent } from "./hooks/hook";
 export type { BindOptions, HookHandler } from "./hooks/hook";
 export type { CollectionTag, HookEvents, HookName } from "./hooks/registry";
 export { ApiError } from "./http/errors";
+export { FieldError } from "./util";
 export {
   BODY_LIMIT_ID,
   BODY_LIMIT_PRIORITY,

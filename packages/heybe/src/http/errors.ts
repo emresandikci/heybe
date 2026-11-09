@@ -1,6 +1,6 @@
 import { STATUS_CODES } from "node:http";
 import { FilterError } from "../filter/parse";
-import { NotFoundError, ValidationError } from "../util";
+import { FieldError, NotFoundError, ValidationError } from "../util";
 
 const DEFAULT_MESSAGES: Record<number, string> = {
   400: "Something went wrong while processing your request.",
@@ -73,7 +73,11 @@ export function safeErrorsData(data: unknown): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(data).map(([k, v]) => [
       k,
-      isPlainObject(v) ? safeErrorsData(v) : { ...INVALID_VALUE },
+      isPlainObject(v)
+        ? safeErrorsData(v)
+        : v instanceof FieldError
+          ? { code: v.code, message: v.message }
+          : { ...INVALID_VALUE },
     ]),
   );
 }

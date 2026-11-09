@@ -1,3 +1,5 @@
+import { stat } from "node:fs/promises";
+import { basename, join, resolve, sep } from "node:path";
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
 import type { RequestInfo } from "../filter/compile";
@@ -19,6 +21,7 @@ interface RequestState {
   app: App;
   req: Request;
   params: Record<string, string>;
+  pattern: string;
   query: URLSearchParams;
   auth: AuthState | null;
   remoteIp: string;
@@ -78,6 +81,9 @@ export class RequestEvent extends HookEvent {
   get params(): Record<string, string> {
     return this.state.params;
   }
+  get pattern(): string {
+    return this.state.pattern;
+  }
   get query(): URLSearchParams {
     return this.state.query;
   }
@@ -108,6 +114,71 @@ export class RequestEvent extends HookEvent {
   }
   set bodyLimit(bytes: number) {
     this.state.bodyLimit = bytes;
+  }
+
+  status(): number {
+    return this.state.response?.status ?? 0;
+  }
+
+  written(): boolean {
+    return this.state.response !== null;
+  }
+
+  isTLS(): boolean {
+    return new URL(this.req.url).protocol === "https:";
+  }
+
+  // Go's http.Cookie adds Path and SameSite only when set, Bun.Cookie defaults them to "/" and Lax
+  setCookie(cookie: Bun.CookieInit): void {
+    const value = new Bun.Cookie({ path: "", ...cookie }).serialize();
+    this.responseHeaders.append(
+      "set-cookie",
+      cookie.sameSite ? value : value.replace("; SameSite=Lax", ""),
+    );
+  }
+
+  getAll(): Record<string, unknown> {
+    return Object.fromEntries(this.state.store);
+  }
+
+  setAll(values: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(values))
+      this.state.store.set(key, value);
+  }
+
+  async findUploadedFiles(key: string): Promise<File[]> {
+    const value = (await this.body())[key];
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .filter((v): v is File => v instanceof File)
+      .map((f) => new File([f], basename(f.name), { type: f.type }));
+  }
+
+  xml(status: number, body: string): Response {
+    return this.send(
+      new Response(`<?xml version="1.0" encoding="UTF-8"?>\n${body}`, {
+        status,
+        headers: { "content-type": "application/xml; charset=utf-8" },
+      }),
+    );
+  }
+
+  // Port of PB Event.FileFS: a directory serves its index.html, a missing file is a 404.
+  async fileFS(dir: string, filename: string): Promise<Response> {
+    const root = resolve(dir);
+    let path = resolve(root, `.${sep}${filename}`);
+    const notFound = () => this.notFoundError("File not found");
+    if (path !== root && !path.startsWith(root + sep)) throw notFound();
+    try {
+      if ((await stat(path)).isDirectory()) path = join(path, "index.html");
+      if (!(await stat(path)).isFile()) throw notFound();
+    } catch {
+      throw notFound();
+    }
+    const file = Bun.file(path);
+    return this.send(
+      new Response(file, { headers: { "content-type": file.type } }),
+    );
   }
 
   private send(res: Response): Response {
@@ -264,11 +335,13 @@ export function createEvent(
   req: Request,
   params: Record<string, string>,
   remoteIp = "",
+  pattern = "",
 ): RequestEvent {
   return new RequestEvent({
     app,
     req,
     params,
+    pattern,
     query: new URL(req.url).searchParams,
     auth: null,
     remoteIp,
@@ -507,6 +580,7 @@ export class RouterGroup extends Bindable {
         method: child.method,
         tokens,
         rank: tokens.map((t) => RANK[t.kind]),
+        pattern: `${child.method ? `${child.method} ` : ""}${prefix + child.path}`,
         hook,
         action: respond(child.action),
       });
@@ -518,12 +592,14 @@ interface CompiledRoute {
   method: string;
   tokens: Token[];
   rank: number[];
+  pattern: string;
   hook: Hook<RequestEvent>;
   action: (e: RequestEvent) => Promise<void>;
 }
 
 export interface Match {
   params: Record<string, string>;
+  pattern: string;
   // Runs the middlewares and the action; the response is the event response (empty 200 when none).
   run(e: RequestEvent): Promise<Response>;
 }
@@ -573,12 +649,17 @@ export class Router extends RouterGroup {
         if (!exactMatch(best?.route, path) && !path.endsWith("/")) {
           const slashed = find(method, `${path}/`);
           if (exactMatch(slashed?.route, `${path}/`))
-            return { params: {}, run: async (e) => redirectToSlash(e) };
+            return {
+              params: {},
+              pattern: "",
+              run: async (e) => redirectToSlash(e),
+            };
         }
         if (!best) return null;
         const { route, params } = best;
         return {
           params,
+          pattern: route.pattern,
           run: async (e) => {
             await route.hook.trigger(e, route.action);
             return e.response ?? new Response(null);

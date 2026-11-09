@@ -46,3 +46,12 @@ export class NotFoundError extends Error {
     super(message);
   }
 }
+
+export class FieldError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}

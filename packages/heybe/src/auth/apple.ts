@@ -9,7 +9,7 @@ export interface AppleSecretForm {
   duration: number;
 }
 
-type FieldError = {
+type FieldIssue = {
   code: string;
   message: string;
   params?: Record<string, unknown>;
@@ -19,12 +19,12 @@ const MAX_DURATION = 15777000;
 const PRIVATE_KEY =
   /-----BEGIN PRIVATE KEY----[\s\S]+-----END PRIVATE KEY-----/;
 
-const required: FieldError = {
+const required: FieldIssue = {
   code: "validation_required",
   message: "Cannot be blank.",
 };
 
-function exactLength(v: string, n: number): FieldError | null {
+function exactLength(v: string, n: number): FieldIssue | null {
   if (v === "") return required;
   if (runeLength(v) === n) return null;
   return {
@@ -36,8 +36,8 @@ function exactLength(v: string, n: number): FieldError | null {
 
 export function appleFormErrors(
   form: AppleSecretForm,
-): Record<string, FieldError> {
-  const errors: Record<string, FieldError | null> = {
+): Record<string, FieldIssue> {
+  const errors: Record<string, FieldIssue | null> = {
     clientId: form.clientId === "" ? required : null,
     teamId: exactLength(form.teamId, 10),
     keyId: exactLength(form.keyId, 10),
@@ -69,7 +69,7 @@ export function appleFormErrors(
   };
   return Object.fromEntries(
     Object.entries(errors).filter(([, v]) => v !== null),
-  ) as Record<string, FieldError>;
+  ) as Record<string, FieldIssue>;
 }
 
 const b64url = (data: string | ArrayBuffer) =>

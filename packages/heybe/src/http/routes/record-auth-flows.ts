@@ -50,7 +50,7 @@ import {
 import { internalRecords } from "../../records/internal";
 
 type Values = Record<string, unknown>;
-type FieldError = {
+type FieldIssue = {
   code: string;
   message: string;
   params?: Record<string, unknown>;
@@ -58,7 +58,7 @@ type FieldError = {
 
 const LOAD_FAILED = "An error occurred while loading the submitted data.";
 
-const err = (code: string, message: string): FieldError => ({
+const err = (code: string, message: string): FieldIssue => ({
   code,
   message,
 });
@@ -71,7 +71,7 @@ const collectionMismatch = err(
   "validation_token_collection_mismatch",
   "The provided token is for different auth collection.",
 );
-const lengthError = (min: number, max: number): FieldError => ({
+const lengthError = (min: number, max: number): FieldIssue => ({
   code: "validation_length_out_of_range",
   message: `The length must be between ${min} and ${max}.`,
   params: { min, max },
@@ -110,7 +110,7 @@ async function readForm<K extends string>(
   return form;
 }
 
-function check(errors: Record<string, FieldError | null>): void {
+function check(errors: Record<string, FieldIssue | null>): void {
   const failed = Object.entries(errors).filter(([, v]) => v !== null);
   if (failed.length > 0)
     throw new ApiError(
@@ -120,7 +120,7 @@ function check(errors: Record<string, FieldError | null>): void {
     );
 }
 
-function emailError(v: string): FieldError | null {
+function emailError(v: string): FieldIssue | null {
   if (v === "") return required;
   if (runeLength(v) > 255) return lengthError(1, 255);
   if (!isEmail(v))
@@ -220,7 +220,7 @@ function verificationTokenError(
   app: App,
   c: Collection,
   token: string,
-): FieldError | null {
+): FieldIssue | null {
   const email = decodeJwtClaims(token)?.email;
   if (typeof email !== "string" || email === "")
     return err("validation_invalid_token_claims", "Missing email token claim.");
@@ -405,7 +405,7 @@ function parseEmailChangeToken(
   app: App,
   c: Collection,
   token: string,
-): { record: Values; newEmail: string } | FieldError {
+): { record: Values; newEmail: string } | FieldIssue {
   const newEmail = decodeJwtClaims(token)?.newEmail;
   if (typeof newEmail !== "string" || newEmail === "")
     return err(

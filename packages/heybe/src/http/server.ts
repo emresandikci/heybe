@@ -85,7 +85,7 @@ async function handle(
 ): Promise<Response> {
   const remoteIp = server.requestIP(req)?.address ?? "";
   const found = mux.match(req.method, new URL(req.url).pathname)!;
-  const e = createEvent(app, req, found.params, remoteIp);
+  const e = createEvent(app, req, found.params, remoteIp, found.pattern);
   let res: Response;
   try {
     res = await found.run(e);
