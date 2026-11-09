@@ -85,6 +85,10 @@ const scenarios: Scenario[] = [
   },
 ];
 
+const limited = scenarios
+  .filter((s) => s.name === "view one" || s.name === "create")
+  .map((s) => ({ ...s, name: `${s.name} + rate limit` }));
+
 interface Row {
   round: number;
   target: Target["name"];
@@ -275,24 +279,37 @@ for (let round = 1; round <= ROUNDS; round++) {
       ids.set(t.name, await seed(t));
       await checkScenarios(t, ids.get(t.name)!);
     }
-    for (const s of scenarios) {
-      for (const t of order) {
-        const seeded = ids.get(t.name)!;
-        console.error(`round ${round}: ${t.name} / ${s.name}`);
-        await autocannon(t, s, seeded, WARMUP);
-        const r = await autocannon(t, s, seeded, DURATION);
-        rows.push({
-          round,
-          target: t.name,
-          scenario: s.name,
-          rps: Math.round(r.requests.average),
-          p50: r.latency.p50,
-          p99: r.latency.p99,
-          non2xx: r.non2xx,
-          errors: r.errors + r.timeouts,
-        });
+    const run = async (list: Scenario[]) => {
+      for (const s of list) {
+        for (const t of order) {
+          const seeded = ids.get(t.name)!;
+          console.error(`round ${round}: ${t.name} / ${s.name}`);
+          await autocannon(t, s, seeded, WARMUP);
+          const r = await autocannon(t, s, seeded, DURATION);
+          rows.push({
+            round,
+            target: t.name,
+            scenario: s.name,
+            rps: Math.round(r.requests.average),
+            p50: r.latency.p50,
+            p99: r.latency.p99,
+            non2xx: r.non2xx,
+            errors: r.errors + r.timeouts,
+          });
+        }
       }
-    }
+    };
+    const setRateLimits = async (rateLimits: unknown) => {
+      for (const t of order)
+        await mustJson(await json(t, "PATCH", "/api/settings", { rateLimits }));
+    };
+    await run(scenarios);
+    await setRateLimits({
+      enabled: true,
+      rules: [{ label: "/api/", maxRequests: 1_000_000_000, duration: 1 }],
+    });
+    await run(limited);
+    await setRateLimits({ enabled: false });
   } finally {
     await targets.stop();
   }
