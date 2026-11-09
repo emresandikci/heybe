@@ -260,6 +260,22 @@ export async function both(
   ]);
 }
 
+// polls every 50 ms, throws with the last value
+export async function waitUntil<T>(
+  fn: () => Promise<T>,
+  ok: (v: T) => boolean,
+  timeoutMs = 2000,
+): Promise<T> {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await fn();
+    if (ok(v)) return v;
+    if (Date.now() >= end)
+      throw new Error(`waitUntil timed out, last value: ${Bun.inspect(v)}`);
+    await Bun.sleep(50);
+  }
+}
+
 export function expectSame(a: Snapshot, b: Snapshot): void {
   expect(b).toEqual(a);
 }

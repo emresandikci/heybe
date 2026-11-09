@@ -228,7 +228,7 @@ async function serve(
       "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "max-age=2592000, stale-while-revalidate=86400",
   });
-  e.response = serveContent(e.req, file, headers);
+  e.response = await serveContent(e.req, file, headers);
 }
 
 const NO_OVERLAP = "invalid range: failed to overlap";
@@ -279,12 +279,45 @@ function parseRange(
   return ranges.length === 1 && total <= size ? ranges[0]! : null;
 }
 
+// Bun answers an S3File body with a redirect to a presigned URL and sends its stream chunked,
+// so the body comes from a fetch of the presigned URL, which keeps Content-Length.
+async function respond(
+  req: Request,
+  blob: Blob,
+  status: number,
+  headers: Headers,
+  start: number,
+  length: number,
+): Promise<Response> {
+  if (!("presign" in blob))
+    return new Response(
+      status === 206 ? blob.slice(start, start + length) : blob,
+      {
+        status,
+        headers,
+      },
+    );
+  const range = status === 206 ? `bytes=${start}-${start + length - 1}` : null;
+  const res = await fetch(
+    (blob as Bun.S3File).presign({
+      method: req.method === "HEAD" ? "HEAD" : "GET",
+    }),
+    {
+      method: req.method === "HEAD" ? "HEAD" : "GET",
+      headers: range ? { range } : {},
+    },
+  ).catch(() => null);
+  if (!res?.ok) throw new ApiError(404, "");
+  headers.set("content-length", String(length));
+  return new Response(res.body, { status, headers });
+}
+
 // The parts of Go's http.ServeContent that PB's file route relies on.
-function serveContent(
+async function serveContent(
   req: Request,
   { blob, size, modified: date }: StoredFile,
   headers: Headers,
-): Response {
+): Promise<Response> {
   const modified = Math.floor(date.getTime() / 1000);
   const lastModified = new Date(modified * 1000).toUTCString();
   const readOnly = req.method === "GET" || req.method === "HEAD";
@@ -325,13 +358,10 @@ function serveContent(
   }
 
   headers.set("accept-ranges", "bytes");
-  if (!selected) return new Response(blob, { headers });
+  if (!selected) return respond(req, blob, 200, headers, 0, size);
   const { start, length } = selected;
   headers.set("content-range", `bytes ${start}-${start + length - 1}/${size}`);
-  return new Response(blob.slice(start, start + length), {
-    status: 206,
-    headers,
-  });
+  return respond(req, blob, 206, headers, start, length);
 }
 
 export function registerFileRoutes(router: Router): void {

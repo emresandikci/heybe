@@ -11,8 +11,10 @@ import { CollectionStore } from "./collections/store";
 import { CronScheduler } from "./cron/scheduler";
 import { registerCronJobs } from "./cron/system";
 import { type Db, openDb } from "./db";
+import { s3Filesystem } from "./files/s3";
 import {
   type AppFilesystem,
+  type Filesystem,
   appFilesystem,
   localFilesystem,
 } from "./files/storage";
@@ -40,7 +42,7 @@ import { createRouter } from "./http/server";
 import { type Mailer, appMailer } from "./mail/mailer";
 import { internalRecords } from "./records/internal";
 import type { RecordService } from "./records/service";
-import { Settings } from "./settings";
+import { type S3Config, Settings } from "./settings";
 import { type Timers, realTimers } from "./timers";
 import { formatDate, randomSecret } from "./util";
 
@@ -83,6 +85,8 @@ export interface App extends HookBinders, RouterMethods {
   settings: Settings;
   dataDir: string;
   files: AppFilesystem;
+  // S3 when settings.backups.s3 is enabled, else <dataDir>/backups
+  newBackupsFilesystem(): Filesystem;
   mailer: Mailer;
   realtime: Broker;
   scheduler: CronScheduler;
@@ -173,6 +177,22 @@ function openMemoryDb(path: string, now: () => Date): Db {
   return db;
 }
 
+// local unless the config is enabled, one S3 client per distinct config
+function s3Switch(local: Filesystem, config: () => S3Config) {
+  let key = "";
+  let s3: Filesystem | null = null;
+  return (): Filesystem => {
+    const c = config();
+    if (!c.enabled) return local;
+    const k = JSON.stringify(c);
+    if (k !== key || !s3) {
+      key = k;
+      s3 = s3Filesystem(c);
+    }
+    return s3;
+  };
+}
+
 export function createApp(opts: AppOptions = {}): App {
   const argv = opts.argv ?? process.argv.slice(2);
   const flags = globalFlags(argv);
@@ -184,10 +204,18 @@ export function createApp(opts: AppOptions = {}): App {
   const db = memory
     ? openMemoryDb(join(dataDir, "data.db"), now)
     : openDb(join(dataDir, "data.db"));
-  const localFiles = localFilesystem(join(dataDir, "storage"));
-  const files = appFilesystem(() => localFiles);
-  const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
+  const files = appFilesystem(
+    s3Switch(
+      localFilesystem(join(dataDir, "storage")),
+      () => settings.get().s3,
+    ),
+  );
+  const backupsFiles = s3Switch(
+    localFilesystem(join(dataDir, "backups")),
+    () => settings.get().backups.s3,
+  );
+  const collections = new CollectionStore(db, now, files);
   const hooks = createHooks();
   const router = createRouter();
   const commands = new Map<
@@ -231,6 +259,7 @@ export function createApp(opts: AppOptions = {}): App {
     settings,
     dataDir,
     files,
+    newBackupsFilesystem: backupsFiles,
     mailer: { send: (msg) => appMailer(app).send(msg) },
     realtime: new Broker(),
     scheduler,

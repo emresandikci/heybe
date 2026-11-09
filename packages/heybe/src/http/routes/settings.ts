@@ -7,6 +7,7 @@ import { sendAuthAlert } from "../../auth/alerts";
 import { sendFlowMail, sendOtpMail } from "../../auth/flows";
 import type { Collection } from "../../collections/model";
 import { isEmail } from "../../fields/email";
+import { s3Filesystem } from "../../files/s3";
 import type { RecordMailKind } from "../../mail/templates";
 import { RecordModel } from "../../records/model";
 import {
@@ -179,6 +180,50 @@ async function testEmail(e: RequestEvent): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
+// PB forms.TestS3Filesystem
+async function testS3(e: RequestEvent): Promise<Response> {
+  let body: Record<string, unknown>;
+  try {
+    body = await e.body();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 413) throw err;
+    throw new ApiError(400, LOAD_FAILED);
+  }
+  const filesystem = body.filesystem ?? "";
+  if (typeof filesystem !== "string") throw new ApiError(400, LOAD_FAILED);
+  if (filesystem === "")
+    throw new ApiError(400, "Failed to test the S3 filesystem.", {
+      filesystem: { code: "validation_required", message: "Cannot be blank." },
+    });
+  if (filesystem !== "storage" && filesystem !== "backups")
+    throw new ApiError(400, "Failed to test the S3 filesystem.", {
+      filesystem: {
+        code: "validation_in_invalid",
+        message: "Must be a valid value.",
+      },
+    });
+
+  const settings = e.app.settings.get();
+  const config = filesystem === "backups" ? settings.backups.s3 : settings.s3;
+  const fail = (raw: string) =>
+    new ApiError(400, `Failed to test the S3 filesystem. Raw error: \n${raw}`);
+  if (!config.enabled) throw fail("S3 storage filesystem is not enabled");
+
+  const fs = s3Filesystem(config);
+  const prefix = `pb_settings_test_${randomSecret(5)}/`;
+  try {
+    await fs.write(`${prefix}test.txt`, new TextEncoder().encode("test"));
+  } catch (err) {
+    throw fail(`failed to upload a test file: ${(err as Error).message}`);
+  }
+  try {
+    await fs.deletePrefix(prefix);
+  } catch (err) {
+    throw fail(`failed to delete a test file: ${(err as Error).message}`);
+  }
+  return new Response(null, { status: 204 });
+}
+
 async function appleClientSecret(e: RequestEvent): Promise<Response> {
   let body: Record<string, unknown>;
   try {
@@ -231,6 +276,10 @@ export function registerSettingsRoutes(router: Router): void {
   router.route("POST", "/api/settings/test/email", (e) => {
     requireSuperuser(e);
     return testEmail(e);
+  });
+  router.route("POST", "/api/settings/test/s3", (e) => {
+    requireSuperuser(e);
+    return testS3(e);
   });
   router.route("POST", "/api/settings/apple/generate-client-secret", (e) => {
     requireSuperuser(e);
