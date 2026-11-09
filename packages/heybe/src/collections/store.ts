@@ -327,10 +327,10 @@ export class CollectionStore {
   private async resaveViewsLogged(excludeIds: string[], name: string) {
     try {
       await this.resaveViews(excludeIds);
-    } catch (e) {
-      console.warn(
-        `heybe: dependent view collection(s) may need to be updated after ${name} collection change:`,
-        e,
+    } catch (error) {
+      this.app?.logger.warn(
+        `Dependent view collection(s) may need to be updated after ${name} collection change`,
+        { error },
       );
     }
   }
@@ -461,8 +461,8 @@ export class CollectionStore {
     for (const id of collectionIds) {
       try {
         await this.files?.deletePrefix(`${id}/`);
-      } catch (e) {
-        console.warn("heybe: storage cleanup failed:", e);
+      } catch (error) {
+        this.app?.logger.warn("Storage cleanup failed", { error });
       }
     }
   }

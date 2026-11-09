@@ -742,8 +742,8 @@ export class RecordServiceImpl<T> {
   private async quietly(op: Promise<void>): Promise<void> {
     try {
       await op;
-    } catch (e) {
-      console.warn("heybe: storage cleanup failed:", e);
+    } catch (error) {
+      this.app.logger.warn("Storage cleanup failed", { error });
     }
   }
 

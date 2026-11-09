@@ -264,8 +264,10 @@ function bindSuperuserHooks(app: App) {
           await records(e.app, "_superusers").deleteWhere("email = ?", [
             INSTALLER_EMAIL,
           ]);
-        } catch (err) {
-          console.warn("heybe: failed to delete the installer superuser:", err);
+        } catch (error) {
+          e.app.logger.warn("Failed to delete installer superuser", {
+            error,
+          });
         }
       },
       {
@@ -319,7 +321,9 @@ function bindPasswordChangeHook(app: App, name: string, quiet: boolean) {
         await deleteByRecord(e, name);
       } catch (err) {
         if (!quiet) throw err;
-        console.warn(`heybe: failed to delete the previous ${name}:`, err);
+        e.app.logger.warn(`Failed to delete the previous ${name}`, {
+          error: err,
+        });
       }
     },
     { priority: 99 },

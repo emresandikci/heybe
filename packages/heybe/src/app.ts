@@ -11,6 +11,8 @@ import { CollectionStore } from "./collections/store";
 import { CronScheduler } from "./cron/scheduler";
 import { registerCronJobs } from "./cron/system";
 import { type Db, openDb } from "./db";
+import { openAuxDb } from "./logs/aux-db";
+import { type Logger, createLogger } from "./logs/logger";
 import { s3Filesystem } from "./files/s3";
 import {
   type AppFilesystem,
@@ -79,6 +81,9 @@ export interface App extends HookBinders, RouterMethods {
    * synchronous `tx` throws while another write is open.
    */
   db: Db;
+  // <dataDir>/auxiliary.db with PB's _logs table
+  auxDb: Db;
+  logger: Logger;
   router: Router;
   hooks: Hooks;
   collections: CollectionStore;
@@ -204,6 +209,7 @@ export function createApp(opts: AppOptions = {}): App {
   const db = memory
     ? openMemoryDb(join(dataDir, "data.db"), now)
     : openDb(join(dataDir, "data.db"));
+  const auxDb = openAuxDb(join(dataDir, "auxiliary.db"));
   const settings = new Settings(db);
   const files = appFilesystem(
     s3Switch(
@@ -222,7 +228,9 @@ export function createApp(opts: AppOptions = {}): App {
     string,
     { run: CommandHandler; description: string }
   >();
-  const scheduler = new CronScheduler(opts.timers ?? realTimers, now);
+  const scheduler = new CronScheduler(opts.timers ?? realTimers, now, (m, d) =>
+    app.logger.warn(m, d),
+  );
   let cronCount = 0;
   let closed = false;
   let bootstrapped = false;
@@ -243,6 +251,8 @@ export function createApp(opts: AppOptions = {}): App {
   const app = {
     ...hookBinders(hooks),
     db,
+    auxDb,
+    logger: null!, // createLogger below needs the app
     hooks,
     router,
     get: (...a) => router.get(...a),
@@ -378,12 +388,16 @@ export function createApp(opts: AppOptions = {}): App {
     close: () => {
       if (closed) return;
       closed = true;
+      logger.stop();
       db.close();
+      auxDb.close();
       if (memory) rmSync(dataDir, { recursive: true, force: true });
     },
   } as App;
   collections.app = app;
   settings.app = app;
+  const logger = createLogger(app);
+  app.logger = logger;
   registerSystemHooks(app);
   registerRealtimeHooks(app);
   registerCronJobs(app);

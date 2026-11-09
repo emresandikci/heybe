@@ -336,7 +336,7 @@ describe("view collections", () => {
       "failed to drop column text - SQL logic error: error in view v1",
     );
     // SQLite rewrites the view, the stored query is stale and PB only logs that
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const warn = spyOn(app.logger, "warn");
     await app.collections.save({
       ...demo2,
       fields: demo2.fields.map((f) =>
@@ -383,7 +383,7 @@ describe("view collections", () => {
     app.collections.onChange = () => changes++;
 
     // the nested v2 save logs v1's failure, as PB does
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const warn = spyOn(app.logger, "warn");
     await expect(app.collections.delete("demo3")).rejects.toThrow(
       "existing view dependency",
     );

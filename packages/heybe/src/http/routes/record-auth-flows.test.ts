@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { type App } from "../../app";
 import { testApp } from "../../test-app";
 import { sendAuthAlert } from "../../auth/alerts";
@@ -177,24 +177,18 @@ describe("resend window", () => {
       await tick();
     };
     let fail = true;
-    const errors: unknown[] = [];
-    const log = console.error;
-    console.error = (...args) => void errors.push(args);
+    const errors = spyOn(app.logger, "error");
     app.mailer = {
       send: async (msg) => {
         if (fail) throw new Error("down");
         sent.push(msg);
       },
     };
-    try {
-      await request();
-      fail = false;
-      await request();
-      await request();
-    } finally {
-      console.error = log;
-    }
-    expect(errors).toHaveLength(1);
+    await request();
+    fail = false;
+    await request();
+    await request();
+    expect(errors).toHaveBeenCalledTimes(1);
     expect(sent).toHaveLength(1);
   });
 

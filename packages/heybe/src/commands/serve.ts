@@ -26,8 +26,8 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   }
   const server = await serve(app, { host, port, origins });
   console.log(`Server started at ${server.url}`);
-  const installer = runInstaller(app, server.url).catch((err) =>
-    console.warn("Failed to initialize installer", err),
+  const installer = runInstaller(app, server.url).catch((error) =>
+    app.logger.warn("Failed to initialize installer", { error }),
   );
   app.onTerminate(
     async (e) => {

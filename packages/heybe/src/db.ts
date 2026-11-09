@@ -55,10 +55,10 @@ function fifoLock(): Lock {
   };
 }
 
-function connection(path: string, readonly: boolean) {
+function connection(path: string, readonly: boolean, busyTimeoutMs: number) {
   const sqlite = new Database(path, { create: true, strict: true });
   sqlite.run("PRAGMA journal_mode = WAL");
-  sqlite.run("PRAGMA busy_timeout = 10000");
+  sqlite.run(`PRAGMA busy_timeout = ${busyTimeoutMs}`);
   sqlite.run("PRAGMA foreign_keys = ON");
   sqlite.run("PRAGMA synchronous = NORMAL");
   // macOS system SQLite defaults to legacy mode, where renames skip views and dropping a column a view reads is allowed
@@ -109,9 +109,9 @@ export const runExclusive = (db: Db, sql: string): Promise<void> =>
 // One writer connection behind a FIFO mutex and a query_only reader connection. Inside `write`
 // (tracked with AsyncLocalStorage) every query goes to the writer; elsewhere reads see only
 // committed data.
-export function openDb(path: string): Db {
-  const writer = connection(path, false);
-  const reader = connection(path, true);
+export function openDb(path: string, busyTimeoutMs = 10_000): Db {
+  const writer = connection(path, false, busyTimeoutMs);
+  const reader = connection(path, true, busyTimeoutMs);
   const mutex = fifoLock();
   const als = new AsyncLocalStorage<Context>();
   let syncDepth = 0;

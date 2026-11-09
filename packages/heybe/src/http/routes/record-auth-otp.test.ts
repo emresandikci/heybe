@@ -105,14 +105,8 @@ describe("request-otp", () => {
         throw new Error("down");
       },
     };
-    const log = console.error;
-    console.error = () => {};
-    try {
-      await post("request-otp", { email: "a@example.com" });
-      await tick();
-    } finally {
-      console.error = log;
-    }
+    await post("request-otp", { email: "a@example.com" });
+    await tick();
     expect(app.db.query("SELECT id FROM _otps")).toHaveLength(0);
   });
 });

@@ -184,9 +184,9 @@ async function download(e: RequestEvent): Promise<void> {
           }
         } catch (err) {
           if (err instanceof ApiError) throw err;
-          console.warn(
+          e.app.logger.warn(
             `Fallback to original - failed to create thumb ${served.servedName}`,
-            err,
+            { error: err },
           );
           served.thumbError = err as Error;
           served.servedName = filename;

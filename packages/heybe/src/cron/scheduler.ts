@@ -25,6 +25,10 @@ export class CronScheduler {
   constructor(
     private readonly timers: Timers,
     private readonly now: () => Date,
+    private readonly warn: (
+      message: string,
+      data: Record<string, unknown>,
+    ) => void,
   ) {}
 
   add(id: string, expr: string, fn: () => unknown): void {
@@ -46,7 +50,7 @@ export class CronScheduler {
           try {
             await fn();
           } catch (err) {
-            console.warn(`Cron job "${id}" failed`, err);
+            this.warn(`Cron job "${id}" failed`, { error: err });
           }
         })();
         this.running.add(run);

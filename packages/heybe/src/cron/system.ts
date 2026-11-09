@@ -3,6 +3,7 @@ import { mfaDurationMs } from "../auth/mfa";
 import { otpDurationMs } from "../auth/otp";
 import type { Collection } from "../collections/model";
 import { runExclusive } from "../db";
+import { deleteOldLogs } from "../logs/logger";
 import { internalRecords } from "../records/internal";
 import { formatDate } from "../util";
 
@@ -49,20 +50,37 @@ export function registerCronJobs(app: App): void {
   app.scheduler.add("__pbDBOptimize__", "0 0 * * *", async () => {
     try {
       await runExclusive(app.db, "PRAGMA wal_checkpoint(TRUNCATE)");
-    } catch (err) {
-      console.warn("Failed to run periodic PRAGMA wal_checkpoint", err);
+    } catch (error) {
+      app.logger.warn(
+        "Failed to run periodic PRAGMA wal_checkpoint for the main DB",
+        { error },
+      );
+    }
+    try {
+      await runExclusive(app.auxDb, "PRAGMA wal_checkpoint(TRUNCATE)");
+    } catch (error) {
+      app.logger.warn(
+        "Failed to run periodic PRAGMA wal_checkpoint for the auxiliary DB",
+        { error },
+      );
     }
     try {
       await runExclusive(app.db, "PRAGMA optimize");
-    } catch (err) {
-      console.warn("Failed to run periodic PRAGMA optimize", err);
+    } catch (error) {
+      app.logger.warn("Failed to run periodic PRAGMA optimize", { error });
     }
   });
   for (const [table, label, durationMs] of CLEANUPS)
     app.scheduler.add(`__pb${label}Cleanup__`, "0 * * * *", () =>
-      deleteExpired(app, table, durationMs).catch((err) =>
-        console.warn(`Failed to delete expired ${label} sessions`, err),
+      deleteExpired(app, table, durationMs).catch((error) =>
+        app.logger.warn(`Failed to delete expired ${label} sessions`, {
+          error,
+        }),
       ),
     );
-  app.scheduler.add("__pbLogsCleanup__", "0 */6 * * *", () => {});
+  app.scheduler.add("__pbLogsCleanup__", "0 */6 * * *", () =>
+    deleteOldLogs(app, app.settings.get().logs.maxDays).catch((error) =>
+      app.logger.warn("Failed to delete old logs", { error }),
+    ),
+  );
 }

@@ -141,10 +141,14 @@ describe("Schedule.parse", () => {
 describe("CronScheduler", () => {
   let clock: ReturnType<typeof fakeClock>;
   let scheduler: CronScheduler;
+  let warnings: string[];
 
   beforeEach(() => {
     clock = fakeClock("2026-01-01T12:00:30Z");
-    scheduler = new CronScheduler(clock.timers, clock.now);
+    warnings = [];
+    scheduler = new CronScheduler(clock.timers, clock.now, (message) =>
+      warnings.push(message),
+    );
   });
   afterEach(() => void scheduler.stop());
 
@@ -182,6 +186,7 @@ describe("CronScheduler", () => {
         clearTimeout: () => {},
       },
       () => new Date(time),
+      () => {},
     );
     const runs: string[] = [];
     early.add("a", "* * * * *", () => {
@@ -207,6 +212,7 @@ describe("CronScheduler", () => {
         clearTimeout: () => {},
       },
       () => new Date(time),
+      () => {},
     );
     let runs = 0;
     paused.add("a", "* * * * *", () => {
@@ -235,7 +241,6 @@ describe("CronScheduler", () => {
   });
 
   test("a throwing job and a never resolving job do not stop another job or the next tick", async () => {
-    const warn = spyOn(console, "warn").mockImplementation(() => {});
     const runs: number[] = [];
     scheduler.add("boom", "* * * * *", () => {
       throw new Error("boom");
@@ -251,8 +256,12 @@ describe("CronScheduler", () => {
     clock.advance(60_000);
     await tick();
     expect(runs).toEqual([1, 1]);
-    expect(warn).toHaveBeenCalledTimes(4);
-    warn.mockRestore();
+    expect(warnings).toEqual([
+      'Cron job "boom" failed',
+      'Cron job "async-boom" failed',
+      'Cron job "boom" failed',
+      'Cron job "async-boom" failed',
+    ]);
   });
 
   test("a duplicate id replaces the job and moves it last", () => {
@@ -442,7 +451,7 @@ describe("app cron", () => {
   });
 
   test("__pbDBOptimize__ runs its pragmas outside a transaction", async () => {
-    const warn = spyOn(console, "warn");
+    const warn = spyOn(app.logger, "warn");
     await app.scheduler
       .jobs()
       .find((j) => j.id === "__pbDBOptimize__")!

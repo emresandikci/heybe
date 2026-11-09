@@ -51,6 +51,8 @@ export type {
   RouteHandle,
 } from "./http/router";
 export { importCollections } from "./collections/import";
+export { LogLevel } from "./logs/logger";
+export type { Logger } from "./logs/logger";
 export {
   addFieldAt,
   mergeCollection,

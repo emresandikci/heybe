@@ -95,8 +95,8 @@ export async function sendOtpMail(
       // like PB, a failed update is only logged
       await internalRecords(app, "_otps")
         .update(otpId, { sentTo: to })
-        .catch((err) =>
-          console.error("heybe: failed to update OTP sentTo:", err),
+        .catch((error) =>
+          app.logger.error("Failed to update OTP sentTo field", { error }),
         );
     },
   );
@@ -104,9 +104,11 @@ export async function sendOtpMail(
 
 // Like PB routine.FireAndForget: the response does not wait for the mail, so its timing does not
 // reveal whether the account exists.
-export function inBackground(task: () => Promise<void>): void {
+export function inBackground(app: App, task: () => Promise<void>): void {
   setImmediate(() => {
-    task().catch((err) => console.error("heybe:", err));
+    task().catch((error) =>
+      app.logger.error("Failed to run background task", { error }),
+    );
   });
 }
 

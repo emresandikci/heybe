@@ -204,11 +204,11 @@ async function requestVerification(e: RequestEvent): Promise<unknown> {
       return;
     }
     const { app, record } = ve;
-    inBackground(async () => {
+    inBackground(app, async () => {
       try {
         await sendFlowMail(app, "verification", record);
       } catch (error) {
-        console.error("heybe: failed to send verification email:", error);
+        app.logger.error("Failed to send verification email", { error });
       }
       resendLimit.set(app, key);
     });
@@ -296,11 +296,11 @@ async function requestPasswordReset(e: RequestEvent): Promise<unknown> {
   });
   await e.app.hooks.onRecordRequestPasswordResetRequest.trigger(event, (re) => {
     const { app, record } = re;
-    inBackground(async () => {
+    inBackground(app, async () => {
       try {
         await sendFlowMail(app, "passwordReset", record);
       } catch (error) {
-        console.error("heybe: failed to send password reset email:", error);
+        app.logger.error("Failed to send password reset email", { error });
         return;
       }
       resendLimit.set(app, key);
@@ -504,12 +504,12 @@ async function requestOtp(e: RequestEvent): Promise<void> {
     await deleteExpiredOtps(app, c);
     const { id, code } = await issueOtp(app, c, valuesOf(record), password);
     if (code !== null)
-      inBackground(async () => {
+      inBackground(app, async () => {
         try {
           await sendOtpMail(app, record, id, code);
         } catch (error) {
           await deleteOtp(app, id);
-          console.error("heybe: failed to send OTP email:", error);
+          app.logger.error("Failed to send OTP email", { error });
         }
       });
     oe.json(200, { otpId: id });
@@ -577,9 +577,9 @@ async function authWithOtp(e: RequestEvent): Promise<void> {
       try {
         await save(oe.app, r, "Failed to update the verified state.");
       } catch (error) {
-        console.error(
-          "heybe: failed to mark the record verified after OTP:",
-          error,
+        oe.app.logger.error(
+          "Failed to update record verified state after successful OTP validation",
+          { error },
         );
       }
     }

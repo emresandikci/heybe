@@ -257,8 +257,8 @@ export async function authResponse(
         values,
         realIp(e.app, e.req, e.remoteIp),
         e.req.headers.get("user-agent") ?? "",
-      ).catch((err) =>
-        console.error("heybe: failed to record auth origin:", err),
+      ).catch((error) =>
+        e.app.logger.error("Failed to record auth origin", { error }),
       );
     e.json(
       200,

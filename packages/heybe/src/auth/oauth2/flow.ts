@@ -683,8 +683,8 @@ async function signUpPayload(
         payload[mapped.avatarURL] = await safeFileFromURL(user.avatarURL, {
           allowIp,
         });
-      } catch (err) {
-        console.warn("heybe: failed to retrieve OAuth2 avatar:", err);
+      } catch (error) {
+        app.logger.warn("Failed to retrieve OAuth2 avatar", { error });
       }
     } else payload[mapped.avatarURL] = user.avatarURL;
   }
