@@ -198,12 +198,15 @@ function openMemoryDb(path: string, now: () => Date): Db {
 }
 
 // local unless the config is enabled, one S3 client per distinct config
-function s3Switch(local: Filesystem, config: () => S3Config) {
+function s3Switch(local: Filesystem, config: () => Readonly<S3Config>) {
+  let last: Readonly<S3Config> | null = null;
   let key = "";
   let s3: Filesystem | null = null;
   return (): Filesystem => {
     const c = config();
     if (!c.enabled) return local;
+    if (c === last && s3) return s3;
+    last = c;
     const k = JSON.stringify(c);
     if (k !== key || !s3) {
       key = k;
@@ -229,12 +232,12 @@ export function createApp(opts: AppOptions = {}): App {
   const files = appFilesystem(
     s3Switch(
       localFilesystem(join(dataDir, "storage")),
-      () => settings.get().s3,
+      () => settings.current().s3,
     ),
   );
   const backupsFiles = s3Switch(
     localFilesystem(join(dataDir, "backups")),
-    () => settings.get().backups.s3,
+    () => settings.current().backups.s3,
   );
   const collections = new CollectionStore(db, now, files);
   const hooks = createHooks();

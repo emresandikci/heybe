@@ -4,7 +4,7 @@ import { authFromToken } from "../../auth/tokens";
 import { mimeExtension, sniffMime } from "../../files/mime";
 import { normalizeFilename } from "../../files/name";
 import { NotFoundError, errorMessage, formatDate } from "../../util";
-import { ApiError } from "../errors";
+import { ApiError, LOAD_FAILED, loadBody } from "../errors";
 import {
   bodyLimit,
   checkSuperuserIp,
@@ -15,7 +15,6 @@ import { serveStoredFile } from "./files";
 
 // Port of PB apis/backup.go, backup_create.go and backup_upload.go.
 
-const LOAD_FAILED = "An error occurred while loading the submitted data.";
 const VALIDATION_FAILED =
   "An error occurred while validating the submitted data.";
 const ACTIVE =
@@ -72,13 +71,7 @@ async function nameIssue(app: App, name: string) {
 
 async function create(e: RequestEvent) {
   if (e.app.activeBackup !== null) throw new ApiError(400, ACTIVE);
-  let body: Record<string, unknown>;
-  try {
-    body = await e.body();
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 413) throw err;
-    throw new ApiError(400, LOAD_FAILED);
-  }
+  const body = await loadBody(e);
   const name = body.name ?? "";
   if (typeof name !== "string") throw new ApiError(400, LOAD_FAILED);
   const issue = await nameIssue(e.app, name);

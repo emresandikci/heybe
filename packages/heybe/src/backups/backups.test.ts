@@ -17,7 +17,12 @@ import type { MailMessage } from "../mail/mailer";
 import { internalRecords } from "../records/internal";
 import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
-import { LOCAL_TEMP_DIR, generateBackupName, snakecase } from "./create";
+import {
+  LOCAL_TEMP_DIR,
+  generateBackupName,
+  snakecase,
+  vacuumInto,
+} from "./create";
 import * as zipModule from "./zip";
 import { createZipWriter, extractZip } from "./zip";
 
@@ -249,6 +254,54 @@ describe("createBackup", () => {
         .map((r: any) => r.title),
     ).toEqual(["before"]);
     db.close();
+  });
+  test("a file zipped by the walk and deleted later in the run is zipped once", async () => {
+    await app.files.write("pbc_1/r1/a.txt", enc("a"));
+    await app.files.write("pbc_1/r1/b.txt", enc("b"));
+    const createWriter = zipModule.createZipWriter;
+    const added: string[] = [];
+    const zipSpy = spyOn(zipModule, "createZipWriter").mockImplementation(
+      async (path) => {
+        const w = await createWriter(path);
+        return {
+          async addFile(local, name) {
+            added.push(name);
+            if (name === "storage/pbc_1/r1/b.txt")
+              await app.files.delete("pbc_1/r1/a.txt");
+            return w.addFile(local, name);
+          },
+          close: () => w.close(),
+        };
+      },
+    );
+    try {
+      await app.createBackup("d.zip");
+    } finally {
+      zipSpy.mockRestore();
+    }
+    expect(added.filter((n) => n === "storage/pbc_1/r1/a.txt")).toHaveLength(1);
+    expect(await entries("d.zip")).toContain("storage/pbc_1/r1/a.txt");
+  });
+
+  test("VACUUM INTO runs off the main thread", async () => {
+    // a rollback-journal db locked by an open write: the vacuum can only finish after the commit below
+    const path = join(root, "locked.db");
+    const lock = new Database(path);
+    lock.run("CREATE TABLE t (v TEXT)");
+    lock.run("BEGIN EXCLUSIVE");
+    lock.run("INSERT INTO t VALUES ('late')");
+    let finished = false;
+    const vacuum = vacuumInto(path, join(root, "copy.db"), 10_000).then(() => {
+      finished = true;
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(finished).toBe(false);
+    lock.run("COMMIT");
+    lock.close();
+    await vacuum;
+    const copy = new Database(join(root, "copy.db"));
+    expect(copy.query("SELECT v FROM t").all()).toEqual([{ v: "late" }]);
+    copy.close();
   });
 });
 

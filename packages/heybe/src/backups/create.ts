@@ -59,6 +59,17 @@ async function createZip(e: BackupEvent, tempDir: string, zipPath: string) {
   const excluded = new Set(e.exclude.map(normalizeExclude));
   const s3 = () => app.settings.current().s3.enabled;
 
+  // each name is zipped once, by the storage walk or by the deleting watcher
+  const zipped = new Map<string, Promise<void>>();
+  const add = (path: string, name: string) => {
+    let added = zipped.get(name);
+    if (!added) {
+      added = zip.addFile(path, name);
+      zipped.set(name, added);
+    }
+    return added;
+  };
+
   // a stored file deleted while the backup runs still belongs to the data.db snapshot
   const unwatchDeleting = app.files.watch({
     async deleting(keyOrPrefix) {
@@ -70,9 +81,9 @@ async function createZip(e: BackupEvent, tempDir: string, zipPath: string) {
         const zipName = `storage/${f.key}`;
         if (excluded.has(normalizeExclude(zipName))) continue;
         try {
-          await zip.addFile(join(app.dataDir, "storage", f.key), zipName);
-          excluded.add(normalizeExclude(zipName));
+          await add(join(app.dataDir, "storage", f.key), zipName);
         } catch (error) {
+          zipped.delete(zipName);
           app.logger.warn(
             `[${e.name}] failed to copy file in backup zip before delete`,
             { error, file: f.key },
@@ -94,16 +105,27 @@ async function createZip(e: BackupEvent, tempDir: string, zipPath: string) {
     excludeDb(excluded, "data.db");
     await copyDb(app.auxDb, "auxiliary.db", tempDir, zip);
     excludeDb(excluded, "auxiliary.db");
-    for (const db of [app.db, app.auxDb])
-      await exclusive(db, (s) =>
-        s.run("PRAGMA wal_checkpoint(TRUNCATE)"),
-      ).catch(() => {});
-    await copyDir(zip, app.dataDir, "", excluded);
+    await copyDir(add, app.dataDir, "", excluded);
   } finally {
     unwatchDeleting();
     unwatchWriting();
     await zip.close();
   }
+}
+
+// VACUUM INTO in a worker: the caller holds `exclusive` so writes wait, while reads and requests keep running
+export function vacuumInto(
+  path: string,
+  dest: string,
+  busyTimeoutMs: number,
+): Promise<void> {
+  const worker = new Worker(new URL("./vacuum-worker.ts", import.meta.url));
+  return new Promise<void>((resolve, reject) => {
+    worker.onmessage = (e: MessageEvent<{ error?: string }>) =>
+      e.data.error === undefined ? resolve() : reject(new Error(e.data.error));
+    worker.onerror = (e) => reject(e.error ?? new Error(e.message));
+    worker.postMessage({ path, dest, busyTimeoutMs });
+  }).finally(() => worker.terminate());
 }
 
 async function copyDb(
@@ -115,8 +137,11 @@ async function copyDb(
 ) {
   const temp = join(tempDir, file);
   try {
-    await exclusive(db, (s) => {
-      s.run("VACUUM INTO ?", [temp]);
+    await exclusive(db, async (s) => {
+      const { timeout } = s
+        .query<{ timeout: number }, []>("PRAGMA busy_timeout")
+        .get()!;
+      await vacuumInto(s.filename, temp, timeout);
       copied?.();
     });
     await zip.addFile(temp, file);
@@ -132,7 +157,7 @@ function excludeDb(excluded: Set<string>, file: string) {
 
 // regular files only; the excluded set is re-read on each entry since watchers keep adding to it
 async function copyDir(
-  zip: ZipWriter,
+  add: (path: string, name: string) => Promise<void>,
   dir: string,
   prefix: string,
   excluded: Set<string>,
@@ -145,8 +170,8 @@ async function copyDir(
     if ([...excluded].some((p) => check.startsWith(p))) continue;
     const path = join(dir, entry.name);
     try {
-      if (entry.isDirectory()) await copyDir(zip, path, `${name}/`, excluded);
-      else if (entry.isFile()) await zip.addFile(path, name);
+      if (entry.isDirectory()) await copyDir(add, path, `${name}/`, excluded);
+      else if (entry.isFile()) await add(path, name);
     } catch (err) {
       // removed while the backup runs
       if (!missing(err)) throw err;

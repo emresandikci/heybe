@@ -16,11 +16,9 @@ import {
 } from "../../hooks/events";
 import { SettingsLoadError, publicSettings } from "../../settings";
 import { randomSecret } from "../../util";
-import { ApiError } from "../errors";
+import { ApiError, LOAD_FAILED, loadBody } from "../errors";
 import type { RequestEvent, Router } from "../router";
 import { requireSuperuser } from "./collections";
-
-const LOAD_FAILED = "An error occurred while loading the submitted data.";
 
 function list(e: RequestEvent): unknown {
   const hook = e.app.hooks.onSettingsListRequest;
@@ -182,13 +180,7 @@ async function testEmail(e: RequestEvent): Promise<Response> {
 
 // PB forms.TestS3Filesystem
 async function testS3(e: RequestEvent): Promise<Response> {
-  let body: Record<string, unknown>;
-  try {
-    body = await e.body();
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 413) throw err;
-    throw new ApiError(400, LOAD_FAILED);
-  }
+  const body = await loadBody(e);
   const filesystem = body.filesystem ?? "";
   if (typeof filesystem !== "string") throw new ApiError(400, LOAD_FAILED);
   if (filesystem === "")

@@ -193,6 +193,20 @@ describe("executeQuery", () => {
     expect(await rows("SELECT name FROM sq_a")).toEqual([["app"]]);
   });
 
+  test("PRAGMA query_only after a write does not stick to the writer", async () => {
+    const result = await run(
+      "INSERT INTO sq_a (name) VALUES ('a'); PRAGMA query_only = 1",
+    );
+    expect(result.affectedRows).toBe(1);
+    await appInsert("app");
+    await app.settings.update({ meta: { appName: "after" } });
+    expect(app.settings.current().meta.appName).toBe("after");
+    await run("INSERT INTO sq_a (name) VALUES ('api')");
+    expect(
+      app.db.query("SELECT name FROM sq_a ORDER BY id").map((r: any) => r.name),
+    ).toEqual(["a", "app", "api"]);
+  });
+
   test("whitespace-only query gives empty query", async () => {
     await expect(run("  \n ")).rejects.toThrow("empty query");
   });

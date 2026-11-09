@@ -1,13 +1,12 @@
-import { SQLiteError } from "bun:sqlite";
+import { type Database, SQLiteError } from "bun:sqlite";
 import type { App } from "../../app";
 import { exclusive, openSibling } from "../../db";
-import { ApiError } from "../errors";
+import { ApiError, LOAD_FAILED, loadBody } from "../errors";
 import { requireSuperuserAuth } from "../middlewares";
 import type { RequestEvent, Router } from "../router";
 
 const MAX_ROWS = 1000;
 const MAX_LENGTH = 5000;
-const LOAD_FAILED = "An error occurred while loading the submitted data.";
 const WRITE_PREFIXES = [
   "INSERT",
   "CREATE",
@@ -110,8 +109,9 @@ function isWrite(query: string): boolean {
   );
 }
 
-// PB runs read queries on its concurrent pool; here both kinds hold the write mutex on the writer
-// so a query cannot see or break an open write.
+// PB runs read queries on its concurrent pool. Here both kinds hold the write mutex so a query
+// cannot see or break an open write, and run on their own connection since any query may change
+// connection state (BEGIN, PRAGMA query_only).
 export async function executeQuery(
   app: App,
   query: string,
@@ -126,55 +126,17 @@ export async function executeQuery(
     columns: [],
     rows: [],
   };
+  const write = isWrite(query);
   try {
-    if (isWrite(query))
-      // changes() is the count of the last statement, like PB's driver
-      result.affectedRows = await exclusive(app.db, (s) => {
-        try {
-          return s
-            .transaction(() => {
-              s.run(query);
-              return s.query<{ n: number }, []>("SELECT changes() AS n").get()!
-                .n;
-            })
-            .immediate();
-        } finally {
-          if (s.inTransaction) s.run("ROLLBACK");
-        }
-      });
-    else
-      // any query may change connection state (BEGIN, PRAGMA query_only), so it gets its own connection
-      await exclusive(app.db, (writer) => {
-        const s = openSibling(writer);
-        try {
-          const stmt = s.prepare(query).safeIntegers(true);
-          try {
-            const names = stmt.columnNames;
-            // iterate gives objects, which lose duplicate column names
-            if (new Set(names).size === names.length) {
-              for (const row of stmt.iterate() as Iterable<
-                Record<string, unknown>
-              >) {
-                if (result.rows.length >= maxRows) break;
-                result.rows.push(names.map((n) => goString(row[n])));
-              }
-            } else
-              result.rows = stmt
-                .values()
-                .slice(0, maxRows)
-                .map((row) => row.map(goString));
-            result.columns = names.map((name, i) => ({
-              name,
-              type: (stmt.declaredTypes[i] ?? "").toUpperCase(),
-              nullable: true,
-            }));
-          } finally {
-            stmt.finalize();
-          }
-        } finally {
-          s.close();
-        }
-      });
+    await exclusive(app.db, (writer) => {
+      const s = openSibling(writer);
+      try {
+        if (write) result.affectedRows = runWrite(s, query);
+        else readRows(s, query, maxRows, result);
+      } finally {
+        s.close();
+      }
+    });
   } catch (err) {
     throw driverError(err);
   }
@@ -182,14 +144,51 @@ export async function executeQuery(
   return result;
 }
 
-async function runSql(e: RequestEvent) {
-  let body: Record<string, unknown>;
+// changes() is the count of the last statement, like PB's driver
+function runWrite(s: Database, query: string): number {
+  s.run("BEGIN IMMEDIATE");
   try {
-    body = await e.body();
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 413) throw err;
-    throw new ApiError(400, LOAD_FAILED);
+    s.run(query);
+    const n = s.query<{ n: number }, []>("SELECT changes() AS n").get()!.n;
+    s.run("COMMIT");
+    return n;
+  } finally {
+    if (s.inTransaction) s.run("ROLLBACK");
   }
+}
+
+function readRows(
+  s: Database,
+  query: string,
+  maxRows: number,
+  result: SqlResult,
+) {
+  const stmt = s.prepare(query).safeIntegers(true);
+  try {
+    const names = stmt.columnNames;
+    // iterate gives objects, which lose duplicate column names
+    if (new Set(names).size === names.length) {
+      for (const row of stmt.iterate() as Iterable<Record<string, unknown>>) {
+        if (result.rows.length >= maxRows) break;
+        result.rows.push(names.map((n) => goString(row[n])));
+      }
+    } else
+      result.rows = stmt
+        .values()
+        .slice(0, maxRows)
+        .map((row) => row.map(goString));
+    result.columns = names.map((name, i) => ({
+      name,
+      type: (stmt.declaredTypes[i] ?? "").toUpperCase(),
+      nullable: true,
+    }));
+  } finally {
+    stmt.finalize();
+  }
+}
+
+async function runSql(e: RequestEvent) {
+  const body = await loadBody(e);
   const query = body.query ?? "";
   if (typeof query !== "string") throw new ApiError(400, LOAD_FAILED);
   const issue =

@@ -1,6 +1,7 @@
 import { STATUS_CODES } from "node:http";
 import { FilterError } from "../filter/parse";
 import { FieldError, NotFoundError, ValidationError } from "../util";
+import type { RequestEvent } from "./router";
 
 const DEFAULT_MESSAGES: Record<number, string> = {
   400: "Something went wrong while processing your request.",
@@ -52,6 +53,21 @@ export class ApiError extends Error {
   ) {
     super(sentenize(message || DEFAULT_MESSAGES[status] || statusText(status)));
     this.data = sentenizeData(data) as Record<string, unknown>;
+  }
+}
+
+export const LOAD_FAILED =
+  "An error occurred while loading the submitted data.";
+
+// the request body, PB's 400 load error when it does not parse; a too large body keeps its 413
+export async function loadBody(
+  e: RequestEvent,
+): Promise<Record<string, unknown>> {
+  try {
+    return await e.body();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 413) throw err;
+    throw new ApiError(400, LOAD_FAILED);
   }
 }
 
