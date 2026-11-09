@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { type App } from "../app";
 import { testApp } from "../test-app";
 import type { MailMessage } from "../mail/mailer";
-import { recordAuthOrigin } from "./alerts";
+import { RecordModel } from "../records/model";
+import { recordAuthOrigin, sendAuthAlert } from "./alerts";
 
 let app: App;
 let sent: MailMessage[];
@@ -85,5 +86,18 @@ describe("recordAuthOrigin", () => {
       .records("users")
       .update(record.id as string, { password: "87654321" });
     expect(origins()).toHaveLength(0);
+  });
+});
+
+describe("sendAuthAlert", () => {
+  test("a record without an email throws missing record email", async () => {
+    const record = new RecordModel(
+      app.collections.find("users")!,
+      { id: "r1", email: "" },
+      false,
+    );
+    await expect(sendAuthAlert(app, record, "info")).rejects.toThrow(
+      "missing record email",
+    );
   });
 });

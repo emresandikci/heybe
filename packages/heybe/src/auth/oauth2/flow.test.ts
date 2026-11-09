@@ -22,6 +22,7 @@ import { valuesOf } from "../../records/service";
 import {
   authWithOAuth2,
   buildAuthURL,
+  fetchToken,
   initProvider,
   isPublicIp,
   oauth2Meta,
@@ -667,6 +668,48 @@ describe("provider response cap", () => {
       ).rejects.toThrow(SyntaxError);
     } finally {
       await big.stop(true);
+    }
+  });
+});
+
+describe("token auth style cache", () => {
+  test("two providers with the same token URL and different client ids keep separate auth styles", async () => {
+    const calls: string[] = [];
+    const spy = spyOn(globalThis, "fetch").mockImplementation((async (
+      _url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const headers = new Headers(init?.headers);
+      const body = new URLSearchParams(String(init?.body));
+      const basic = headers.get("authorization")?.replace("Basic ", "");
+      const id = basic ? atob(basic).split(":")[0]! : body.get("client_id");
+      const style = basic ? "header" : "params";
+      calls.push(`${id}:${style}`);
+      return (id === "a") === (style === "header")
+        ? Response.json({ access_token: "t", token_type: "Bearer" })
+        : new Response("no", { status: 401 });
+    }) as typeof fetch);
+    try {
+      const provider = (clientId: string) => ({
+        ...initProvider({
+          name: "google",
+          clientId,
+          clientSecret: "s",
+          tokenURL: "https://idp.example/token",
+        })!,
+      });
+      const input = { code: "c", codeVerifier: "v", redirectURL: "" };
+      const signal = new AbortController().signal;
+      const exchange = (id: string) =>
+        fetchToken(app, provider(id), input, signal);
+      await exchange("a");
+      await exchange("b");
+      calls.length = 0;
+      await exchange("a");
+      await exchange("b");
+      expect(calls).toEqual(["a:header", "b:params"]);
+    } finally {
+      spy.mockRestore();
     }
   });
 });

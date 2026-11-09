@@ -82,22 +82,122 @@ function smtpMailer(smtp: SettingsData["smtp"]): Mailer {
   };
 }
 
-const sendmailMailer: Mailer = {
+// Go textproto.CanonicalMIMEHeaderKey
+const canonicalKey = (key: string) =>
+  key
+    .toLowerCase()
+    .replace(
+      /(^|-)([a-z])/g,
+      (_, dash: string, c: string) => dash + c.toUpperCase(),
+    );
+
+// Go's Header.Write skips keys that are not RFC 7230 tokens
+const VALID_HEADER_KEY = /^[!#-'*+\-.^_`|~0-9A-Za-z]+$/;
+
+const MAX_CONTENT_LEN = 63;
+const MAX_BASE64_BYTES = 45;
+const HEX = "0123456789ABCDEF";
+
+// Go mime.QEncoding.Encode("utf-8", s)
+function qEncode(s: string): string {
+  if (!/[^\t\x20-\x7e]/.test(s)) return s;
+  const words: string[] = [];
+  let word = "";
+  let len = 0;
+  for (const char of s) {
+    const plain = char >= " " && char <= "~" && !"=?_".includes(char);
+    const bytes = Buffer.from(char);
+    const encLen = plain ? 1 : 3 * bytes.length;
+    if (len + encLen > MAX_CONTENT_LEN) {
+      words.push(word);
+      word = "";
+      len = 0;
+    }
+    word +=
+      char === " "
+        ? "_"
+        : plain
+          ? char
+          : [...bytes].map((b) => `=${HEX[b >> 4]}${HEX[b & 15]}`).join("");
+    len += encLen;
+  }
+  words.push(word);
+  return words.map((w) => `=?utf-8?q?${w}?=`).join(" ");
+}
+
+// Go mime.BEncoding.Encode("utf-8", s)
+function bEncode(s: string): string {
+  if (!/[^\t\x20-\x7e]/.test(s)) return s;
+  const words: string[] = [];
+  let chunk = "";
+  for (const char of s) {
+    if (Buffer.byteLength(chunk + char) > MAX_BASE64_BYTES) {
+      words.push(chunk);
+      chunk = "";
+    }
+    chunk += char;
+  }
+  words.push(chunk);
+  return words
+    .map((w) => `=?utf-8?b?${Buffer.from(w).toString("base64")}?=`)
+    .join(" ");
+}
+
+// Go mail.Address.String()
+function formatAddress({ name, address }: { name?: string; address: string }) {
+  const addr = `<${address}>`;
+  if (!name) return addr;
+  if (!/[^\t\x20-\x7e]/.test(name))
+    return `"${name.replace(/(["\\])/g, "\\$1")}" ${addr}`;
+  return `${/["#$%&'(),.:;<>@[\]^`{|}~]/.test(name) ? bEncode(name) : qEncode(name)} ${addr}`;
+}
+
+const addresses = (list: { address: string }[]) =>
+  list.map((a) => a.address).join(",");
+
+// PB tools/mailer/sendmail.go send(): header block sorted by key like Go's http.Header.Write
+export function sendmailMessage(msg: MailMessage): string {
+  const headers = new Map<string, string>();
+  const set = (key: string, value: string) =>
+    headers.set(canonicalKey(key), value);
+  set("Subject", qEncode(msg.subject));
+  set("From", formatAddress(msg.from));
+  set("To", addresses(msg.to));
+  set("Content-Type", `text/${msg.html ? "html" : "plain"}; charset=UTF-8`);
+  for (const [k, v] of Object.entries(msg.headers ?? {}))
+    if (VALID_HEADER_KEY.test(k)) set(k, v);
+  if (!headers.get("Message-Id")) {
+    const parts = msg.from.address.split("@");
+    if (parts.length === 2)
+      set(
+        "Message-ID",
+        `<${randomBytes(11).toString("base64url")}@${parts[1]}>`,
+      );
+  }
+  const block = [...headers]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([k, v]) => `${k}: ${v.replace(/[\r\n]/g, " ").trim()}\r\n`)
+    .join("");
+  return `${block}\r\n${msg.html || msg.text}`;
+}
+
+export const sendmailMailer = (paths = SENDMAIL_PATHS): Mailer => ({
   async send(msg) {
     assertRecipients(msg);
-    const path = SENDMAIL_PATHS.map((p) => Bun.which(p)).find(Boolean);
+    const path = paths.map((p) => Bun.which(p)).find(Boolean);
     if (!path) throw new Error("failed to locate a sendmail executable path");
-    const transport = nodemailer.createTransport({
-      sendmail: true,
-      newline: "unix",
-      path,
+    const proc = Bun.spawn([path, "-i", "-t"], {
+      stdin: new Blob([sendmailMessage(msg)]),
+      stdout: "ignore",
+      stderr: "ignore",
     });
-    await transport.sendMail(toOptions(msg));
+    const code = await proc.exited;
+    if (code !== 0) throw new Error(`exit status ${code}`);
   },
-};
+});
 
 export function mailerFromSettings(settings: SettingsData): Mailer {
-  return settings.smtp.enabled ? smtpMailer(settings.smtp) : sendmailMailer;
+  return settings.smtp.enabled ? smtpMailer(settings.smtp) : sendmailMailer();
 }
 
 // PB NewMailClient with its __pbMailerOnSend__ handler: every send goes through onMailerSend, whose

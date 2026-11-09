@@ -14,13 +14,15 @@ export interface CapturedMail {
 export interface SmtpCapture {
   port: number;
   messages(): CapturedMail[];
-  // resolves with the first captured mail to `address`, already received or still to come
+  // resolves with the first captured mail to `address`, already received or still to come, or rejects after 2000 ms
   waitFor(address: string): Promise<CapturedMail>;
   // resolves once `count` mails to `address` were captured
   waitForCount(address: string, count: number): Promise<CapturedMail[]>;
   clear(): void;
   stop(): Promise<void>;
 }
+
+const WAIT_MS = 2000;
 
 const base64 = (s: string) => Buffer.from(s, "base64").toString();
 
@@ -216,13 +218,18 @@ export function startSmtpCapture(): Promise<SmtpCapture> {
     });
   });
   const waitForCount = (address: string, count: number) =>
-    new Promise<CapturedMail[]>((resolve) => {
+    new Promise<CapturedMail[]>((resolve, reject) => {
       const check = () => {
         const found = store.filter((m) => m.recipients.includes(address));
         if (found.length < count) return false;
+        clearTimeout(timer);
         resolve(found.slice(0, count));
         return true;
       };
+      const timer = setTimeout(() => {
+        waiters.splice(waiters.indexOf(check), 1);
+        reject(new Error(`no mail to ${address} within ${WAIT_MS} ms`));
+      }, WAIT_MS);
       if (!check()) waiters.push(check);
     });
   return new Promise((resolve, reject) => {

@@ -11,14 +11,18 @@ import { createEvent } from "../router";
 import { loadAuth } from "../middlewares";
 import { createRouter } from "../server";
 import { internalRecords } from "../../records/internal";
+import { resendLimit } from "../../auth/flows";
+import { fakeClock } from "../../test-clock";
 
 let app: App;
 let clock: Date;
+let timers: ReturnType<typeof fakeClock>;
 let sent: MailMessage[];
 
 beforeEach(() => {
   clock = new Date("2026-01-01T00:00:00Z");
-  app = testApp({ now: () => clock });
+  timers = fakeClock();
+  app = testApp({ now: () => clock, timers: timers.timers });
   sent = [];
   app.mailer = { send: async (msg) => void sent.push(msg) };
 });
@@ -56,6 +60,7 @@ const users = () => app.collections.find("users")!;
 
 const advance = (seconds: number) => {
   clock = new Date(clock.getTime() + seconds * 1000);
+  timers.advance(seconds * 1000);
 };
 
 describe("request routes do not wait for the mail", () => {
@@ -168,6 +173,23 @@ describe("resend window", () => {
     advance(1);
     await request();
     expect(sent).toHaveLength(2);
+  });
+
+  test("a resend key expires after 2 minutes without a has() call", () => {
+    resendLimit.set(app, "k");
+    const pending = timers.pending();
+    advance(119);
+    expect(timers.pending()).toBe(pending);
+    advance(1);
+    expect(timers.pending()).toBe(pending - 1);
+    expect(resendLimit.has(app, "k")).toBe(false);
+  });
+
+  test("removing a resend key clears its timer", () => {
+    const pending = timers.pending();
+    resendLimit.set(app, "k");
+    resendLimit.remove(app, "k");
+    expect(timers.pending()).toBe(pending);
   });
 
   test("a failed password reset mail does not start the window", async () => {

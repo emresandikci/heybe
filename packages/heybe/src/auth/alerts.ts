@@ -1,5 +1,6 @@
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
+import { recordEmail } from "./flows";
 import { sendRecordMail } from "../mail/mailer";
 import { escapeHtml, recordMessage } from "../mail/templates";
 import { RecordModel } from "../records/model";
@@ -22,7 +23,7 @@ export async function sendAuthAlert(
     "authAlert",
     record,
     { "{ALERT_INFO}": escaped },
-    String(record.get("email")),
+    recordEmail(record),
   );
   await sendRecordMail(
     app,

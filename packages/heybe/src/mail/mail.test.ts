@@ -1,10 +1,25 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type App } from "../app";
 import { testApp } from "../test-app";
 import type { Collection } from "../collections/model";
 import { startSmtpCapture } from "../../contract/smtp";
+import { RecordModel } from "../records/model";
+import { sendFlowMail, sendOtpMail } from "../auth/flows";
 import { html2text } from "./html2text";
-import { mailerFromSettings, smtpTransportOptions } from "./mailer";
+import {
+  mailerFromSettings,
+  sendmailMailer,
+  smtpTransportOptions,
+} from "./mailer";
 import {
   type RecordMailKind,
   escapeHtml,
@@ -338,5 +353,120 @@ describe("mailer safety", () => {
         ...mail,
       }),
     ).rejects.toThrow("invalid mail address");
+  });
+});
+
+describe("sendmail transport", () => {
+  let dir: string;
+  let mailer: ReturnType<typeof sendmailMailer>;
+  const run = (exit: number) => {
+    const script = join(dir, "sendmail");
+    writeFileSync(
+      script,
+      `#!/bin/sh\nprintf '%s\\n' "$@" > ${dir}/argv\ncat > ${dir}/stdin\nexit ${exit}\n`,
+    );
+    chmodSync(script, 0o755);
+  };
+  const argv = () => readFileSync(join(dir, "argv"), "utf8");
+  const stdin = () => readFileSync(join(dir, "stdin"), "utf8");
+  const from = { name: 'Ünï "Q"', address: "from@example.com" };
+  const to = [
+    { address: "a@example.com" },
+    { name: "B", address: "b@example.com" },
+  ];
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "sendmail-"));
+    mailer = sendmailMailer([join(dir, "sendmail")]);
+    run(0);
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("an html message is sent like PocketBase with the html as body", async () => {
+    await mailer.send({
+      from,
+      to,
+      subject:
+        "Café ünïcode subject that is long enough to need splitting into words ok",
+      html: "<p>hi</p>",
+      text: "ignored",
+      headers: {
+        "x-custom": "a\r\nb ",
+        "Message-ID": "<id@example.com>",
+        "Bad Key": "x",
+        "X:Y": "x",
+      },
+    });
+    expect(argv()).toBe("-i\n-t\n");
+    expect(stdin()).toBe(
+      [
+        "Content-Type: text/html; charset=UTF-8",
+        "From: =?utf-8?b?w5xuw68gIlEi?= <from@example.com>",
+        "Message-Id: <id@example.com>",
+        "Subject: =?utf-8?q?Caf=C3=A9_=C3=BCn=C3=AFcode_subject_that_is_long_enough_to_need?= =?utf-8?q?_splitting_into_words_ok?=",
+        "To: a@example.com,b@example.com",
+        "X-Custom: a  b",
+        "",
+        "<p>hi</p>",
+      ].join("\r\n"),
+    );
+  });
+
+  test("a text-only message is sent as text/plain with a default message id", async () => {
+    await mailer.send({
+      from: { name: "Acme (x)", address: "from@example.com" },
+      to: [{ address: "a@example.com" }],
+      subject: "Plain",
+      html: "",
+      text: "body",
+    });
+    const [head, body] = stdin().split("\r\n\r\n");
+    expect(body).toBe("body");
+    expect(head!.split("\r\n")).toEqual([
+      "Content-Type: text/plain; charset=UTF-8",
+      'From: "Acme (x)" <from@example.com>',
+      expect.stringMatching(/^Message-Id: <[\w-]{15}@example\.com>$/),
+      "Subject: Plain",
+      "To: a@example.com",
+    ]);
+  });
+
+  test("a failing sendmail gives the exit status as error", async () => {
+    run(3);
+    await expect(
+      mailer.send({
+        from,
+        to,
+        subject: "s",
+        html: "",
+        text: "t",
+      }),
+    ).rejects.toThrow("exit status 3");
+  });
+
+  test("a missing sendmail binary gives PocketBase's error", async () => {
+    await expect(
+      sendmailMailer([join(dir, "none")]).send({
+        from,
+        to,
+        subject: "s",
+        html: "",
+        text: "t",
+      }),
+    ).rejects.toThrow("failed to locate a sendmail executable path");
+  });
+});
+
+describe("record mails", () => {
+  test("a record mail to a record without a string email throws missing record email", async () => {
+    for (const email of [undefined, "", 5]) {
+      const record = new RecordModel(users, { id: "r1", email }, false);
+      await expect(sendFlowMail(app, "verification", record)).rejects.toThrow(
+        "missing record email",
+      );
+      await expect(sendOtpMail(app, record, "o1", "123456")).rejects.toThrow(
+        "missing record email",
+      );
+    }
   });
 });

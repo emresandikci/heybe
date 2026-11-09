@@ -42,6 +42,13 @@ const HOOKS = {
   emailChange: "onMailerRecordEmailChangeSend",
 } as const;
 
+export function recordEmail(record: RecordModel): string {
+  const email = record.get("email");
+  if (typeof email !== "string" || email === "")
+    throw new Error("missing record email");
+  return email;
+}
+
 // PB mails.SendRecordVerification, SendRecordPasswordReset and SendRecordChangeEmail.
 export async function sendFlowMail(
   app: App,
@@ -49,6 +56,7 @@ export async function sendFlowMail(
   record: RecordModel,
   newEmail?: string,
 ): Promise<void> {
+  const to = newEmail ?? recordEmail(record);
   const c = record.collection;
   const token = newMailToken(app, flow, c, valuesOf(record), newEmail);
   const message = recordMessage(
@@ -56,7 +64,7 @@ export async function sendFlowMail(
     TEMPLATES[flow],
     record,
     { "{TOKEN}": token },
-    newEmail ?? String(record.get("email")),
+    to,
   );
   await sendRecordMail(
     app,
@@ -79,7 +87,7 @@ export async function sendOtpMail(
     "otp",
     record,
     { "{OTP_ID}": otpId, "{OTP}": code },
-    String(record.get("email")),
+    recordEmail(record),
   );
   await sendRecordMail(
     app,
@@ -114,24 +122,26 @@ export function inBackground(app: App, task: () => Promise<void>): void {
 
 // PB keeps "@limit..." keys in the app store for 2 minutes after a mail went out.
 const RESEND_WINDOW_MS = 2 * 60 * 1000;
-const resendUntil = new WeakMap<App, Map<string, number>>();
+const resendTimers = new WeakMap<App, Map<string, unknown>>();
 
 export const resendLimit = {
   has(app: App, key: string): boolean {
-    const keys = resendUntil.get(app);
-    const until = keys?.get(key);
-    if (until === undefined) return false;
-    if (app.now().getTime() < until) return true;
-    keys!.delete(key);
-    return false;
+    return resendTimers.get(app)?.has(key) ?? false;
   },
   set(app: App, key: string): void {
-    let keys = resendUntil.get(app);
-    if (!keys) resendUntil.set(app, (keys = new Map()));
-    keys.set(key, app.now().getTime() + RESEND_WINDOW_MS);
+    let keys = resendTimers.get(app);
+    if (!keys) resendTimers.set(app, (keys = new Map()));
+    resendLimit.remove(app, key);
+    keys.set(
+      key,
+      app.timers.setTimeout(() => keys.delete(key), RESEND_WINDOW_MS),
+    );
   },
   remove(app: App, key: string): void {
-    resendUntil.get(app)?.delete(key);
+    const keys = resendTimers.get(app);
+    if (!keys?.has(key)) return;
+    app.timers.clearTimeout(keys.get(key));
+    keys.delete(key);
   },
 };
 

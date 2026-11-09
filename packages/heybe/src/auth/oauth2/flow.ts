@@ -281,8 +281,8 @@ function parseToken(app: App, res: Response, text: string): OAuth2Token {
 }
 
 type AuthStyle = "header" | "params";
-// like x/oauth2, the client auth style that worked per token URL
-const authStyles = new Map<string, AuthStyle>();
+// like x/oauth2, the client auth style that worked per token URL and client id
+const authStyles = new WeakMap<App, Map<string, AuthStyle>>();
 
 async function tokenRoundTrip(
   app: App,
@@ -326,7 +326,10 @@ export async function fetchToken(
   };
   if (input.redirectURL !== "") values.redirect_uri = input.redirectURL;
   if (p.pkce) values.code_verifier = input.codeVerifier;
-  const known = authStyles.get(p.tokenURL);
+  let styles = authStyles.get(app);
+  if (!styles) authStyles.set(app, (styles = new Map()));
+  const styleKey = `${p.tokenURL} ${p.clientId}`;
+  const known = styles.get(styleKey);
   if (known) return tokenRoundTrip(app, p, values, known, signal);
   let token: OAuth2Token;
   let style: AuthStyle = "header";
@@ -336,7 +339,7 @@ export async function fetchToken(
     style = "params";
     token = await tokenRoundTrip(app, p, values, style, signal);
   }
-  authStyles.set(p.tokenURL, style);
+  styles.set(styleKey, style);
   return token;
 }
 
