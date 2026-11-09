@@ -132,7 +132,7 @@ export const file: FieldDef = {
       const type = await sniffMime(item);
       const name = normalizeFilename(item.name ?? "", mimeExtension(type));
       const key = fileKey(ctx.collection.id, ctx.recordId, name);
-      await ctx.files.write(key, item);
+      await ctx.files.write(key, item, type);
       ctx.written.push(key);
       return new UploadedFile(name, item.name ?? "", item.size, type);
     };

@@ -79,3 +79,36 @@ test("a plain error from an enrich handler answers PB's 500", async () => {
   expect(log).toHaveBeenCalledTimes(2);
   log.mockRestore();
 });
+
+test("serveContent sends Last-Modified and 304 from StoredFile.modified", async () => {
+  await app.collections.save({
+    name: "docs",
+    viewRule: "",
+    fields: [{ name: "doc", type: "file", maxSelect: 1, maxSize: 1000 }],
+  } as any);
+  const r = await app.records("docs").create({
+    doc: new File(["hello"], "a.txt"),
+  });
+  const modified = new Date("2026-01-02T03:04:05Z");
+  app.files.file = async () => ({
+    blob: new Blob(["hello"]),
+    size: 5,
+    modified,
+  });
+  const download = async (headers: Record<string, string> = {}) => {
+    const url = new URL(`/api/files/docs/${r.id}/${r.doc}`, "http://x");
+    const found = createRouter().build().match("GET", url.pathname)!;
+    const req = new Request(url, { headers });
+    return found.run(createEvent(app, req, found.params));
+  };
+
+  const res = await download();
+  expect(res.status).toBe(200);
+  expect(res.headers.get("last-modified")).toBe(modified.toUTCString());
+  expect(await res.text()).toBe("hello");
+
+  const cached = await download({
+    "if-modified-since": modified.toUTCString(),
+  });
+  expect(cached.status).toBe(304);
+});

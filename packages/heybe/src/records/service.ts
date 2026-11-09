@@ -86,6 +86,8 @@ const LIST_TYPES = ["select", "relation", "file"];
 const DISCARD: Filesystem = {
   write: async () => {},
   file: async () => null,
+  exists: async () => false,
+  list: async () => [],
   delete: async () => {},
   deletePrefix: async () => {},
 };
@@ -385,10 +387,10 @@ export class RecordServiceImpl<T> {
     const from = `${ctx.collection.id}/${ctx.recordId}/`;
     const written: string[] = [];
     for (const key of ctx.written) {
-      const blob = await ctx.files.file(key);
+      const stored = await ctx.files.file(key);
       const to = fileKey(ctx.collection.id, id, key.slice(from.length));
-      if (blob) {
-        await ctx.files.write(to, blob);
+      if (stored) {
+        await ctx.files.write(to, stored.blob);
         written.push(to);
       }
       await this.quietly(ctx.files.delete(key));
@@ -483,7 +485,7 @@ export class RecordServiceImpl<T> {
       db.write(() => {
         db.run(`DELETE FROM ${quote(c.name)} WHERE id = ?`, [record.id]);
         db.onComplete((err) =>
-          err === null ? this.deleteDirs([`${c.id}/${record.id}`]) : undefined,
+          err === null ? this.deleteDirs([`${c.id}/${record.id}/`]) : undefined,
         );
       }),
     );
@@ -726,7 +728,7 @@ export class RecordServiceImpl<T> {
     for (const name of dropped) {
       await this.quietly(files.delete(fileKey(id, recordId, name)));
       await this.quietly(
-        files.deletePrefix(fileKey(id, recordId, `thumbs_${name}`)),
+        files.deletePrefix(fileKey(id, recordId, `thumbs_${name}/`)),
       );
     }
   }

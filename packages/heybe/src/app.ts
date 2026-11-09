@@ -11,7 +11,11 @@ import { CollectionStore } from "./collections/store";
 import { CronScheduler } from "./cron/scheduler";
 import { registerCronJobs } from "./cron/system";
 import { type Db, openDb } from "./db";
-import { type Filesystem, localFilesystem } from "./files/storage";
+import {
+  type AppFilesystem,
+  appFilesystem,
+  localFilesystem,
+} from "./files/storage";
 import { RecordHooks, bindRecordHooks } from "./extend/record-hooks";
 import { Cron } from "./extend/cron";
 import { Route } from "./extend/route";
@@ -77,7 +81,8 @@ export interface App extends HookBinders, RouterMethods {
   hooks: Hooks;
   collections: CollectionStore;
   settings: Settings;
-  files: Filesystem;
+  dataDir: string;
+  files: AppFilesystem;
   mailer: Mailer;
   realtime: Broker;
   scheduler: CronScheduler;
@@ -174,14 +179,13 @@ export function createApp(opts: AppOptions = {}): App {
   const dir = opts.dir ?? flags.dir ?? "./heybe_data";
   const memory = dir === "" || dir === ":memory:";
   if (!memory) mkdirSync(dir, { recursive: true });
-  const storageRoot = memory
-    ? mkdtempSync(join(tmpdir(), "heybe-storage-"))
-    : join(dir, "storage");
+  const dataDir = memory ? mkdtempSync(join(tmpdir(), "heybe-data-")) : dir;
   const now = opts.now ?? (() => new Date());
   const db = memory
-    ? openMemoryDb(join(storageRoot, "data.db"), now)
-    : openDb(join(dir, "data.db"));
-  const files = localFilesystem(storageRoot);
+    ? openMemoryDb(join(dataDir, "data.db"), now)
+    : openDb(join(dataDir, "data.db"));
+  const localFiles = localFilesystem(join(dataDir, "storage"));
+  const files = appFilesystem(() => localFiles);
   const collections = new CollectionStore(db, now, files);
   const settings = new Settings(db);
   const hooks = createHooks();
@@ -225,6 +229,7 @@ export function createApp(opts: AppOptions = {}): App {
     use: (...mw) => router.use(...mw),
     collections,
     settings,
+    dataDir,
     files,
     mailer: { send: (msg) => appMailer(app).send(msg) },
     realtime: new Broker(),
@@ -235,7 +240,7 @@ export function createApp(opts: AppOptions = {}): App {
     migrationsDir:
       opts.migrationsDir ??
       flags.migrationsDir ??
-      join(memory ? storageRoot : dir, "..", "heybe_migrations"),
+      join(dataDir, "..", "heybe_migrations"),
     automigrate: opts.automigrate ?? flags.automigrate ?? true,
     migrations: [],
     records: (name: string): RecordService<Record<string, unknown>> => {
@@ -345,7 +350,7 @@ export function createApp(opts: AppOptions = {}): App {
       if (closed) return;
       closed = true;
       db.close();
-      if (memory) rmSync(storageRoot, { recursive: true, force: true });
+      if (memory) rmSync(dataDir, { recursive: true, force: true });
     },
   } as App;
   collections.app = app;

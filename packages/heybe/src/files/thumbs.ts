@@ -40,7 +40,7 @@ export async function createThumb(
   const { default: sharp } = await import("sharp");
   const original = await fs.file(originalKey);
   if (!original) throw new Error(`original ${originalKey} does not exist`);
-  const bytes = await original.bytes();
+  const bytes = await original.blob.bytes();
 
   const maxPixels = positiveEnv(
     "PB_THUMBS_MAX_SOURCE_PIXELS",

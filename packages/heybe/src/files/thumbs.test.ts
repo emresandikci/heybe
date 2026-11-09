@@ -68,7 +68,7 @@ describe("createThumb", () => {
     const fs = localFilesystem(root);
     await fs.write("c/r/a.img", await source(format));
     await createThumb(fs, "c/r/a.img", "c/r/thumbs_a.img/t", size);
-    const bytes = await (await fs.file("c/r/thumbs_a.img/t"))!.bytes();
+    const bytes = await (await fs.file("c/r/thumbs_a.img/t"))!.blob.bytes();
     return sharp(bytes).metadata();
   };
 

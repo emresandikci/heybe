@@ -460,7 +460,7 @@ export class CollectionStore {
   private async deleteFiles(collectionIds: string[]): Promise<void> {
     for (const id of collectionIds) {
       try {
-        await this.files?.deletePrefix(id);
+        await this.files?.deletePrefix(`${id}/`);
       } catch (e) {
         console.warn("heybe: storage cleanup failed:", e);
       }

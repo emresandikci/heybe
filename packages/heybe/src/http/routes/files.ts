@@ -3,7 +3,7 @@ import type { Collection } from "../../collections/model";
 import { findRecordByViewFile } from "../../collections/view";
 import { uniqueStrings } from "../../fields/shared";
 import { sniffMime } from "../../files/mime";
-import { fileKey } from "../../files/storage";
+import { type StoredFile, fileKey } from "../../files/storage";
 import { createThumb, thumbGenerator } from "../../files/thumbs";
 import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
@@ -161,7 +161,7 @@ async function download(e: RequestEvent): Promise<void> {
   ) {
     const original = await readFile(e, originalKey);
     if (!original) throw new ApiError(404, "");
-    if (THUMB_TYPES.has(await sniffMime(original))) {
+    if (THUMB_TYPES.has(await sniffMime(original.blob))) {
       served.servedName = `${thumb}_${filename}`;
       served.servedPath = fileKey(
         base.collectionId,
@@ -178,7 +178,7 @@ async function download(e: RequestEvent): Promise<void> {
           );
           if (!(await e.app.files.file(originalKey))) {
             await e.app.files.deletePrefix(
-              fileKey(base.collectionId, base.recordId, `thumbs_${filename}`),
+              fileKey(base.collectionId, base.recordId, `thumbs_${filename}/`),
             );
             throw new ApiError(404, "");
           }
@@ -216,9 +216,9 @@ async function serve(
   e: RequestEvent,
   { servedPath, servedName }: { servedPath: string; servedName: string },
 ): Promise<void> {
-  const blob = await readFile(e, servedPath);
-  if (!blob) throw new ApiError(404, "");
-  const type = await sniffMime(blob);
+  const file = await readFile(e, servedPath);
+  if (!file) throw new ApiError(404, "");
+  const type = await sniffMime(file.blob);
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
   const headers = new Headers({
@@ -228,7 +228,7 @@ async function serve(
       "default-src 'none'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     "cache-control": "max-age=2592000, stale-while-revalidate=86400",
   });
-  e.response = serveContent(e.req, blob, headers);
+  e.response = serveContent(e.req, file, headers);
 }
 
 const NO_OVERLAP = "invalid range: failed to overlap";
@@ -280,9 +280,12 @@ function parseRange(
 }
 
 // The parts of Go's http.ServeContent that PB's file route relies on.
-function serveContent(req: Request, blob: Blob, headers: Headers): Response {
-  const size = blob.size;
-  const modified = Math.floor(((blob as Bun.BunFile).lastModified ?? 0) / 1000);
+function serveContent(
+  req: Request,
+  { blob, size, modified: date }: StoredFile,
+  headers: Headers,
+): Response {
+  const modified = Math.floor(date.getTime() / 1000);
   const lastModified = new Date(modified * 1000).toUTCString();
   const readOnly = req.method === "GET" || req.method === "HEAD";
   if (modified > 0) headers.set("last-modified", lastModified);

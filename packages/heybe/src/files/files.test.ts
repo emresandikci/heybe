@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
 import { testApp } from "../test-app";
 import { mimeExtension, sniffMime } from "./mime";
 import { normalizeFilename } from "./name";
-import { fileKey, localFilesystem } from "./storage";
+import { appFilesystem, fileKey, localFilesystem } from "./storage";
 
 describe("localFilesystem", () => {
   let root: string;
@@ -19,12 +27,113 @@ describe("localFilesystem", () => {
     const fs = localFilesystem(root);
     expect(await fs.file("pbc_1/abc/a.txt")).toBeNull();
     await fs.write("pbc_1/abc/a.txt", new TextEncoder().encode("hi"));
-    expect(await (await fs.file("pbc_1/abc/a.txt"))?.text()).toBe("hi");
+    expect(await (await fs.file("pbc_1/abc/a.txt"))?.blob.text()).toBe("hi");
     await fs.write("pbc_1/abc/b.txt", new Blob(["yo"]));
-    expect(await (await fs.file("pbc_1/abc/b.txt"))?.text()).toBe("yo");
+    expect(await (await fs.file("pbc_1/abc/b.txt"))?.blob.text()).toBe("yo");
     await fs.delete("pbc_1/abc/a.txt");
     expect(await fs.file("pbc_1/abc/a.txt")).toBeNull();
-    await fs.delete("pbc_1/abc/missing.txt");
+  });
+
+  test("delete of a missing key rejects", async () => {
+    const fs = localFilesystem(root);
+    await expect(fs.delete("pbc_1/abc/missing.txt")).rejects.toThrow(
+      'blob (key "pbc_1/abc/missing.txt") (code=NotFound)',
+    );
+  });
+
+  test("exists", async () => {
+    const fs = localFilesystem(root);
+    await fs.write("pbc_1/abc/a.txt", new Uint8Array([1]));
+    expect(await fs.exists("pbc_1/abc/a.txt")).toBe(true);
+    expect(await fs.exists("pbc_1/abc/b.txt")).toBe(false);
+    expect(await fs.exists("pbc_1/abc")).toBe(false);
+  });
+
+  test("list returns files under a prefix sorted by key with size and modified", async () => {
+    const fs = localFilesystem(root);
+    await fs.write("pbc_1/b/x.txt", new Uint8Array([1, 2]));
+    await fs.write("pbc_1/a/thumbs_y.png/10x10_y.png", new Uint8Array([1]));
+    await fs.write("pbc_1/a/y.png", new Uint8Array([1, 2, 3]));
+    await fs.write("pbc_10/a/z.txt", new Uint8Array([1]));
+    await writeFile(
+      join(root, "pbc_1/a/y.png.0b8e2c4e-1f5a-4c39-9a51-2c1e5d7f0a11.tmp"),
+      "x",
+    );
+    const when = new Date("2026-01-02T03:04:05Z");
+    await utimes(join(root, "pbc_1/a/y.png"), when, when);
+
+    const list = await fs.list("pbc_1/");
+    expect(list.map((f) => f.key)).toEqual([
+      "pbc_1/a/thumbs_y.png/10x10_y.png",
+      "pbc_1/a/y.png",
+      "pbc_1/b/x.txt",
+    ]);
+    expect(list[1]).toEqual({ key: "pbc_1/a/y.png", size: 3, modified: when });
+    expect((await fs.list("pbc_1/a/y")).map((f) => f.key)).toEqual([
+      "pbc_1/a/y.png",
+    ]);
+    expect((await fs.list("")).map((f) => f.key)).toHaveLength(4);
+    expect(await fs.list("missing/")).toEqual([]);
+  });
+
+  test("stored files carry size and modified", async () => {
+    const fs = localFilesystem(root);
+    await fs.write("pbc_1/abc/a.txt", new Uint8Array([1, 2]));
+    const when = new Date("2026-01-02T03:04:05Z");
+    await utimes(join(root, "pbc_1/abc/a.txt"), when, when);
+    const stored = await fs.file("pbc_1/abc/a.txt");
+    expect(stored?.size).toBe(2);
+    expect(stored?.modified).toEqual(when);
+  });
+
+  test("symlinked dir pointing outside root is rejected for write, file, delete, list", async () => {
+    const outside = join(root, "outside");
+    const storage = join(root, "storage");
+    await mkdir(outside);
+    await mkdir(storage);
+    await writeFile(join(outside, "a.txt"), "secret");
+    await symlink(outside, join(storage, "c1"));
+    const fs = localFilesystem(storage);
+
+    const escapes = "escapes storage root";
+    await expect(fs.write("c1/a.txt", new Uint8Array([1]))).rejects.toThrow(
+      escapes,
+    );
+    await expect(fs.write("c1/new/b.txt", new Uint8Array([1]))).rejects.toThrow(
+      escapes,
+    );
+    await expect(fs.file("c1/a.txt")).rejects.toThrow(escapes);
+    await expect(fs.exists("c1/a.txt")).rejects.toThrow(escapes);
+    await expect(fs.delete("c1/a.txt")).rejects.toThrow(escapes);
+    await expect(fs.deletePrefix("c1/")).rejects.toThrow(escapes);
+    await expect(fs.list("c1/")).rejects.toThrow(escapes);
+    expect(await fs.list("")).toEqual([]);
+
+    expect(await readdir(outside)).toEqual(["a.txt"]);
+    expect(await Bun.file(join(outside, "a.txt")).text()).toBe("secret");
+  });
+
+  test("a symlinked file pointing outside root is rejected", async () => {
+    const storage = join(root, "storage");
+    await mkdir(join(storage, "c1"), { recursive: true });
+    await writeFile(join(root, "secret.txt"), "secret");
+    await symlink(join(root, "secret.txt"), join(storage, "c1/a.txt"));
+    const fs = localFilesystem(storage);
+    await expect(fs.file("c1/a.txt")).rejects.toThrow("escapes storage root");
+    await expect(fs.delete("c1/a.txt")).rejects.toThrow("escapes storage root");
+    expect(await Bun.file(join(root, "secret.txt")).text()).toBe("secret");
+  });
+
+  test("symlink inside root to another dir inside root works", async () => {
+    await mkdir(join(root, "real"));
+    await symlink(join(root, "real"), join(root, "c1"));
+    const fs = localFilesystem(root);
+    await fs.write("c1/a.txt", new TextEncoder().encode("hi"));
+    expect(await Bun.file(join(root, "real/a.txt")).text()).toBe("hi");
+    expect(await (await fs.file("c1/a.txt"))?.blob.text()).toBe("hi");
+    expect((await fs.list("c1/")).map((f) => f.key)).toEqual(["c1/a.txt"]);
+    await fs.delete("c1/a.txt");
+    expect(await fs.exists("c1/a.txt")).toBe(false);
   });
 
   test("delete removes the directories it leaves empty", async () => {
@@ -48,7 +157,7 @@ describe("localFilesystem", () => {
 
     await fs.write("pbc_1/abc/a.txt", new TextEncoder().encode("old"));
     await expect(fs.write("pbc_1/abc/a.txt", broken)).rejects.toThrow();
-    expect(await (await fs.file("pbc_1/abc/a.txt"))?.text()).toBe("old");
+    expect(await (await fs.file("pbc_1/abc/a.txt"))?.blob.text()).toBe("old");
     expect(await readdir(join(root, "pbc_1/abc"))).toEqual(["a.txt"]);
   });
 
@@ -99,6 +208,58 @@ describe("localFilesystem", () => {
     await expect(fs.file(key)).rejects.toThrow();
     await expect(fs.delete(key)).rejects.toThrow();
     await expect(fs.deletePrefix(key)).rejects.toThrow();
+    await expect(fs.exists(key)).rejects.toThrow();
+    if (key !== "") await expect(fs.list(key)).rejects.toThrow();
+  });
+});
+
+describe("appFilesystem", () => {
+  let root: string;
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "heybe-fs-"));
+  });
+  afterEach(() => rm(root, { recursive: true, force: true }));
+
+  test("watchers see deletes before they happen and writes", async () => {
+    const fs = appFilesystem(() => localFilesystem(root));
+    const seen: string[] = [];
+    const stop = fs.watch({
+      async deleting(key) {
+        const found = key.endsWith("/")
+          ? (await fs.list(key)).length > 0
+          : await fs.exists(key);
+        seen.push(`deleting ${key} ${found}`);
+      },
+      writing: (key) => seen.push(`writing ${key}`),
+    });
+    await fs.write("c/r/a.txt", new Uint8Array([1]));
+    await fs.write("c/r/b.txt", new Uint8Array([1]));
+    await fs.delete("c/r/a.txt");
+    await fs.deletePrefix("c/");
+    stop();
+    await fs.write("c/r/c.txt", new Uint8Array([1]));
+    await fs.delete("c/r/c.txt");
+    expect(seen).toEqual([
+      "writing c/r/a.txt",
+      "writing c/r/b.txt",
+      "deleting c/r/a.txt true",
+      "deleting c/ true",
+    ]);
+  });
+
+  test("delegates each call to the current filesystem", async () => {
+    const other = await mkdtemp(join(tmpdir(), "heybe-fs-"));
+    try {
+      let current = localFilesystem(root);
+      const fs = appFilesystem(() => current);
+      await fs.write("c/r/a.txt", new Uint8Array([1]));
+      current = localFilesystem(other);
+      expect(await fs.exists("c/r/a.txt")).toBe(false);
+      await fs.write("c/r/b.txt", new Uint8Array([1]));
+      expect(await readdir(join(other, "c/r"))).toEqual(["b.txt"]);
+    } finally {
+      await rm(other, { recursive: true, force: true });
+    }
   });
 });
 
@@ -313,17 +474,22 @@ describe("sniffMime", () => {
 });
 
 describe("app.files", () => {
-  test("a memory app gets a temp storage dir removed on close", async () => {
+  test("a memory app keeps storage and data.db in a temp data dir removed on close", async () => {
     const app = testApp();
     await app.files.write("pbc_1/abc/a.txt", new Uint8Array([1]));
-    expect(await app.files.file("pbc_1/abc/a.txt")).not.toBeNull();
+    expect(
+      await Bun.file(join(app.dataDir, "storage/pbc_1/abc/a.txt")).exists(),
+    ).toBe(true);
+    expect(await Bun.file(join(app.dataDir, "data.db")).exists()).toBe(true);
     app.close();
+    expect(await Bun.file(join(app.dataDir, "data.db")).exists()).toBe(false);
   });
 
   test("a disk app stores under <dir>/storage", async () => {
     const dir = await mkdtemp(join(tmpdir(), "heybe-app-"));
     try {
       const app = createApp({ dir });
+      expect(app.dataDir).toBe(dir);
       await app.files.write("pbc_1/abc/a.txt", new Uint8Array([1]));
       expect(
         await Bun.file(join(dir, "storage/pbc_1/abc/a.txt")).exists(),
