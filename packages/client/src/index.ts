@@ -35,3 +35,6 @@ export type {
   HealthService,
   SettingsService,
 } from "./admin.js";
+export type { LogFields, LogModel, LogsService } from "./logs.js";
+export type { BackupInfo, BackupsService } from "./backups.js";
+export type { SqlResult, SqlService } from "./sql.js";

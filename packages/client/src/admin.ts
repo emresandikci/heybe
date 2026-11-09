@@ -69,6 +69,10 @@ export interface SettingsService {
     duration: number,
     opts?: RequestOptions,
   ): Promise<{ secret: string }>;
+  testS3(
+    filesystem: "storage" | "backups",
+    opts?: RequestOptions,
+  ): Promise<void>;
 }
 
 export interface CronsService {
@@ -80,7 +84,11 @@ export interface HealthService {
   check(opts?: RequestOptions): Promise<{
     code: number;
     message: string;
-    data: Record<string, unknown>;
+    data: {
+      canBackup?: boolean;
+      realIP?: string;
+      possibleProxyHeader?: string;
+    };
   }>;
 }
 
@@ -147,6 +155,12 @@ export function createSettings(client: Sender): SettingsService {
         ...opts,
         method: "POST",
         body: { clientId, teamId, keyId, privateKey, duration },
+      }),
+    testS3: (filesystem, opts) =>
+      client.send("/api/settings/test/s3", {
+        ...opts,
+        method: "POST",
+        body: { filesystem },
       }),
   };
 }

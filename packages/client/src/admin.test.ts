@@ -182,3 +182,15 @@ describe("crons and health", () => {
     });
   });
 });
+
+describe("settings.testS3", () => {
+  test("posts the filesystem", async () => {
+    const { env, client } = setup();
+    await client.settings.testS3("backups");
+    expect(last(env)).toMatchObject({
+      method: "POST",
+      url: "http://a/api/settings/test/s3",
+      body: { filesystem: "backups" },
+    });
+  });
+});

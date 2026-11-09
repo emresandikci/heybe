@@ -175,8 +175,42 @@ await heybe.settings.get();
 await heybe.settings.update({ meta: { appName: "Acme" } });
 await heybe.settings.testEmail("users", "a@b.c", "verification");
 await heybe.settings.generateAppleClientSecret(clientId, teamId, keyId, privateKey, 3600);
+await heybe.settings.testS3("storage"); // or "backups"
 
 await heybe.crons.list();
 await heybe.crons.run("__pbDBOptimize__");
 await heybe.health.check();
+```
+
+### Logs
+
+```ts
+const { items } = await heybe.logs.findMany({
+  where: { "data.status": { gte: 400 } },
+  orderBy: { created: "desc" },
+  perPage: 50,
+});
+await heybe.logs.findOne(items[0].id);
+await heybe.logs.stats({ where: { level: { gte: 4 } } }); // hourly counts
+await heybe.logs.truncate();
+```
+
+### Backups
+
+```ts
+await heybe.backups.create("before-upgrade.zip"); // name is optional
+await heybe.backups.list();
+await heybe.backups.upload(file);
+const token = await heybe.files.token();
+const url = heybe.backups.downloadURL(token, "before-upgrade.zip");
+await heybe.backups.restore("before-upgrade.zip"); // the server restarts
+await heybe.backups.delete("before-upgrade.zip");
+```
+
+### SQL
+
+```ts
+const { columns, rows, affectedRows } = await heybe.sql.run(
+  "SELECT id, email FROM users",
+);
 ```

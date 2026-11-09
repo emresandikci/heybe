@@ -65,3 +65,7 @@ loose.findMany({ where: { whatever: 1 } });
 const looseValue: Promise<Record<string, unknown>> = loose.findOne("x");
 
 export { typed, looseValue };
+
+heybe.logs.findMany({ where: { "data.status": { gte: 400 } } });
+// @ts-expect-error unknown log field
+heybe.logs.findMany({ where: { nope: 1 } });

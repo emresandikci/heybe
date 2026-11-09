@@ -16,11 +16,14 @@ import {
   type SettingsService,
 } from "./admin.js";
 import { createAuth, type AuthClient } from "./auth.js";
+import { createBackups, type BackupsService } from "./backups.js";
 import { createBatch, type Batch } from "./batch.js";
 import { createFiles, type Files } from "./files.js";
+import { createLogs, type LogsService } from "./logs.js";
 import { createRealtime, type Realtime } from "./realtime.js";
 import { createRecords, type RecordsClient } from "./records.js";
 import { createAutoRefresh } from "./refresh.js";
+import { createSql, type SqlService } from "./sql.js";
 import { buildURL, createSender, type SendOptions } from "./send.js";
 
 export interface ClientOptions {
@@ -41,6 +44,9 @@ export interface HeybeClient {
   readonly settings: SettingsService;
   readonly crons: CronsService;
   readonly health: HealthService;
+  readonly logs: LogsService;
+  readonly backups: BackupsService;
+  readonly sql: SqlService;
   autoCancel: boolean;
   buildURL(path: string): string;
   send<T>(path: string, opts?: SendOptions): Promise<T>;
@@ -118,6 +124,12 @@ export function createClientWith(
     settings: createSettings(sender),
     crons: createCrons(sender),
     health: createHealth(sender),
+    logs: createLogs(sender),
+    backups: createBackups({
+      send: sender.send,
+      buildURL: (path) => buildURL(url, path),
+    }),
+    sql: createSql(sender),
     batch: () => createBatch(client),
     records: (name: string) => createRecords(client, name),
     auth: (name: string) =>
