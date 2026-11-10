@@ -1,5 +1,6 @@
 import type { CollectionModel } from "@heybe/client";
 import { fieldDefaults, nextKey, type FieldType } from "./field-types";
+import { IDENT, quote, randomIndexName, unquote } from "./index-sql";
 
 export type { FieldType };
 export type CollectionType = CollectionModel["type"];
@@ -45,17 +46,12 @@ const RULES = [
   "manageRule",
 ];
 
-const IDENT = '`[^`]*`|"[^"]*"|\\[[^\\]]*\\]|\\w+';
 const ON = new RegExp(`\\bON\\s+(${IDENT})`, "i");
 const INDEX_NAME = new RegExp(
   `(\\bINDEX\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)(${IDENT})`,
   "i",
 );
 const TOKEN = new RegExp(`'(?:[^']|'')*'|${IDENT}`, "g");
-
-const quote = (name: string) => "`" + name.replaceAll("`", "``") + "`";
-const unquote = (ident: string) =>
-  /^[`"[]/.test(ident) ? ident.slice(1, -1) : ident;
 
 function rewriteIndex(
   sql: string,
@@ -79,12 +75,12 @@ function rewriteIndex(
   return head + rest;
 }
 
-function randomIndexName(): string {
-  const chars =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const bytes = crypto.getRandomValues(new Uint8Array(10));
-  return "idx_" + Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
+const NEW_FIELD: Partial<Record<FieldType, Record<string, unknown>>> = {
+  select: { maxSelect: 1 },
+  relation: { maxSelect: 1 },
+  file: { maxSelect: 1 },
+  autodate: { onCreate: true },
+};
 
 export function draftFrom(c: CollectionModel): CollectionDraft {
   const copy = structuredClone(c);
@@ -125,7 +121,10 @@ export function addField(d: CollectionDraft, type: FieldType): CollectionDraft {
   const taken = new Set(d.fields.map((f) => f.name.toLowerCase()));
   let name = "field";
   for (let i = 2; taken.has(name); i++) name = `field${i}`;
-  return { ...d, fields: [...d.fields, { ...fieldDefaults(type), name }] };
+  return {
+    ...d,
+    fields: [...d.fields, { ...fieldDefaults(type), ...NEW_FIELD[type], name }],
+  };
 }
 
 export function renameField(
@@ -186,12 +185,25 @@ export function activeFields(d: CollectionDraft): FieldModel[] {
 // Index SQL keeps the names the collection was loaded with; renames are applied once here, so swaps and prefixes cannot collide.
 export function finalIndexes(d: CollectionDraft): string[] {
   const columns = new Map<string, string>();
-  for (const f of activeFields(d))
+  for (const f of d.fields)
     if (f._original !== undefined && f._original !== f.name)
       columns.set(f._original.toLowerCase(), f.name);
   return d.indexes.map((sql) =>
     rewriteIndex(sql, [d._originalName, d.name], columns),
   );
+}
+
+// Takes indexes in current names (as finalIndexes shows them) and makes the current names the base for later renames.
+export function setIndexes(
+  d: CollectionDraft,
+  indexes: string[],
+): CollectionDraft {
+  return {
+    ...d,
+    _originalName: d.name,
+    fields: d.fields.map((f) => ({ ...f, _original: f.name })),
+    indexes,
+  };
 }
 
 export function toPayload(d: CollectionDraft): Partial<CollectionModel> {
@@ -207,7 +219,13 @@ export function toPayload(d: CollectionDraft): Partial<CollectionModel> {
     ...(id ? { id } : {}),
     ...rest,
     indexes: finalIndexes(d),
-    fields: activeFields(d).map(({ _key, _removed, _original, ...f }) => f),
+    ...(d.type === "view"
+      ? {}
+      : {
+          fields: activeFields(d).map(
+            ({ _key, _removed, _original, ...f }) => f,
+          ),
+        }),
   };
 }
 

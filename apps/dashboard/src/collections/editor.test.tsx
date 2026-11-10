@@ -6,19 +6,11 @@ import {
   scaffoldsFixture,
   settingsFixture,
 } from "../test/fixtures";
+import { fieldGroup, openEditor } from "../test/editor";
 import { renderApp } from "../test/render";
 
 const posts = collectionsFixture.find((c) => c.name === "posts")!;
-
-async function editPosts(server = fakeServer()) {
-  const app = renderApp({ path: "/collections/pbc_posts", server });
-  await app.user.click(
-    await screen.findByRole("button", { name: "Edit collection posts" }),
-  );
-  return { ...app, dialog: screen.getByRole("dialog", { name: "Edit posts" }) };
-}
-
-const fieldGroup = (name: string) => screen.getByRole("group", { name });
+const editPosts = (server = fakeServer()) => openEditor("posts", server);
 
 test("/collections opens the first non-system collection", async () => {
   const { router } = renderApp({ path: "/collections" });

@@ -1,7 +1,7 @@
 import {
   createContext,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -85,7 +85,7 @@ export function ErrorScope({
 
 export function useFieldError(path: string): string | undefined {
   const scope = useContext(ScopeContext);
-  useEffect(() => {
+  useLayoutEffect(() => {
     scope?.claim(path);
     return () => scope?.release(path);
   }, [scope, path]);
@@ -95,7 +95,7 @@ export function useFieldError(path: string): string | undefined {
 export function UnclaimedErrors() {
   const scope = useContext(ScopeContext);
   const [, rerender] = useState(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const refresh = () => rerender((n) => n + 1);
     refresh();
     return scope?.subscribe(refresh);
@@ -122,4 +122,22 @@ export function UnclaimedErrors() {
       )}
     </div>
   );
+}
+
+export function useErrorsUnder(
+  prefix: string,
+  claim = true,
+): [string, string][] {
+  const scope = useContext(ScopeContext);
+  const entries = Object.entries(scope?.errors ?? {}).filter(([path]) =>
+    path.startsWith(prefix),
+  );
+  const paths = claim ? entries.map(([path]) => path).join("\n") : "";
+  useLayoutEffect(() => {
+    if (!scope || !paths) return;
+    const list = paths.split("\n");
+    list.forEach((path) => scope.claim(path));
+    return () => list.forEach((path) => scope.release(path));
+  }, [scope, paths]);
+  return entries;
 }

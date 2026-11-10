@@ -1,9 +1,11 @@
-import { useFieldError } from "../../app/errors";
+import { useEffect, useState } from "react";
+import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
 import { TextField } from "../../ui/TextField";
 import type { FieldModel } from "../editor-state";
 import { fieldTypeLabel } from "../field-types";
+import { FieldOptions } from "./FieldOptions";
 
 export interface FieldRowProps {
   field: FieldModel;
@@ -45,6 +47,14 @@ function ActiveRow({
   onRemove,
 }: FieldRowProps) {
   const nameError = useFieldError(`${errorPath}.name`);
+  const [open, setOpen] = useState(!field.id);
+  const optionErrors = useErrorsUnder(`${errorPath}.`, false).filter(
+    ([path]) => path !== `${errorPath}.name`,
+  );
+  const hasOptionErrors = optionErrors.length > 0;
+  useEffect(() => {
+    if (hasOptionErrors) setOpen(true);
+  }, [hasOptionErrors]);
   return (
     <fieldset aria-label={field.name || "New field"} className={rowClass}>
       <div className="flex items-start gap-2">
@@ -83,6 +93,13 @@ function ActiveRow({
         <div className="ml-auto flex gap-1">
           <Button
             variant="ghost"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            Options
+          </Button>
+          <Button
+            variant="ghost"
             aria-label="Move up"
             disabled={!canMoveUp}
             onClick={() => onMove(-1)}
@@ -104,6 +121,9 @@ function ActiveRow({
           )}
         </div>
       </div>
+      {open && (
+        <FieldOptions field={field} errorPath={errorPath} onChange={onChange} />
+      )}
     </fieldset>
   );
 }

@@ -31,6 +31,8 @@ import {
   renameCollection,
   renameField,
   restoreField,
+  setIndexes,
+  finalIndexes,
   toPayload,
   type Changes,
   type CollectionDraft,
@@ -39,6 +41,8 @@ import {
 } from "./editor-state";
 import { FIELD_TYPES } from "./field-types";
 import { FieldRow } from "./fields/FieldRow";
+import { IndexesEditor } from "./IndexesEditor";
+import { parseIndex } from "./index-sql";
 
 type Update = (fn: (d: CollectionDraft) => CollectionDraft) => void;
 
@@ -103,15 +107,22 @@ export function CollectionEditor({
   const changeType = (type: CollectionType) => {
     if (!scaffolds.data || !draft) return;
     const next = renameCollection(newDraft(type, scaffolds.data), draft.name);
-    if (type !== "view") {
-      const scaffolded = scaffolds.data[draft.type]!.indexes;
-      next.fields = [...next.fields, ...draft.fields.filter((f) => !f.system)];
-      next.indexes = [
-        ...next.indexes,
-        ...draft.indexes.filter((sql) => !scaffolded.includes(sql)),
-      ];
-    }
-    setDraft(next);
+    if (type === "view") return setDraft(next);
+    const scaffolded = new Set(
+      scaffolds.data[draft.type]!.indexes.map((sql) => parseIndex(sql)?.name),
+    );
+    const custom = finalIndexes(draft).filter(
+      (sql) => !scaffolded.has(parseIndex(sql)?.name),
+    );
+    setDraft(
+      setIndexes(
+        {
+          ...next,
+          fields: [...next.fields, ...draft.fields.filter((f) => !f.system)],
+        },
+        [...finalIndexes(next), ...custom],
+      ),
+    );
   };
 
   const submit = async () => {
@@ -328,12 +339,30 @@ function ViewQuery({
   update: Update;
 }) {
   return (
-    <CodeArea
-      label="Select query"
-      value={String(draft.viewQuery ?? "")}
-      error={useFieldError("viewQuery")}
-      onChange={(viewQuery) => update((d) => ({ ...d, viewQuery }))}
-    />
+    <div className="flex flex-col gap-3">
+      <CodeArea
+        label="Select query"
+        rows={8}
+        value={String(draft.viewQuery ?? "")}
+        error={useFieldError("viewQuery")}
+        onChange={(viewQuery) => update((d) => ({ ...d, viewQuery }))}
+      />
+      {draft.fields.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-medium">Fields from the saved query</p>
+          <ul aria-label="View fields" className="flex flex-wrap gap-2">
+            {draft.fields.map((f) => (
+              <li
+                key={f._key}
+                className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs dark:bg-slate-800"
+              >
+                {f.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -390,6 +419,10 @@ function FieldsTab({
           Add field
         </Button>
       </div>
+      <IndexesEditor
+        draft={draft}
+        onChange={(indexes) => reshape((d) => setIndexes(d, indexes))}
+      />
     </div>
   );
 }

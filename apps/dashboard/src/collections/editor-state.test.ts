@@ -13,6 +13,8 @@ import {
   renameCollection,
   renameField,
   restoreField,
+  setIndexes,
+  finalIndexes,
   toPayload,
 } from "./editor-state";
 
@@ -188,5 +190,89 @@ describe("editor-state", () => {
     expect(toPayload(d).indexes![0]).toMatch(
       /^CREATE INDEX `idx_[a-zA-Z0-9]{10}` ON `posts_duplicate` \(`title`\)$/,
     );
+  });
+
+  test("indexes edited after a rename are kept in current names and still follow later renames", () => {
+    const d = draftFrom(
+      withIndexes(["CREATE INDEX `idx_a` ON `posts` (`title`)"]),
+    );
+    let next = renameField(d, keyOf(d, "title"), "headline");
+    next = renameField(next, keyOf(d, "views"), "title");
+    expect(finalIndexes(next)).toEqual([
+      "CREATE INDEX `idx_a` ON `posts` (`headline`)",
+    ]);
+    next = setIndexes(next, [
+      ...finalIndexes(next),
+      "CREATE INDEX `idx_b` ON `posts` (`title`)",
+    ]);
+    expect(toPayload(next).indexes).toEqual([
+      "CREATE INDEX `idx_a` ON `posts` (`headline`)",
+      "CREATE INDEX `idx_b` ON `posts` (`title`)",
+    ]);
+    next = renameField(next, keyOf(d, "title"), "heading");
+    next = renameCollection(next, "articles");
+    expect(toPayload(next).indexes).toEqual([
+      "CREATE INDEX `idx_a` ON `articles` (`heading`)",
+      "CREATE INDEX `idx_b` ON `articles` (`title`)",
+    ]);
+  });
+
+  test("setIndexes keeps a removed renamed field mapped for restore", () => {
+    const d = draftFrom(
+      withIndexes(["CREATE INDEX `idx_a` ON `posts` (`views`)"]),
+    );
+    let next = renameField(d, keyOf(d, "views"), "hits");
+    next = removeField(next, keyOf(d, "views"));
+    next = setIndexes(next, finalIndexes(next));
+    next = restoreField(next, keyOf(d, "views"));
+    expect(toPayload(next).indexes).toEqual([
+      "CREATE INDEX `idx_a` ON `posts` (`hits`)",
+    ]);
+  });
+
+  test("restoring a renamed field does not rewrite indexes that now use its old name", () => {
+    let d = draftFrom(withIndexes(["CREATE INDEX `i1` ON `posts` (`title`)"]));
+    const title = keyOf(d, "title");
+    d = renameField(d, title, "headline");
+    d = removeField(d, title);
+    d = renameField(d, keyOf(d, "views"), "title");
+    d = setIndexes(d, [
+      ...finalIndexes(d),
+      "CREATE INDEX `i2` ON `posts` (`title`)",
+    ]);
+    d = restoreField(d, title);
+    expect(toPayload(d).indexes).toEqual([
+      "CREATE INDEX `i1` ON `posts` (`headline`)",
+      "CREATE INDEX `i2` ON `posts` (`title`)",
+    ]);
+  });
+
+  test("renaming the collection back after an index edit rewrites ON", () => {
+    let d = draftFrom(withIndexes(["CREATE INDEX `i1` ON `posts` (`title`)"]));
+    d = renameCollection(d, "articles");
+    d = setIndexes(d, finalIndexes(d));
+    d = renameCollection(d, "posts");
+    expect(toPayload(d).indexes).toEqual([
+      "CREATE INDEX `i1` ON `posts` (`title`)",
+    ]);
+  });
+
+  test("view payloads leave out fields", () => {
+    const stats = collectionsFixture.find((c) => c.name === "stats")!;
+    const payload = toPayload({ ...draftFrom(stats), viewQuery: "SELECT 1" });
+    expect(payload).not.toHaveProperty("fields");
+    expect(payload.viewQuery).toBe("SELECT 1");
+  });
+
+  test("new select, relation and file fields start single and autodate on create", () => {
+    let d = draftFrom(posts);
+    for (const type of ["select", "relation", "file", "autodate"] as const)
+      d = addField(d, type);
+    expect(d.fields.slice(-4).map((f) => [f.maxSelect, f.onCreate])).toEqual([
+      [1, undefined],
+      [1, undefined],
+      [1, undefined],
+      [undefined, true],
+    ]);
   });
 });
