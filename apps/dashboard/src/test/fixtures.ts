@@ -133,6 +133,19 @@ const users: CollectionModel = {
     field("verified", "bool", { system: true }),
     field("name", "text"),
     field("username", "text"),
+    field("avatar", "file", {
+      maxSelect: 1,
+      maxSize: 0,
+      thumbs: [],
+      protected: false,
+      mimeTypes: [
+        "image/jpeg",
+        "image/png",
+        "image/svg+xml",
+        "image/gif",
+        "image/webp",
+      ],
+    }),
     ...timestamps(),
   ],
   indexes: [

@@ -1,3 +1,4 @@
+import type { CollectionModel } from "@heybe/client";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useClient } from "../app/context";
@@ -10,10 +11,10 @@ export type CellField = {
 };
 
 const LIMIT = 100;
-const IMAGE = /\.(jpe?g|png|gif|webp)$/i;
+export const IMAGE = /\.(jpe?g|png|gif|webp)$/i;
 
 const cut = (text: string) => text.slice(0, LIMIT);
-const list = (value: unknown): unknown[] =>
+export const list = (value: unknown): unknown[] =>
   Array.isArray(value) ? value : value ? [value] : [];
 
 function htmlText(html: string): string {
@@ -30,6 +31,16 @@ function DateCell({ value }: { value: string }) {
   return <span title={title}>{value}</span>;
 }
 
+export function useFileToken(field: CellField) {
+  const client = useClient();
+  return useQuery({
+    queryKey: keys.fileToken,
+    queryFn: ({ signal }) => client.files.token({ signal }),
+    staleTime: 120000,
+    enabled: !!field.protected,
+  }).data;
+}
+
 function FileCell({
   field,
   names,
@@ -40,12 +51,7 @@ function FileCell({
   record: Record<string, unknown>;
 }) {
   const client = useClient();
-  const { data: token } = useQuery({
-    queryKey: keys.fileToken,
-    queryFn: ({ signal }) => client.files.token({ signal }),
-    staleTime: 120000,
-    enabled: !!field.protected,
-  });
+  const token = useFileToken(field);
   if (field.protected && token === undefined) return null;
   return (
     <span className="flex gap-1">
@@ -66,6 +72,32 @@ function FileCell({
   );
 }
 
+export function presentableLabel(
+  target: CollectionModel | undefined,
+  record: Record<string, unknown> | undefined,
+  id: string,
+): string {
+  const text = (target?.fields ?? [])
+    .filter((f) => f.presentable)
+    .map((f) => record?.[f.name as string])
+    .filter((v) => v !== undefined && v !== null && v !== "")
+    .join(" ");
+  return text || id;
+}
+
+export function expandedRecords(
+  record: Record<string, unknown>,
+  name: string,
+): Map<string, Record<string, unknown>> {
+  const expand = (record.expand as Record<string, unknown> | undefined)?.[name];
+  return new Map(
+    list(expand).map((r) => [
+      (r as { id: string }).id,
+      r as Record<string, unknown>,
+    ]),
+  );
+}
+
 function RelationCell({
   field,
   value,
@@ -77,25 +109,10 @@ function RelationCell({
 }) {
   const collections = useCollections();
   const target = collections.data?.find((c) => c.id === field.collectionId);
-  const presentable = (target?.fields ?? [])
-    .filter((f) => f.presentable)
-    .map((f) => f.name as string);
-  const expand = (record.expand as Record<string, unknown> | undefined)?.[
-    field.name
-  ];
-  const expanded = new Map(
-    list(expand).map((r) => [
-      (r as { id: string }).id,
-      r as Record<string, unknown>,
-    ]),
+  const expanded = expandedRecords(record, field.name);
+  const labels = list(value).map((id) =>
+    presentableLabel(target, expanded.get(id as string), String(id)),
   );
-  const labels = list(value).map((id) => {
-    const text = presentable
-      .map((name) => expanded.get(id as string)?.[name])
-      .filter((v) => v !== undefined && v !== "")
-      .join(" ");
-    return text || String(id);
-  });
   return <>{cut(labels.join(", "))}</>;
 }
 

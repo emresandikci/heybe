@@ -3,9 +3,11 @@ import { Checkbox } from "../../ui/Checkbox";
 import { NumberField } from "../../ui/NumberField";
 import { TextField } from "../../ui/TextField";
 import type { CellField } from "../cell";
-import { isMulti } from "../record-form";
+import { isMulti, type FileValue } from "../record-form";
 import { DateInput } from "./DateInput";
 import { EditorInput } from "./EditorInput";
+import { FileInput } from "./FileInput";
+import { RelationInput } from "./RelationInput";
 import { GeoPointInput, type GeoValue } from "./GeoPointInput";
 import { JsonInput } from "./JsonInput";
 import { SelectInput } from "./SelectInput";
@@ -20,6 +22,7 @@ export function FieldInput({
   field,
   value,
   authCollection,
+  record,
   disabled,
   localError,
   onChange,
@@ -27,6 +30,7 @@ export function FieldInput({
   field: CellField;
   value: unknown;
   authCollection: boolean;
+  record?: Record<string, unknown>;
   disabled: boolean;
   localError?: string;
   onChange: (value: unknown) => void;
@@ -128,12 +132,33 @@ export function FieldInput({
           onChange={onChange}
         />
       );
+    case "file":
+      return (
+        <FileInput
+          field={field}
+          name={label}
+          value={value as FileValue}
+          record={record}
+          error={error}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      );
+    case "relation":
+      return (
+        <RelationInput
+          field={field}
+          name={label}
+          value={value as string | string[]}
+          record={record}
+          error={error}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      );
     default:
       return null;
   }
 }
 
-export const hasInput = (field: CellField) =>
-  field.type !== "file" &&
-  field.type !== "relation" &&
-  field.type !== "password";
+export const hasInput = (field: CellField) => field.type !== "password";

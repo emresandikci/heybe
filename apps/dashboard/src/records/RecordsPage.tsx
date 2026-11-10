@@ -16,6 +16,7 @@ import { RecordsTable } from "./RecordsTable";
 import { SearchBar } from "./SearchBar";
 import type { CellField } from "./cell";
 import { normalizeSearchFilter } from "./search-filter";
+import { expandOf } from "./record-form";
 import { readList, writeList } from "./storage";
 
 export type RecordsSearch = {
@@ -59,11 +60,7 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
   const sort = search.sort ?? "";
   const allFields = (collection.fields as CellField[]).filter((f) => !f.hidden);
   const fields = allFields.filter((f) => !hidden.includes(f.name));
-  const expand = Object.fromEntries(
-    allFields
-      .filter((f) => f.type === "relation")
-      .map((f) => [f.name, true as const]),
-  );
+  const expand = expandOf(collection);
   const searchFields = allFields
     .filter((f) => f.type !== "password")
     .map((f) => f.name);

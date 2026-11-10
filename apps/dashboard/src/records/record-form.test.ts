@@ -33,7 +33,7 @@ test("initialValues pretty prints json and converts dates", () => {
   expect(values.when).toBe("2026-11-11T10:20:30");
   expect(values.views).toBe("0");
   expect(values.published).toBe(true);
-  expect(values).not.toHaveProperty("cover");
+  expect(values.cover).toEqual({ removed: [], added: [] });
 });
 
 test("toWriteData sends only changed keys on update", () => {

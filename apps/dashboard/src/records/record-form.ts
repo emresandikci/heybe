@@ -9,11 +9,21 @@ export class JsonInputError extends Error {
   }
 }
 
-const SKIPPED = ["autodate", "password", "file"];
+export type FileValue = { removed: string[]; added: File[] };
+
+const SKIPPED = ["autodate", "password"];
 
 export const fieldsOf = (c: CollectionModel) => c.fields as CellField[];
 
 export const isMulti = (f: CellField) => Number(f.maxSelect) > 1;
+
+export function expandOf(c: CollectionModel): Record<string, true> {
+  return Object.fromEntries(
+    fieldsOf(c)
+      .filter((f) => !f.hidden && f.type === "relation")
+      .map((f) => [f.name, true as const]),
+  );
+}
 
 export function toServerDate(input: string): string {
   const match = /^(\d{4}-\d\d-\d\d)T(\d\d:\d\d)(?::(\d\d))?/.exec(input);
@@ -45,6 +55,8 @@ function initialValue(f: CellField, v: unknown): unknown {
         : Array.isArray(v)
           ? String(v[0] ?? "")
           : String(v ?? "");
+    case "file":
+      return { removed: [], added: [] } satisfies FileValue;
     case "json":
       return v === null || v === undefined || v === ""
         ? ""
@@ -70,8 +82,7 @@ export function initialValues(
     if (f.type === "password") {
       values.password = "";
       values.passwordConfirm = "";
-    } else if (!f.hidden && f.type !== "file")
-      values[f.name] = initialValue(f, record?.[f.name]);
+    } else if (!f.hidden) values[f.name] = initialValue(f, record?.[f.name]);
   }
   return values;
 }
@@ -101,6 +112,23 @@ function toWriteValue(f: CellField, v: unknown): unknown {
   }
 }
 
+function fileData(
+  f: CellField,
+  { removed, added }: FileValue,
+  create: boolean,
+): Record<string, unknown> {
+  const multi = isMulti(f);
+  if (create) return added.length ? { [f.name]: multi ? added : added[0] } : {};
+  if (!multi) {
+    if (added.length) return { [f.name]: added[0] };
+    return removed.length ? { [`${f.name}-`]: removed } : {};
+  }
+  return {
+    ...(added.length && { [`${f.name}+`]: added }),
+    ...(removed.length && { [`${f.name}-`]: removed }),
+  };
+}
+
 const isEmpty = (f: CellField, v: unknown) => {
   if (f.type === "bool") return v === false;
   if (f.type === "geoPoint") {
@@ -121,6 +149,10 @@ export function toWriteData(
   for (const f of fieldsOf(c)) {
     if (f.hidden || SKIPPED.includes(f.type) || !(f.name in values)) continue;
     const value = values[f.name];
+    if (f.type === "file") {
+      Object.assign(data, fileData(f, value as FileValue, !initial));
+      continue;
+    }
     const include = initial
       ? JSON.stringify(value) !== JSON.stringify(initial[f.name])
       : !isEmpty(f, value);

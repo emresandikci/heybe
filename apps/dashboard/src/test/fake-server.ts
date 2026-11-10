@@ -19,6 +19,7 @@ export interface FakeServer {
   on(method: string, path: string, reply: Reply, status?: number): FakeServer;
   find(method: string, path: string): FakeRequest[];
   has(method: string, path: string): boolean;
+  fallback(method: string, path: string, reply: Reply): FakeServer;
 }
 
 interface Route {
@@ -98,6 +99,15 @@ export function fakeServer(): FakeServer {
     },
     has: (method, path) =>
       routes.some((r) => r.method === method.toUpperCase() && r.path === path),
+    fallback(method, path, reply) {
+      routes.unshift({
+        method: method.toUpperCase(),
+        path,
+        reply,
+        status: 200,
+      });
+      return server;
+    },
     find: (method, path) =>
       server.requests.filter(
         (r) => r.method === method.toUpperCase() && pathMatches(path, r.path),

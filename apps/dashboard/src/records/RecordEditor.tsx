@@ -14,6 +14,7 @@ import { PasswordInputs } from "./inputs/PasswordInputs";
 import {
   JsonInputError,
   fieldsOf,
+  expandOf,
   initialValues,
   toWriteData,
   type FormValues,
@@ -48,7 +49,8 @@ export function RecordEditor({
   const records = client.records(collection.name);
   const loaded = useQuery({
     queryKey: ["records", collection.id, { id: recordId }],
-    queryFn: ({ signal }) => records.findOne(recordId, {}, { signal }),
+    queryFn: ({ signal }) =>
+      records.findOne(recordId, { expand: expandOf(collection) }, { signal }),
     enabled: !isNew,
   });
   const readOnly = collection.type === "view";
@@ -262,6 +264,7 @@ function EditorForm({
                   field={f}
                   value={values[f.name]}
                   authCollection={isAuth}
+                  record={record}
                   disabled={readOnly}
                   localError={localErrors[f.name]}
                   onChange={(value) => set(f.name, value)}

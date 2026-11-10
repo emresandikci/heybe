@@ -81,7 +81,7 @@ export function renderApp(opts: {
     ],
   ];
   for (const [method, path, reply] of defaults) {
-    if (!server.has(method, path)) server.on(method, path, reply);
+    if (!server.has(method, path)) server.fallback(method, path, reply);
   }
 
   const authStore = memoryStore();
