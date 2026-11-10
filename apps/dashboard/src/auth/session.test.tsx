@@ -136,3 +136,79 @@ test("Sign out clears the store and shows /login", async () => {
   expect(router.state.location.pathname).toBe("/login");
   expect(client.authStore.token).toBe("");
 });
+
+test("a 401 from a direct record save signs out and redirects to /login", async () => {
+  const server = fakeServer()
+    .on("GET", "/api/collections/posts/records/:id", {
+      id: "r1",
+      collectionId: "pbc_posts",
+      collectionName: "posts",
+      title: "Hello",
+    })
+    .on("PATCH", "/api/collections/posts/records/:id", unauthorized, 401);
+  const { router, client, user } = renderApp({
+    path: "/collections/pbc_posts?record=r1",
+    server,
+  });
+  await screen.findByRole("dialog", { name: "Edit record" });
+  const title = await screen.findByLabelText("title");
+  await user.type(title, "!");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByLabelText("Email")).toBeTruthy();
+  expect(router.state.location.pathname).toBe("/login");
+  expect(router.state.location.search).toEqual({
+    redirect: "/collections/pbc_posts?record=r1",
+  });
+  expect(client.authStore.token).toBe("");
+});
+
+test("a 401 for the installer token does not sign out or leave the installer", async () => {
+  const installerToken = fakeToken({ id: "installer" });
+  const server = fakeServer().on(
+    "POST",
+    "/api/collections/_superusers/records",
+    unauthorized,
+    401,
+  );
+  const { router, user } = renderApp({
+    path: `/pbinstall/${installerToken}`,
+    server,
+    auth: { token: fakeToken({ exp: 1 }), record: { ...SUPERUSER } },
+  });
+  await user.type(await screen.findByLabelText("Email"), "admin@example.com");
+  await user.type(screen.getByLabelText("Password"), "secret12345");
+  await user.type(screen.getByLabelText("Confirm password"), "secret12345");
+  await user.click(screen.getByRole("button", { name: "Create superuser" }));
+  expect(await screen.findByText(unauthorized.message)).toBeTruthy();
+  expect(router.state.location.pathname).toBe(`/pbinstall/${installerToken}`);
+});
+
+test("an MFA 401 on /login with a stale token in the store stays on the MFA step", async () => {
+  const base = "/api/collections/_superusers";
+  const server = fakeServer()
+    .on("GET", `${base}/auth-methods`, {
+      password: { enabled: true, identityFields: ["email"] },
+      oauth2: { enabled: false, providers: [] },
+      mfa: { enabled: true, duration: 1800 },
+      otp: { enabled: true, duration: 180 },
+    })
+    .on(
+      "POST",
+      `${base}/auth-with-password`,
+      { code: 401, message: "Please complete the MFA.", data: {}, mfaId: "m1" },
+      401,
+    )
+    .on("POST", `${base}/request-otp`, { otpId: "otp1" });
+  const { router, user } = renderApp({
+    path: "/login",
+    server,
+    auth: { token: fakeToken({ exp: 1 }), record: { ...SUPERUSER } },
+  });
+  await user.type(await screen.findByLabelText("Email"), "admin@example.com");
+  await user.type(screen.getByLabelText("Password"), "secret123");
+  await user.click(screen.getByRole("button", { name: "Sign in" }));
+  expect(await screen.findByLabelText("One-time password")).toBeTruthy();
+  expect(router.state.location.searchStr).toBe("");
+  const [login] = server.find("POST", `${base}/auth-with-password`);
+  expect(login!.headers.get("authorization")).toBeNull();
+});

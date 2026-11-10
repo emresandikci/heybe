@@ -1,13 +1,16 @@
 import type { CollectionModel, WriteData } from "@heybe/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useId, useState, type FormEvent } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, errorMessage } from "../app/errors";
+import { signOut } from "../auth/session";
 import { Button } from "../ui/Button";
 import { useConfirm } from "../ui/Confirm";
 import { CopyButton } from "../ui/CopyButton";
 import { Dialog } from "../ui/Dialog";
 import { useToast } from "../ui/Toasts";
+import { AuthActions } from "./AuthActions";
 import type { CellField } from "./cell";
 import { FieldInput, hasInput } from "./inputs/FieldInput";
 import { PasswordInputs } from "./inputs/PasswordInputs";
@@ -100,6 +103,7 @@ function EditorForm({
 }) {
   const client = useClient();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const confirm = useConfirm();
   const toast = useToast();
   const formId = useId();
@@ -111,6 +115,15 @@ function EditorForm({
   const dirty = JSON.stringify(values) !== JSON.stringify(initial);
   const isAuth = collection.type === "auth";
   const records = client.records(collection.name);
+  const isSelf =
+    collection.name === "_superusers" &&
+    !!record &&
+    record.id === client.authStore.record?.id;
+
+  const endOwnSession = () => {
+    signOut({ client, queryClient });
+    void navigate({ to: "/login" });
+  };
 
   const set = (name: string, value: unknown) =>
     setValues((v) => ({ ...v, [name]: value }));
@@ -150,6 +163,11 @@ function EditorForm({
     try {
       if (isNew) await records.create(data);
       else await records.update(record!.id, data);
+      if (isSelf && values.password) {
+        toast.success("Record saved.");
+        endOwnSession();
+        return;
+      }
       await queryClient.invalidateQueries({
         queryKey: ["records", collection.id],
       });
@@ -172,6 +190,11 @@ function EditorForm({
     if (!ok) return;
     try {
       await records.delete(record!.id);
+      if (isSelf) {
+        toast.success("Record deleted.");
+        endOwnSession();
+        return;
+      }
       await queryClient.invalidateQueries({
         queryKey: ["records", collection.id],
       });
@@ -215,6 +238,9 @@ function EditorForm({
                   label="Copy JSON"
                   text={JSON.stringify(record, null, 2)}
                 />
+                {isAuth && (
+                  <AuthActions collection={collection} record={record} />
+                )}
                 {!readOnly && (
                   <Button variant="danger" onClick={() => void remove()}>
                     Delete

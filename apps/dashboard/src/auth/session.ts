@@ -1,4 +1,5 @@
 import { HeybeError, tokenExpired, type HeybeClient } from "@heybe/client";
+import { onUnauthorized } from "../app/client";
 import { redirect, type ParsedLocation } from "@tanstack/react-router";
 import type { AppContext } from "../app/context";
 import type { AppRouter } from "../app/router";
@@ -44,6 +45,8 @@ export const requireSuperuser = ({
 
 export const guestOnly = ({ context }: { context: AppContext }) => {
   if (isSuperuserSession(context.client)) throw redirect({ to: "/" });
+  // a stale token would otherwise go out with sign-in requests
+  context.client.authStore.clear();
 };
 
 export function safeRedirect(value: string | undefined): string {
@@ -54,19 +57,9 @@ export function signOutOnUnauthorized(
   ctx: AppContext,
   router: AppRouter,
 ): void {
-  const onError = (error: unknown) => {
-    if (!(error instanceof HeybeError) || error.status !== 401) return;
-    if (!ctx.client.authStore.token) return;
+  onUnauthorized(ctx.client, () => {
     const href = router.state.location.href;
     signOut(ctx);
     void router.navigate({ to: "/login", search: { redirect: href } });
-  };
-  ctx.queryClient.getQueryCache().subscribe((event) => {
-    if (event.type === "updated" && event.action.type === "error")
-      onError(event.action.error);
-  });
-  ctx.queryClient.getMutationCache().subscribe((event) => {
-    if (event.type === "updated" && event.action.type === "error")
-      onError(event.action.error);
   });
 }
