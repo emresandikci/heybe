@@ -11,6 +11,7 @@ export function RuleInput({
   chips,
   errorPath,
   emptyHint = "Empty rule: everyone, guests included.",
+  lockable = true,
 }: {
   label: string;
   value: string | null;
@@ -18,6 +19,7 @@ export function RuleInput({
   chips: string[];
   errorPath: string;
   emptyHint?: string;
+  lockable?: boolean;
 }) {
   const error = useFieldError(errorPath);
   const area = useRef<HTMLTextAreaElement>(null);
@@ -63,11 +65,13 @@ export function RuleInput({
         }
         onChange={onChange}
       />
-      <Checkbox
-        label="Superusers only"
-        checked={value === null}
-        onChange={(e) => onChange(e.target.checked ? null : last.current)}
-      />
+      {lockable && (
+        <Checkbox
+          label="Superusers only"
+          checked={value === null}
+          onChange={(e) => onChange(e.target.checked ? null : last.current)}
+        />
+      )}
       {value !== null && (
         <>
           <div className="flex flex-wrap gap-1">

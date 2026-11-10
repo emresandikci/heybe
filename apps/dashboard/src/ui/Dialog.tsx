@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function Dialog({
   open,
@@ -45,10 +46,11 @@ export function Dialog({
       ? "ml-auto h-dvh max-h-dvh w-full max-w-xl"
       : "m-auto max-w-lg w-full rounded-lg";
 
-  return (
+  return createPortal(
     <dialog
       ref={ref}
       aria-labelledby={titleId}
+      onSubmit={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -79,6 +81,7 @@ export function Dialog({
           )}
         </div>
       )}
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }

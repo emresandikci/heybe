@@ -23,6 +23,8 @@
     "@tanstack/react-form": "^1.33.0",
     "@tanstack/react-query": "^5.107.0",
     "@tanstack/react-router": "^1.170.0",
+    "cheerio": "^1.2.0",
+    "mjml-browser": "^5.4.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

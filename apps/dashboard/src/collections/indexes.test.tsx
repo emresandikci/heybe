@@ -6,6 +6,7 @@ import {
   fieldGroup,
   openEditor,
   serveCollections,
+  paste,
 } from "../test/editor";
 import { collectionsFixture, scaffoldsFixture } from "../test/fixtures";
 import { renderApp } from "../test/render";
@@ -59,7 +60,7 @@ test("index SQL can be edited by hand and removed", async () => {
   const dialog = screen.getByRole("dialog", { name: "Edit index" });
   const area = within(dialog).getByLabelText("Index SQL");
   await user.clear(area);
-  await user.type(area, "CREATE INDEX idx_t ON posts (title DESC)");
+  await paste(user, area, "CREATE INDEX idx_t ON posts (title DESC)");
   await user.click(within(dialog).getByRole("button", { name: "Save index" }));
   await user.click(
     within(indexRows()[1]!).getByRole("button", { name: "Remove index" }),

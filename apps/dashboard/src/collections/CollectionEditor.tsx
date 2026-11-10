@@ -45,6 +45,24 @@ import { FieldRow } from "./fields/FieldRow";
 import { IndexesEditor } from "./IndexesEditor";
 import { parseIndex } from "./index-sql";
 import { RULE_KEYS, RulesTab } from "./rules/RulesTab";
+import { AuthOptions } from "./auth/AuthOptions";
+import { TemplateStoreProvider, useTemplateStore } from "./auth/TemplateBody";
+
+const AUTH_OPTION_KEYS = [
+  "authAlert",
+  "oauth2",
+  "passwordAuth",
+  "mfa",
+  "otp",
+  "authToken",
+  "passwordResetToken",
+  "emailChangeToken",
+  "verificationToken",
+  "fileToken",
+  "verificationTemplate",
+  "resetPasswordTemplate",
+  "confirmEmailChangeTemplate",
+];
 
 type Update = (fn: (d: CollectionDraft) => CollectionDraft) => void;
 
@@ -52,6 +70,7 @@ function tabOf(path: string): string | null {
   const top = path.split(".")[0]!;
   if (RULE_KEYS.includes(top)) return "rules";
   if (["fields", "indexes", "viewQuery"].includes(top)) return "fields";
+  if (AUTH_OPTION_KEYS.includes(top)) return "options";
   return null;
 }
 
@@ -76,7 +95,7 @@ export function CollectionEditor({
     collection ? draftFrom(collection) : null,
   );
   const [draft, setDraft] = useState(initial);
-  const [tab, setTab] = useState("fields");
+  const [selectedTab, setTab] = useState("fields");
   const [error, setError] = useState<unknown>(null);
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<Changes | null>(null);
@@ -87,10 +106,12 @@ export function CollectionEditor({
     enabled: !source,
   });
 
+  const templates = useTemplateStore();
   const start = (d: CollectionDraft) => {
     setInitial(d);
     setDraft(d);
     setError(null);
+    templates.reset();
   };
 
   useEffect(() => {
@@ -98,6 +119,10 @@ export function CollectionEditor({
   }, [draft, scaffolds.data]);
 
   const update: Update = (fn) => setDraft((d) => d && fn(d));
+  const reshape: Update = (fn) => {
+    setError(null);
+    update(fn);
+  };
   const dirty = !same(draft, initial);
 
   const confirmDiscard = async () =>
@@ -115,6 +140,7 @@ export function CollectionEditor({
 
   const changeType = (type: CollectionType) => {
     if (!scaffolds.data || !draft) return;
+    templates.reset();
     const next = renameCollection(newDraft(type, scaffolds.data), draft.name);
     if (type === "view") return setDraft(next);
     const scaffolded = new Set(
@@ -165,7 +191,7 @@ export function CollectionEditor({
 
   const save = (e: FormEvent) => {
     e.preventDefault();
-    if (!draft) return;
+    if (!draft || templates.invalid || templates.compiling) return;
     if (source) {
       const changes = diffCollection(source, draft);
       if (hasChanges(changes)) return setPending(changes);
@@ -223,102 +249,116 @@ export function CollectionEditor({
   const tabs = [
     { value: "fields", label: draft?.type === "view" ? "Query" : "Fields" },
     { value: "rules", label: "API rules" },
+    ...(draft?.type === "auth" ? [{ value: "options", label: "Options" }] : []),
   ];
+  const tab = tabs.some((t) => t.value === selectedTab)
+    ? selectedTab
+    : "fields";
 
   return (
-    <ErrorScope error={error}>
-      <Dialog
-        open
-        variant="side"
-        onClose={() => void requestClose()}
-        title={source ? `Edit ${source.name}` : "New collection"}
-        footer={
-          <>
-            {source && (
-              <div className="mr-auto flex gap-2">
-                <Button onClick={() => void duplicate()}>Duplicate</Button>
-                {!system && source.type !== "view" && (
-                  <Button variant="danger" onClick={() => void truncate()}>
-                    Truncate
-                  </Button>
-                )}
-                {!system && (
-                  <Button variant="danger" onClick={() => void remove()}>
-                    Delete
-                  </Button>
-                )}
-              </div>
-            )}
-            <Button onClick={() => void requestClose()}>Cancel</Button>
-            <Button
-              type="submit"
-              form={formId}
-              variant="primary"
-              loading={saving}
-              disabled={!draft}
-            >
-              {source ? "Save changes" : "Create"}
-            </Button>
-          </>
-        }
-      >
-        {draft ? (
-          <form id={formId} onSubmit={save} className="flex flex-col gap-4">
-            <UnclaimedErrors />
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <ScopedTextField
-                  label="Name"
-                  path="name"
-                  value={draft.name}
-                  disabled={system}
-                  onChange={(name) => update((d) => renameCollection(d, name))}
-                />
-              </div>
-              <Select
-                label="Type"
-                value={draft.type}
-                disabled={!!source}
-                onChange={(e) => changeType(e.target.value as CollectionType)}
+    <TemplateStoreProvider value={templates.store}>
+      <ErrorScope error={error}>
+        <Dialog
+          open
+          variant="side"
+          onClose={() => void requestClose()}
+          title={source ? `Edit ${source.name}` : "New collection"}
+          footer={
+            <>
+              {source && (
+                <div className="mr-auto flex gap-2">
+                  <Button onClick={() => void duplicate()}>Duplicate</Button>
+                  {!system && source.type !== "view" && (
+                    <Button variant="danger" onClick={() => void truncate()}>
+                      Truncate
+                    </Button>
+                  )}
+                  {!system && (
+                    <Button variant="danger" onClick={() => void remove()}>
+                      Delete
+                    </Button>
+                  )}
+                </div>
+              )}
+              {templates.invalid && (
+                <span className="self-center text-sm text-red-600 dark:text-red-400">
+                  Fix the MJML errors in the email templates before saving.
+                </span>
+              )}
+              <Button onClick={() => void requestClose()}>Cancel</Button>
+              <Button
+                type="submit"
+                form={formId}
+                variant="primary"
+                loading={saving}
+                disabled={!draft || templates.invalid || templates.compiling}
               >
-                <option value="base">Base</option>
-                <option value="view">View</option>
-                <option value="auth">Auth</option>
-              </Select>
-            </div>
-            <Tabs
-              label="Collection sections"
-              tabs={tabs}
-              value={tab}
-              onChange={setTab}
-            />
-            {tab === "fields" &&
-              (draft.type === "view" ? (
-                <ViewQuery draft={draft} update={update} />
-              ) : (
-                <FieldsTab
+                {source ? "Save changes" : "Create"}
+              </Button>
+            </>
+          }
+        >
+          {draft ? (
+            <form id={formId} onSubmit={save} className="flex flex-col gap-4">
+              <UnclaimedErrors />
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <ScopedTextField
+                    label="Name"
+                    path="name"
+                    value={draft.name}
+                    disabled={system}
+                    onChange={(name) =>
+                      update((d) => renameCollection(d, name))
+                    }
+                  />
+                </div>
+                <Select
+                  label="Type"
+                  value={draft.type}
+                  disabled={!!source}
+                  onChange={(e) => changeType(e.target.value as CollectionType)}
+                >
+                  <option value="base">Base</option>
+                  <option value="view">View</option>
+                  <option value="auth">Auth</option>
+                </Select>
+              </div>
+              <Tabs
+                label="Collection sections"
+                tabs={tabs}
+                value={tab}
+                onChange={setTab}
+              />
+              {tab === "fields" &&
+                (draft.type === "view" ? (
+                  <ViewQuery draft={draft} update={update} />
+                ) : (
+                  <FieldsTab draft={draft} update={update} reshape={reshape} />
+                ))}
+              {tab === "rules" && <RulesTab draft={draft} update={update} />}
+              {tab === "options" && (
+                <AuthOptions
                   draft={draft}
                   update={update}
-                  reshape={(fn) => {
-                    setError(null);
-                    update(fn);
-                  }}
+                  reshape={reshape}
+                  saved={source}
                 />
-              ))}
-            {tab === "rules" && <RulesTab draft={draft} update={update} />}
-          </form>
-        ) : (
-          <p className="text-sm">Loading…</p>
+              )}
+            </form>
+          ) : (
+            <p className="text-sm">Loading…</p>
+          )}
+        </Dialog>
+        {pending && (
+          <ChangesDialog
+            changes={pending}
+            onCancel={() => setPending(null)}
+            onConfirm={() => void submit()}
+          />
         )}
-      </Dialog>
-      {pending && (
-        <ChangesDialog
-          changes={pending}
-          onCancel={() => setPending(null)}
-          onConfirm={() => void submit()}
-        />
-      )}
-    </ErrorScope>
+      </ErrorScope>
+    </TemplateStoreProvider>
   );
 }
 

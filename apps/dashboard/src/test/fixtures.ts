@@ -73,13 +73,52 @@ const posts: CollectionModel = {
   indexes: [],
 };
 
+const template = (subject: string) => ({ subject, body: `<p>${subject}</p>` });
+
+const authOptions = {
+  authRule: "",
+  manageRule: null,
+  authAlert: { enabled: true, emailTemplate: template("Login alert") },
+  oauth2: {
+    enabled: true,
+    mappedFields: { id: "", name: "", username: "", avatarURL: "" },
+    providers: [
+      {
+        name: "google",
+        clientId: "google-id",
+        displayName: "",
+        pkce: null,
+        authURL: "",
+        tokenURL: "",
+        userInfoURL: "",
+        extra: {},
+      },
+    ],
+  },
+  passwordAuth: { enabled: true, identityFields: ["email"] },
+  mfa: { enabled: false, duration: 1800, rule: "" },
+  otp: {
+    enabled: false,
+    duration: 180,
+    length: 8,
+    emailTemplate: template("OTP"),
+  },
+  authToken: { duration: 604800 },
+  passwordResetToken: { duration: 1800 },
+  emailChangeToken: { duration: 1800 },
+  verificationToken: { duration: 259200 },
+  fileToken: { duration: 180 },
+  verificationTemplate: template("Verify"),
+  resetPasswordTemplate: template("Reset"),
+  confirmEmailChangeTemplate: template("Confirm email"),
+};
+
 const users: CollectionModel = {
   ...base,
+  ...authOptions,
   id: "_pb_users_auth_",
   name: "users",
   type: "auth",
-  authRule: "",
-  manageRule: null,
   fields: [
     idField,
     field("password", "password", { system: true, required: true, min: 8 }),
@@ -88,9 +127,13 @@ const users: CollectionModel = {
     field("emailVisibility", "bool", { system: true }),
     field("verified", "bool", { system: true }),
     field("name", "text"),
+    field("username", "text"),
     ...timestamps,
   ],
-  indexes: [],
+  indexes: [
+    "CREATE UNIQUE INDEX `idx_email_users` ON `users` (`email`) WHERE `email` != ''",
+    "CREATE UNIQUE INDEX `idx_username_users` ON `users` (`username`)",
+  ],
 };
 
 const stats: CollectionModel = {
@@ -105,6 +148,8 @@ const stats: CollectionModel = {
 
 const superusers: CollectionModel = {
   ...base,
+  ...authOptions,
+  oauth2: { ...authOptions.oauth2, enabled: false, providers: [] },
   id: "pbc_3142635823",
   name: "_superusers",
   type: "auth",

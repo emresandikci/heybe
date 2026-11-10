@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 import type { CollectionModel } from "@heybe/client";
 import { fakeServer, type FakeServer } from "./fake-server";
 import { collectionsFixture } from "./fixtures";
@@ -43,4 +44,16 @@ export function echoPatch(server: FakeServer, base: CollectionModel) {
     ...base,
     ...(req.body as object),
   }));
+}
+
+// Pastes at the end of the input: long values typed key by key re-render the whole editor per key.
+export async function paste(user: UserEvent, el: HTMLElement, text: string) {
+  el.focus();
+  const input = el as HTMLInputElement;
+  try {
+    input.setSelectionRange(input.value.length, input.value.length);
+  } catch {
+    // number inputs have no selection
+  }
+  await user.paste(text);
 }

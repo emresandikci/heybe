@@ -6,6 +6,7 @@ import {
   fieldGroup,
   openEditor,
   patchedFields,
+  paste,
 } from "../test/editor";
 import { collectionsFixture } from "../test/fixtures";
 
@@ -35,8 +36,12 @@ test("file options write maxSelect, maxSize, mimeTypes, thumbs and protected", a
   const { user, group, saved } = await addField("file");
   await user.click(group.getByLabelText("Allow multiple"));
   await user.type(group.getByLabelText("Max size (bytes)"), "5242880");
-  await user.type(group.getByLabelText("MIME types"), "image/png, image/jpeg");
-  await user.type(group.getByLabelText("Thumb sizes"), "100x100, 0x300");
+  await paste(
+    user,
+    group.getByLabelText("MIME types"),
+    "image/png, image/jpeg",
+  );
+  await paste(user, group.getByLabelText("Thumb sizes"), "100x100, 0x300");
   await user.click(group.getByLabelText("Protected"));
   expect(await saved()).toMatchObject({
     type: "file",
@@ -131,8 +136,16 @@ test("editor options are written", async () => {
 
 test("date options are written", async () => {
   const { user, group, saved } = await addField("date");
-  await user.type(group.getByLabelText("Min date"), "2026-01-01 00:00:00.000Z");
-  await user.type(group.getByLabelText("Max date"), "2027-01-01 00:00:00.000Z");
+  await paste(
+    user,
+    group.getByLabelText("Min date"),
+    "2026-01-01 00:00:00.000Z",
+  );
+  await paste(
+    user,
+    group.getByLabelText("Max date"),
+    "2027-01-01 00:00:00.000Z",
+  );
   expect(await saved()).toMatchObject({
     min: "2026-01-01 00:00:00.000Z",
     max: "2027-01-01 00:00:00.000Z",
@@ -222,7 +235,7 @@ test("email only domains and except domains are exclusive", async () => {
   const { user, group, saved } = await addField("email");
   await user.type(group.getByLabelText("Except domains"), "spam.test");
   await user.clear(group.getByLabelText("Except domains"));
-  await user.type(group.getByLabelText("Only domains"), "a.test, b.test");
+  await paste(user, group.getByLabelText("Only domains"), "a.test, b.test");
   expect(
     (group.getByLabelText("Except domains") as HTMLInputElement).disabled,
   ).toBe(true);
@@ -237,7 +250,7 @@ test("text options and help text are written", async () => {
   await text.user.type(text.group.getByLabelText("Min length"), "2");
   await text.user.type(text.group.getByLabelText("Max length"), "20");
   await text.user.type(text.group.getByLabelText("Pattern"), "^[[a-z]+$");
-  await text.user.type(text.group.getByLabelText("Help text"), "Lowercase.");
+  await paste(text.user, text.group.getByLabelText("Help text"), "Lowercase.");
   expect(await text.saved()).toMatchObject({
     min: 2,
     max: 20,
@@ -287,7 +300,7 @@ test("view collection sends viewQuery and no fields edits", async () => {
   ).toBeNull();
   const query = within(dialog).getByLabelText("Select query");
   await user.clear(query);
-  await user.type(query, "SELECT id FROM posts");
+  await paste(user, query, "SELECT id FROM posts");
   await save();
   await screen.findByText("Collection saved.");
   const [patch] = server.find("PATCH", "/api/collections/pbc_stats");
