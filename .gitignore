@@ -6,3 +6,8 @@ coverage/
 *.log
 .env
 .cache/
+
+test-results/
+playwright-report/
+apps/dashboard/e2e/.auth/
+apps/dashboard/e2e/.state.json

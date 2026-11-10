@@ -25,7 +25,8 @@
     "release": "pnpm -r --sequential release",
     "prepare": "node .husky/install.mjs",
     "test:contract": "pnpm --filter heybe test:contract",
-    "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/heybe --filter ./packages/client exec tsc -p .",
+    "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/heybe --filter ./packages/client --filter ./apps/dashboard exec tsc -p .",
+    "test:e2e": "pnpm --filter @heybe/dashboard e2e",
     "bench": "pnpm --filter heybe bench",
     "test:client": "pnpm --filter @heybe/client test:integration",
     "smoke:node": "pnpm -r --filter ./packages/query --filter ./packages/client build && pnpm --filter @heybe/client exec node --input-type=module -e \"await import('@heybe/query'); await import('@heybe/client')\"  && pnpm --filter @heybe/client exec tsc -p smoke"
