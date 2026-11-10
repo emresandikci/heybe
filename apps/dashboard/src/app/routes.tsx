@@ -21,6 +21,8 @@ import {
 import { validateRecordsSearch } from "../records/RecordsPage";
 import { Shell } from "../layout/Shell";
 import { ApplicationPage } from "../settings/ApplicationPage";
+import { LogsPage, validateLogsSearch } from "../logs/LogsPage";
+import { SqlPage } from "../settings/SqlPage";
 import { BackupsPage } from "../settings/BackupsPage";
 import { CronsPage } from "../settings/CronsPage";
 import { MailPage } from "../settings/MailPage";
@@ -123,7 +125,8 @@ const collectionRoute = createRoute({
 const logsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/logs",
-  component: placeholder("Logs"),
+  validateSearch: validateLogsSearch,
+  component: LogsPage,
 });
 
 const settingsRoute = createRoute({
@@ -156,7 +159,7 @@ const settingsPages = [
   settingsPage("crons", "Crons", CronsPage),
   settingsPage("export-collections", "Export collections"),
   settingsPage("import-collections", "Import collections"),
-  settingsPage("sql", "SQL"),
+  settingsPage("sql", "SQL", SqlPage),
 ];
 
 export const routeTree = rootRoute.addChildren([

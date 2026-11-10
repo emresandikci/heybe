@@ -8,7 +8,7 @@ import {
 
 const same = (a: object, b: object) => JSON.stringify(a) === JSON.stringify(b);
 
-export function useSettingsForm(settings: SettingsModel) {
+export function useSettingsForm(settings: SettingsModel, onSaved?: () => void) {
   const toast = useToast();
   const save = useSaveSettings();
   const [base, setBase] = useState(settings);
@@ -54,6 +54,7 @@ export function useSettingsForm(settings: SettingsModel) {
       onSuccess: (saved) => {
         load(saved);
         toast.success("Settings saved.");
+        onSaved?.();
       },
     });
   };

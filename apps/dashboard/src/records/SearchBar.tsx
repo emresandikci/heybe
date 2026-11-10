@@ -8,9 +8,11 @@ const HISTORY_KEY = "heybe_filter_history";
 export function SearchBar({
   filter,
   error,
+  label = "Filter records",
   onSearch,
 }: {
   filter: string;
+  label?: string;
   error?: string;
   onSearch: (filter: string) => void;
 }) {
@@ -37,7 +39,7 @@ export function SearchBar({
     <div className="flex items-start gap-2">
       <div className="flex-1">
         <TextField
-          label="Filter records"
+          label={label}
           placeholder={'e.g. title ~ "hello" && created > "2026-01-01"'}
           value={text}
           error={error}
