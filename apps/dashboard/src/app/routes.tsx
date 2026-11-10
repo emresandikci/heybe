@@ -8,6 +8,10 @@ import { guestOnly, requireSuperuser } from "../auth/session";
 import { InstallerPage } from "../auth/InstallerPage";
 import { LoginPage } from "../auth/LoginPage";
 import { RequestResetPage } from "../auth/RequestResetPage";
+import { ConfirmEmailChangePage } from "../auth/public/ConfirmEmailChangePage";
+import { ConfirmPasswordResetPage } from "../auth/public/ConfirmPasswordResetPage";
+import { ConfirmVerificationPage } from "../auth/public/ConfirmVerificationPage";
+import { OAuth2RedirectPage } from "../auth/public/OAuth2RedirectPage";
 import { Shell } from "../layout/Shell";
 import { EmptyState } from "../ui/EmptyState";
 import type { AppContext } from "./context";
@@ -46,6 +50,34 @@ export const installerRoute = createRoute({
   component: InstallerPage,
 });
 
+const publicRoutes = [
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/auth/confirm-verification/$token",
+    component: ConfirmVerificationPage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/auth/confirm-password-reset/$token",
+    component: ConfirmPasswordResetPage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/auth/confirm-email-change/$token",
+    component: ConfirmEmailChangePage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/auth/oauth2-redirect-success",
+    component: () => <OAuth2RedirectPage success />,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/auth/oauth2-redirect-failure",
+    component: () => <OAuth2RedirectPage success={false} />,
+  }),
+];
+
 const indexRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/",
@@ -78,6 +110,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   requestResetRoute,
   installerRoute,
+  ...publicRoutes,
   shellRoute.addChildren([
     indexRoute,
     collectionsRoute,
