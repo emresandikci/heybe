@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { Outlet } from "@tanstack/react-router";
+import { Outlet, useNavigate } from "@tanstack/react-router";
+import { signOut } from "../auth/session";
 import { useClient } from "../app/context";
 import { keys } from "../app/queries";
 import { useTheme, type ThemeChoice } from "../app/theme";
@@ -15,6 +16,8 @@ interface Meta {
 
 export function Shell() {
   const client = useClient();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [theme, setTheme] = useTheme();
   const settings = useQuery({
     queryKey: keys.settings,
@@ -45,7 +48,14 @@ export function Shell() {
             <option value="dark">Dark</option>
           </Select>
           {email && <span className="text-sm">{email}</span>}
-          <Button>Sign out</Button>
+          <Button
+            onClick={() => {
+              signOut({ client, queryClient });
+              void navigate({ to: "/login" });
+            }}
+          >
+            Sign out
+          </Button>
         </div>
       </header>
       <div className="flex flex-1">

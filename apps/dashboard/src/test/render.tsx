@@ -1,4 +1,4 @@
-import { memoryStore, type HeybeClient } from "@heybe/client";
+import { memoryStore, type AuthRecord, type HeybeClient } from "@heybe/client";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
@@ -36,7 +36,7 @@ export function fakeToken(claims: Record<string, unknown> = {}): string {
 export function renderApp(opts: {
   path: string;
   server?: FakeServer;
-  auth?: "superuser" | "none";
+  auth?: "superuser" | "none" | { token: string; record: AuthRecord };
 }): {
   server: FakeServer;
   client: HeybeClient;
@@ -64,14 +64,25 @@ export function renderApp(opts: {
       }),
     ],
     ["GET", "/api/settings", () => settingsFixture],
+    [
+      "GET",
+      "/api/collections/_superusers/auth-methods",
+      () => ({
+        password: { enabled: true, identityFields: ["email"] },
+        oauth2: { enabled: false, providers: [] },
+        mfa: { enabled: false, duration: 0 },
+        otp: { enabled: false, duration: 0 },
+      }),
+    ],
   ];
   for (const [method, path, reply] of defaults) {
     if (!server.has(method, path)) server.on(method, path, reply);
   }
 
   const authStore = memoryStore();
-  if ((opts.auth ?? "superuser") === "superuser")
-    authStore.save(fakeToken(), { ...SUPERUSER });
+  const auth = opts.auth ?? "superuser";
+  if (auth === "superuser") authStore.save(fakeToken(), { ...SUPERUSER });
+  else if (auth !== "none") authStore.save(auth.token, auth.record);
   const client = createDashboardClient({ fetch: server.fetch, authStore });
   const queryClient = createQueryClient();
   const router = createAppRouter(
