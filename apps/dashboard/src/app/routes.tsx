@@ -19,6 +19,8 @@ import {
 } from "../collections/CollectionsLayout";
 import { validateRecordsSearch } from "../records/RecordsPage";
 import { Shell } from "../layout/Shell";
+import { ApplicationPage } from "../settings/ApplicationPage";
+import { SettingsLayout } from "../settings/SettingsLayout";
 import { EmptyState } from "../ui/EmptyState";
 import type { AppContext } from "./context";
 
@@ -122,8 +124,31 @@ const logsRoute = createRoute({
 const settingsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/settings",
-  component: placeholder("Settings"),
+  component: SettingsLayout,
 });
+
+const settingsIndexRoute = createRoute({
+  getParentRoute: () => settingsRoute,
+  path: "/",
+  component: ApplicationPage,
+});
+
+const settingsPage = <P extends string>(path: P, title: string) =>
+  createRoute({
+    getParentRoute: () => settingsRoute,
+    path,
+    component: placeholder(title),
+  });
+
+const settingsPages = [
+  settingsPage("mail", "Mail"),
+  settingsPage("storage", "File storage"),
+  settingsPage("backups", "Backups"),
+  settingsPage("crons", "Crons"),
+  settingsPage("export-collections", "Export collections"),
+  settingsPage("import-collections", "Import collections"),
+  settingsPage("sql", "SQL"),
+];
 
 export const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -134,6 +159,6 @@ export const routeTree = rootRoute.addChildren([
     indexRoute,
     collectionsRoute.addChildren([collectionsIndexRoute, collectionRoute]),
     logsRoute,
-    settingsRoute,
+    settingsRoute.addChildren([settingsIndexRoute, ...settingsPages]),
   ]),
 ]);

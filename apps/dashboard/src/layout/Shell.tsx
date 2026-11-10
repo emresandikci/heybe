@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { Outlet, useNavigate } from "@tanstack/react-router";
 import { signOut } from "../auth/session";
 import { useClient } from "../app/context";
-import { useSettings } from "../app/queries";
+import { useSettings } from "../settings/use-settings";
 import { useTheme, type ThemeChoice } from "../app/theme";
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";

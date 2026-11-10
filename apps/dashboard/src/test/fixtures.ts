@@ -1,4 +1,5 @@
 import type { CollectionModel } from "@heybe/client";
+import type { SettingsModel } from "../settings/use-settings";
 
 const field = (name: string, type: string, extra: object = {}) => ({
   id: `${type}_${name}`,
@@ -196,20 +197,45 @@ export const collectionsFixture: CollectionModel[] = [
   users,
 ];
 
-export const settingsFixture = {
+const s3Public = {
+  enabled: false,
+  bucket: "",
+  region: "",
+  endpoint: "",
+  accessKey: "",
+  forcePathStyle: false,
+};
+
+export const settingsFixture: SettingsModel = {
+  superuserIPs: [],
   meta: {
+    accentColor: "#1055c9",
     appName: "Heybe",
     appURL: "http://localhost:8090",
     senderName: "Support",
     senderAddress: "support@example.com",
     hideControls: false,
   },
-  logs: { maxDays: 7, minLevel: 0, logIP: true, logAuthId: false },
-  backups: { cron: "", cronMaxKeep: 3, s3: { enabled: false } },
-  smtp: { enabled: false, host: "", port: 587, username: "", tls: false },
-  s3: { enabled: false },
+  logs: {
+    maxDataSize: 0,
+    maxDays: 7,
+    minLevel: 0,
+    logIP: true,
+    logAuthId: false,
+  },
+  backups: { cron: "", cronMaxKeep: 3, s3: { ...s3Public } },
+  smtp: {
+    enabled: false,
+    host: "smtp.example.com",
+    port: 587,
+    username: "",
+    authMethod: "",
+    tls: false,
+    localName: "",
+  },
+  s3: { ...s3Public },
   batch: { enabled: true, maxRequests: 50, timeout: 3, maxBodySize: 0 },
-  rateLimits: { enabled: false, rules: [] },
+  rateLimits: { enabled: false, rules: [], excludedIPs: [] },
   trustedProxy: { headers: [], useLeftmostIP: false },
 };
 

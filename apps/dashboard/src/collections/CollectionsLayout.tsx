@@ -1,7 +1,8 @@
 import type { CollectionModel } from "@heybe/client";
 import { Navigate, Outlet, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { useCollections, useHideControls } from "../app/queries";
+import { useCollections } from "../app/queries";
+import { useHideControls } from "../settings/use-settings";
 import { RecordsPage } from "../records/RecordsPage";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";

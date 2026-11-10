@@ -1,7 +1,8 @@
 import type { CollectionModel } from "@heybe/client";
 import { Link } from "@tanstack/react-router";
 import { createContext, useContext, useState } from "react";
-import { useCollections, useHideControls } from "../app/queries";
+import { useCollections } from "../app/queries";
+import { useHideControls } from "../settings/use-settings";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/TextField";
 import { OverviewDialog } from "./OverviewDialog";

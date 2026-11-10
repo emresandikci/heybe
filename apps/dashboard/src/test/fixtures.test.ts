@@ -4,7 +4,8 @@ import {
   autodateFields,
   idField,
 } from "../../../../packages/heybe/src/collections/scaffold";
-import { collectionsFixture } from "./fixtures";
+import { publicSettings } from "../../../../packages/heybe/src/settings";
+import { collectionsFixture, settingsFixture } from "./fixtures";
 
 const shape = (f: Record<string, unknown>) => ({
   name: f.name,
@@ -33,4 +34,17 @@ test("fixture system fields match the server scaffold", () => {
       .sort(byName);
     expect(actual).toEqual(expected);
   }
+});
+
+test("settings fixture is what the server returns: no secrets", () => {
+  const withSecrets = {
+    ...settingsFixture,
+    smtp: { ...settingsFixture.smtp, password: "x" },
+    s3: { ...settingsFixture.s3, secret: "x" },
+    backups: {
+      ...settingsFixture.backups,
+      s3: { ...settingsFixture.backups.s3, secret: "x" },
+    },
+  };
+  expect(publicSettings(withSecrets)).toEqual(settingsFixture);
 });
