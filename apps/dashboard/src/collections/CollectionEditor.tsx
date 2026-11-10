@@ -7,6 +7,7 @@ import {
   ErrorScope,
   UnclaimedErrors,
   errorMessage,
+  flattenErrors,
   useFieldError,
 } from "../app/errors";
 import { keys } from "../app/queries";
@@ -43,8 +44,16 @@ import { FIELD_TYPES } from "./field-types";
 import { FieldRow } from "./fields/FieldRow";
 import { IndexesEditor } from "./IndexesEditor";
 import { parseIndex } from "./index-sql";
+import { RULE_KEYS, RulesTab } from "./rules/RulesTab";
 
 type Update = (fn: (d: CollectionDraft) => CollectionDraft) => void;
+
+function tabOf(path: string): string | null {
+  const top = path.split(".")[0]!;
+  if (RULE_KEYS.includes(top)) return "rules";
+  if (["fields", "indexes", "viewQuery"].includes(top)) return "fields";
+  return null;
+}
 
 const same = (a: CollectionDraft | null, b: CollectionDraft | null) =>
   JSON.stringify(a && toPayload(a)) === JSON.stringify(b && toPayload(b));
@@ -145,6 +154,10 @@ export function CollectionEditor({
         });
     } catch (err) {
       setError(err);
+      const data = (err as { response?: { data?: unknown } }).response?.data;
+      const withErrors = Object.keys(flattenErrors(data)).map(tabOf);
+      const first = withErrors.find((t) => t !== null);
+      if (first && !withErrors.includes(tab)) setTab(first);
     } finally {
       setSaving(false);
     }
@@ -209,6 +222,7 @@ export function CollectionEditor({
   const system = !!source?.system;
   const tabs = [
     { value: "fields", label: draft?.type === "view" ? "Query" : "Fields" },
+    { value: "rules", label: "API rules" },
   ];
 
   return (
@@ -291,6 +305,7 @@ export function CollectionEditor({
                   }}
                 />
               ))}
+            {tab === "rules" && <RulesTab draft={draft} update={update} />}
           </form>
         ) : (
           <p className="text-sm">Loading…</p>

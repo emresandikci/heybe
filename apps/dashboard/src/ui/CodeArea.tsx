@@ -6,12 +6,13 @@ interface CodeAreaProps extends FieldProps {
   value: string;
   onChange: (value: string) => void;
   rows?: number;
+  disabled?: boolean;
   onRun?: () => void;
 }
 
 export const CodeArea = forwardRef<HTMLTextAreaElement, CodeAreaProps>(
   function CodeArea(
-    { label, value, onChange, error, hint, rows = 6, onRun },
+    { label, value, onChange, error, hint, rows = 6, disabled, onRun },
     ref,
   ) {
     const ids = useFieldIds({ error, hint });
@@ -27,6 +28,7 @@ export const CodeArea = forwardRef<HTMLTextAreaElement, CodeAreaProps>(
           ref={ref}
           {...ids.aria}
           rows={rows}
+          disabled={disabled}
           value={value}
           spellCheck={false}
           onChange={(e) => onChange(e.target.value)}

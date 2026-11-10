@@ -78,6 +78,8 @@ const users: CollectionModel = {
   id: "_pb_users_auth_",
   name: "users",
   type: "auth",
+  authRule: "",
+  manageRule: null,
   fields: [
     idField,
     field("password", "password", { system: true, required: true, min: 8 }),
