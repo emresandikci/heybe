@@ -49,6 +49,7 @@ export {
 } from "./http/middlewares";
 export { RATE_LIMIT_ID, RATE_LIMIT_PRIORITY } from "./http/rate-limit";
 export { RequestEvent, Router, RouterGroup } from "./http/router";
+export { DASHBOARD_CSP, serveStatic } from "./http/static";
 export type {
   AuthState,
   Middleware,

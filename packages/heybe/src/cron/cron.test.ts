@@ -415,7 +415,12 @@ describe("app cron", () => {
   test("the scheduler starts on serve and stops on terminate", async () => {
     await app.bootstrap();
     await app.hooks.onServe.trigger(
-      ServeEvent.of({ app, router: app.router, server: null }),
+      ServeEvent.of({
+        app,
+        router: app.router,
+        server: null,
+        uiExtensions: [],
+      }),
       () => {},
     );
     expect(clock.pending()).toBe(1);

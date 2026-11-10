@@ -12,6 +12,7 @@ import {
   superuserIPsWhitelist,
 } from "./middlewares";
 import { rateLimit } from "./rate-limit";
+import { registerDashboard } from "./static";
 import { type Mux, Router, createEvent } from "./router";
 import { registerBackupRoutes } from "./routes/backups";
 import { registerBatchRoutes } from "./routes/batch";
@@ -125,7 +126,8 @@ export async function serve(
 ): Promise<{ url: string; stop(): Promise<void> }> {
   const router = opts.router ?? app.router;
   router.use(cors(opts.origins?.length ? opts.origins : ["*"]));
-  const event = ServeEvent.of({ app, router, server: null });
+  registerDashboard(app, router);
+  const event = ServeEvent.of({ app, router, server: null, uiExtensions: [] });
   await app.hooks.onServe.trigger(event, (e) => {
     if (!e.router.hasRoute("GET", "/{path...}"))
       e.router.get("/{path...}", () => {

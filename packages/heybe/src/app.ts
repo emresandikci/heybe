@@ -1,7 +1,7 @@
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { CollectionName, Collections } from "@heybe/query";
 import { parseCommandArgs } from "./commands/args";
 import { migrateCommand } from "./commands/migrate";
@@ -45,6 +45,7 @@ import { bindAutomigrate } from "./migrations/automigrate";
 import { registerRealtimeHooks } from "./realtime/broadcast";
 import type { Router } from "./http/router";
 import { createRouter } from "./http/server";
+import { bindUIExtensions } from "./http/static";
 import { type Mailer, appMailer } from "./mail/mailer";
 import { internalRecords } from "./records/internal";
 import type { RecordService } from "./records/service";
@@ -55,6 +56,7 @@ import { formatDate, randomSecret } from "./util";
 export interface AppOptions {
   dir?: string;
   dev?: boolean;
+  dashboardDir?: string;
   migrationsDir?: string;
   automigrate?: boolean;
   now?: () => Date;
@@ -107,6 +109,7 @@ export interface App extends HookBinders, RouterMethods {
   now: () => Date;
   timers: Timers;
   dev: boolean;
+  dashboardDir: string;
   migrationsDir: string;
   automigrate: boolean;
   migrations: MigrationDef[];
@@ -348,6 +351,7 @@ export function createApp(opts: AppOptions = {}): App {
     now,
     timers: opts.timers ?? realTimers,
     dev: opts.dev ?? flags.dev ?? false,
+    dashboardDir: opts.dashboardDir ?? resolve(import.meta.dir, "../ui/dist"),
     migrationsDir:
       opts.migrationsDir ??
       flags.migrationsDir ??
@@ -476,6 +480,7 @@ export function createApp(opts: AppOptions = {}): App {
   registerRealtimeHooks(app);
   registerCronJobs(app);
   registerAutoBackup(app);
+  bindUIExtensions(app);
 
   app.command("serve", serveCommand, { description: "Starts the web server" });
   app.command("superuser", superuserCommand, {

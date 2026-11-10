@@ -36,10 +36,16 @@ export class BackupEvent extends HookEvent {
   declare exclude: string[];
 }
 
+export interface UIExtension {
+  name: string;
+  dir: string;
+}
+
 export class ServeEvent extends HookEvent {
   declare app: App;
   declare router: Router;
   declare server: Bun.Server<unknown> | null;
+  declare uiExtensions: UIExtension[];
 }
 
 export class SettingsReloadEvent extends HookEvent {

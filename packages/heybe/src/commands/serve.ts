@@ -1,6 +1,7 @@
 import type { App } from "../app";
 import { runInstaller } from "../http/routes/installer";
 import { parseHttpAddr, serve } from "../http/server";
+import { hasDashboard } from "../http/static";
 import { migrationsList } from "../migrations/loader";
 import { MigrationsRunner } from "../migrations/runner";
 import { writeTypesSafely } from "../typegen";
@@ -26,6 +27,8 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   }
   const server = await serve(app, { host, port, origins });
   console.log(`Server started at ${server.url}`);
+  if (hasDashboard(app)) console.log(`> Dashboard: ${server.url}/_/`);
+  console.log(`> REST API:  ${server.url}/api/`);
   const installer = runInstaller(app, server.url).catch((error) =>
     app.logger.warn("Failed to initialize installer", { error }),
   );

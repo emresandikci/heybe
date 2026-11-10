@@ -1,0 +1,228 @@
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { App, AppOptions } from "../app";
+import type { UIExtension } from "../hooks/events";
+import { testApp } from "../test-app";
+import { serve } from "./server";
+import { DASHBOARD_CSP } from "./static";
+
+const CACHE = "max-age=1209600, stale-while-revalidate=86400";
+const NOT_FOUND = { data: {}, message: "File not found.", status: 404 };
+
+let root: string;
+let dist: string;
+let app: App | undefined;
+let stop: (() => Promise<void>) | undefined;
+
+const write = (path: string, content: string) => {
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(path, content);
+};
+
+beforeEach(() => {
+  root = mkdtempSync(join(tmpdir(), "heybe-static-"));
+  dist = join(root, "dist");
+  write(join(dist, "index.html"), "<p>dashboard</p>");
+  write(join(dist, "assets/app.js"), "console.log(1)");
+  write(join(dist, "sub/index.html"), "<p>sub</p>");
+});
+
+afterEach(async () => {
+  await stop?.();
+  app?.close();
+  stop = app = undefined;
+  rmSync(root, { recursive: true, force: true });
+  mock.restore();
+});
+
+async function start(
+  opts: AppOptions = {},
+  extensions: UIExtension[] = [],
+  prepare?: (app: App) => void,
+): Promise<string> {
+  app = testApp({ dashboardDir: dist, ...opts });
+  prepare?.(app);
+  app.onServe((e) => {
+    e.uiExtensions.push(...extensions);
+    return e.next();
+  });
+  const server = await serve(app, { host: "127.0.0.1", port: 0 });
+  stop = server.stop;
+  return server.url;
+}
+
+const get = (url: string) => fetch(url, { redirect: "manual" });
+
+describe("dashboard", () => {
+  test("GET /_/ serves index.html with the CSP and no cache header", async () => {
+    const res = await get(`${await start()}/_/`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("<p>dashboard</p>");
+    expect(res.headers.get("content-security-policy")).toBe(DASHBOARD_CSP);
+    expect(res.headers.get("cache-control")).toBeNull();
+  });
+
+  test("GET /_/assets/app.js is cached outside dev mode", async () => {
+    const res = await get(`${await start()}/_/assets/app.js`);
+    expect(await res.text()).toBe("console.log(1)");
+    expect(res.headers.get("cache-control")).toBe(CACHE);
+    await stop!();
+    app!.close();
+
+    const dev = await get(`${await start({ dev: true })}/_/assets/app.js`);
+    expect(dev.status).toBe(200);
+    expect(dev.headers.get("cache-control")).toBeNull();
+  });
+
+  test("GET /_ redirects to /_/", async () => {
+    const res = await get(`${await start()}/_`);
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("/_/");
+  });
+
+  test("GET /_/index.html redirects to /_/", async () => {
+    const res = await get(`${await start()}/_/index.html`);
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("/_/");
+  });
+
+  test("GET /_/sub redirects to /_/sub/ and a file URL loses its trailing slash", async () => {
+    const url = await start();
+    const dir = await get(`${url}/_/sub`);
+    expect(dir.status).toBe(301);
+    expect(dir.headers.get("location")).toBe("/_/sub/");
+    expect(await (await get(`${url}/_/sub/`)).text()).toBe("<p>sub</p>");
+
+    const file = await get(`${url}/_/assets/app.js/`);
+    expect(file.status).toBe(301);
+    expect(file.headers.get("location")).toBe("/_/assets/app.js");
+  });
+
+  test("missing files and traversal answer 404", async () => {
+    write(join(root, "data.db"), "secret");
+    const url = await start();
+    for (const path of [
+      "/_/nope.js",
+      "/_/..%2fdata.db",
+      "/_/%2e%2e/%2e%2e/package.json",
+    ]) {
+      const res = await get(url + path);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual(NOT_FOUND);
+    }
+  });
+
+  test("no dist means no /_/ and no extension routes", async () => {
+    rmSync(join(dist, "index.html"));
+    const url = await start({}, [{ name: "a", dir: dist }]);
+    for (const path of ["/_/", "/_/extensions.js", "/_/extensions/a/sub/"]) {
+      const res = await get(url + path);
+      expect(res.status).toBe(404);
+      expect(res.headers.get("content-security-policy")).toBeNull();
+    }
+  });
+
+  test("static successes are not logged, a 404 is", async () => {
+    const url = await start();
+    expect((await get(`${url}/_/`)).status).toBe(200);
+    expect((await get(`${url}/_/assets/app.js`)).status).toBe(200);
+    expect((await get(`${url}/_/nope.js`)).status).toBe(404);
+    await app!.logger.flush();
+    const rows = app!.auxDb.query<{ message: string }>(
+      "SELECT message FROM _logs",
+    );
+    expect(rows.map((r) => r.message)).toEqual(["GET /_/nope.js"]);
+  });
+});
+
+describe("UI extensions", () => {
+  const ext = (name: string, main?: string): UIExtension => {
+    const dir = join(root, "ext", name || "unnamed");
+    write(join(dir, "files/style.css"), `.${name} {}`);
+    if (main !== undefined) write(join(dir, "main.js"), main);
+    return { name, dir };
+  };
+
+  test("extensions.js wraps each main.js in order and skips one without main.js", async () => {
+    const url = await start({}, [ext("b", "B"), ext("c"), ext("a", "A")]);
+    const res = await get(`${url}/_/extensions.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/javascript");
+    expect(res.headers.get("content-security-policy")).toBe(DASHBOARD_CSP);
+    expect(res.headers.get("cache-control")).toBe(CACHE);
+    expect(await res.text()).toBe(
+      "await (async function(){B})();await (async function(){A})();",
+    );
+
+    writeFileSync(join(root, "ext/a/main.js"), "A2");
+    expect(await (await get(`${url}/_/extensions.js`)).text()).toBe(
+      "await (async function(){B})();await (async function(){A2})();",
+    );
+    await app!.logger.flush();
+    expect(app!.auxDb.query("SELECT id FROM _logs")).toHaveLength(0);
+  });
+
+  test("extension files are served under /_/extensions/<name>/", async () => {
+    const url = await start({}, [ext("a", "A")]);
+    const res = await get(`${url}/_/extensions/a/files/style.css`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(".a {}");
+    expect(res.headers.get("content-security-policy")).toBe(DASHBOARD_CSP);
+    expect(res.headers.get("cache-control")).toBe(CACHE);
+    expect((await get(`${url}/_/extensions/a/nope.css`)).status).toBe(404);
+  });
+
+  test("an extension with an empty name is skipped", async () => {
+    const invalid = ext("", "X");
+    let debug: ReturnType<typeof spyOn> | undefined;
+    const url = await start({}, [invalid, ext("a", "A")], (a) => {
+      debug = spyOn(a.logger, "debug");
+    });
+    expect(debug).toHaveBeenCalledWith("Invalid UI extension configuration", {
+      extension: invalid,
+    });
+    expect(await (await get(`${url}/_/extensions.js`)).text()).toBe(
+      "await (async function(){A})();",
+    );
+  });
+});
+
+describe("serve banner", () => {
+  async function banner(opts: AppOptions): Promise<string[]> {
+    const lines: string[] = [];
+    const cli = testApp({ argv: ["serve", "--http", "127.0.0.1:0"], ...opts });
+    const printed = new Promise<void>((resolve) => {
+      spyOn(console, "log").mockImplementation((line: string) => {
+        lines.push(String(line).replace(/http:\/\/[^/]+/, "<url>"));
+        if (String(line).startsWith("> REST API:")) resolve();
+      });
+    });
+    const done = cli.start();
+    await printed;
+    process.emit("SIGINT");
+    expect(await done).toBe(0);
+    return lines.slice(0, lines.findIndex((l) => l.startsWith("> REST")) + 1);
+  }
+
+  test("serve prints the dashboard line only when dist exists", async () => {
+    expect(await banner({ dashboardDir: dist })).toEqual([
+      "Server started at <url>",
+      "> Dashboard: <url>/_/",
+      "> REST API:  <url>/api/",
+    ]);
+    expect(await banner({ dashboardDir: join(root, "none") })).toEqual([
+      "Server started at <url>",
+      "> REST API:  <url>/api/",
+    ]);
+  });
+});
