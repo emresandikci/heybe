@@ -7,6 +7,7 @@ import {
   type Where,
 } from "@heybe/query";
 import type { HeybeClient } from "./client.js";
+import { joinFilter, joinSort, type RawListArgs } from "./raw.js";
 import type { RequestOptions } from "./send.js";
 
 export type CollectionModel = {
@@ -26,7 +27,7 @@ export interface CollectionsService {
       page?: number;
       perPage?: number;
       count?: boolean;
-    },
+    } & RawListArgs,
     opts?: RequestOptions,
   ): Promise<ListResult<CollectionModel>>;
   findOne(idOrName: string, opts?: RequestOptions): Promise<CollectionModel>;
@@ -100,8 +101,11 @@ export function createCollections(client: Sender): CollectionsService {
   const one = (idOrName: string) => `/api/collections/${enc(idOrName)}`;
   return {
     findMany(args, opts) {
-      const filter = args?.where ? toFilter(toAst(args.where)) : "";
-      const sort = toSort(args?.orderBy);
+      const filter = joinFilter(
+        args?.where ? toFilter(toAst(args.where)) : "",
+        args?.filter,
+      );
+      const sort = joinSort(toSort(args?.orderBy), args?.sort);
       return client.send("/api/collections", {
         ...opts,
         query: {

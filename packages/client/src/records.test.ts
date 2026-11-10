@@ -31,6 +31,37 @@ describe("records", () => {
     );
   });
 
+  test("findMany sends filter and sort raw strings", async () => {
+    const { env, client } = setup();
+    env.respond(() => Response.json(list));
+    await client
+      .records("posts")
+      .findMany({ filter: 'title ~ "a b"', sort: "-@rowid" });
+    const url = new URL(env.requests[0]!.url);
+    expect(url.searchParams.get("filter")).toBe('title ~ "a b"');
+    expect(url.searchParams.get("sort")).toBe("-@rowid");
+  });
+
+  test("where and filter are joined with &&", async () => {
+    const { env, client } = setup();
+    env.respond(() => Response.json(list));
+    await client
+      .records("posts")
+      .findMany({ where: { title: "a" }, filter: "views > 1" });
+    const url = new URL(env.requests[0]!.url);
+    expect(url.searchParams.get("filter")).toBe('(title="a") && (views > 1)');
+  });
+
+  test("orderBy and sort are joined with a comma", async () => {
+    const { env, client } = setup();
+    env.respond(() => Response.json({ ...list, items: [{ id: "a" }] }));
+    await client
+      .records("posts")
+      .findFirst({ orderBy: { created: "desc" }, sort: "@rowid" });
+    const url = new URL(env.requests[0]!.url);
+    expect(url.searchParams.get("sort")).toBe("-created,@rowid");
+  });
+
   test("findMany() sends no query", async () => {
     const { env, client } = setup();
     env.respond(() => Response.json(list));

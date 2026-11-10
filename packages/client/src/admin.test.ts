@@ -37,6 +37,25 @@ describe("collections", () => {
     });
   });
 
+  test("findMany joins where with filter and orderBy with sort", async () => {
+    const { env, client } = setup();
+    await client.collections.findMany({
+      where: { type: "base" },
+      filter: 'name ~ "x"',
+      orderBy: { name: "asc" },
+      sort: "-created",
+    });
+    const url = new URL(env.requests.at(-1)!.url);
+    expect(url.searchParams.get("filter")).toBe(
+      '(type="base") && (name ~ "x")',
+    );
+    expect(url.searchParams.get("sort")).toBe("name,-created");
+    await client.collections.findMany({ filter: "a=1", sort: "b" });
+    const raw = new URL(env.requests.at(-1)!.url);
+    expect(raw.searchParams.get("filter")).toBe("a=1");
+    expect(raw.searchParams.get("sort")).toBe("b");
+  });
+
   test("findMany and crons.run pass request options through", async () => {
     const { env, client } = setup();
     await client.collections.findMany(undefined, { headers: { "X-A": "1" } });

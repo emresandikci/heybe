@@ -48,6 +48,8 @@ Collection types come from the generated `Collections` interface; an unknown col
 
 Requests are auto-cancelled: a new request with the same key (`METHOD + path`) aborts the pending one. Pass `requestKey: null` per request to opt out, or set `autoCancel: false` on the client.
 
+Raw filters: `findMany` and `findFirst` also accept `filter` and `sort` as raw PocketBase strings, for user-typed input. They are sent unchanged and joined with `where` and `orderBy`: `(where) && (filter)` and `orderBy,sort`. `collections.findMany`, `logs.findMany` and `logs.stats` accept them too.
+
 On a multi-value field (`select` with `maxSelect > 1`, `relation`, `file`), PocketBase's `tags?="x"` (`anyEq`) matches nothing. Use `each` instead: `where: { tags: { each: { anyEq: "x" } } }` (`tags:each?="x"`).
 
 ## Auth

@@ -69,3 +69,7 @@ export { typed, looseValue };
 heybe.logs.findMany({ where: { "data.status": { gte: 400 } } });
 // @ts-expect-error unknown log field
 heybe.logs.findMany({ where: { nope: 1 } });
+
+posts.findMany({ filter: "x", sort: "-created" });
+// @ts-expect-error unknown top-level key
+posts.findMany({ nope: 1 });

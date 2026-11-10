@@ -14,6 +14,7 @@ import {
 import type { AuthRecord } from "./auth-store.js";
 import type { HeybeClient } from "./client.js";
 import { HeybeError } from "./error.js";
+import { joinFilter, joinSort, type RawListArgs } from "./raw.js";
 import type { RequestOptions } from "./send.js";
 
 export type BaseFields = {
@@ -35,13 +36,15 @@ type NoExtraKeys<A, Allowed> = {
   [K in Exclude<keyof A, keyof Allowed>]: never;
 };
 
-type FirstArgs<T> = Omit<FindManyArgs<T>, "page" | "perPage" | "count">;
+type ListArgs<T> = FindManyArgs<T> & RawListArgs;
+
+type FirstArgs<T> = Omit<ListArgs<T>, "page" | "perPage" | "count">;
 
 export interface RecordsClient<T> {
   readonly collection: string;
-  findMany<A extends FindManyArgs<T> = {}>(
+  findMany<A extends ListArgs<T> = {}>(
     args?: A &
-      NoExtraKeys<A, FindManyArgs<T>> & {
+      NoExtraKeys<A, ListArgs<T>> & {
         expand?: NoExtraExpand<T, ExpandOf<A>>;
       },
     opts?: RequestOptions,
@@ -53,7 +56,7 @@ export interface RecordsClient<T> {
   ): Promise<Rec<T, E>>;
   findFirst<A extends FirstArgs<T> = {}>(
     args?: A &
-      NoExtraKeys<A, FindManyArgs<T>> & {
+      NoExtraKeys<A, ListArgs<T>> & {
         expand?: NoExtraExpand<T, ExpandOf<A>>;
       },
     opts?: RequestOptions,
@@ -85,7 +88,7 @@ export interface RecordsClient<T> {
   unsubscribe(topic?: string): Promise<void>;
 }
 
-type Args = FindManyArgs<unknown>;
+type Args = FindManyArgs<unknown> & RawListArgs;
 
 function compact(query: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -98,8 +101,11 @@ function listQuery(args: Args | undefined, single: boolean) {
     page: single ? 1 : args?.page,
     perPage: single ? 1 : args?.perPage,
     skipTotal: single || args?.count === false ? 1 : undefined,
-    filter: args?.where ? toFilter(toAst(args.where)) : "",
-    sort: toSort(args?.orderBy),
+    filter: joinFilter(
+      args?.where ? toFilter(toAst(args.where)) : "",
+      args?.filter,
+    ),
+    sort: joinSort(toSort(args?.orderBy), args?.sort),
     expand: toExpand(args?.expand),
   });
 }

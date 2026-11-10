@@ -12,6 +12,7 @@ export type {
   WithExpand,
 } from "@heybe/query";
 export { HeybeError } from "./error.js";
+export type { RawListArgs } from "./raw.js";
 export type { RequestOptions, SendOptions } from "./send.js";
 export { localStorageStore, memoryStore } from "./auth-store.js";
 export type { AuthRecord, AuthStore, StorageLike } from "./auth-store.js";

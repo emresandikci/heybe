@@ -31,6 +31,34 @@ describe("logs", () => {
     });
   });
 
+  test("findMany joins where with filter and orderBy with sort", async () => {
+    const { env, client } = setup();
+    await client.logs.findMany({
+      where: { level: 4 },
+      filter: 'message ~ "x"',
+      orderBy: { created: "desc" },
+      sort: "-@rowid",
+    });
+    const url = new URL(env.requests.at(-1)!.url);
+    expect(url.searchParams.get("filter")).toBe('(level=4) && (message ~ "x")');
+    expect(url.searchParams.get("sort")).toBe("-created,-@rowid");
+    await client.logs.findMany({ filter: "a=1", sort: "b" });
+    const raw = new URL(env.requests.at(-1)!.url);
+    expect(raw.searchParams.get("filter")).toBe("a=1");
+    expect(raw.searchParams.get("sort")).toBe("b");
+  });
+
+  test("stats joins where with filter", async () => {
+    const { env, client } = setup([]);
+    await client.logs.stats({ where: { level: 4 }, filter: "a=1" });
+    const url = new URL(env.requests.at(-1)!.url);
+    expect(url.searchParams.get("filter")).toBe("(level=4) && (a=1)");
+    await client.logs.stats({ filter: "a=1" });
+    expect(new URL(env.requests.at(-1)!.url).searchParams.get("filter")).toBe(
+      "a=1",
+    );
+  });
+
   test("findOne encodes the id", async () => {
     const { env, client } = setup();
     await client.logs.findOne("a/b");

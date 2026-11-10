@@ -7,6 +7,7 @@ import {
   type Where,
 } from "@heybe/query";
 import type { HeybeClient } from "./client.js";
+import { joinFilter, joinSort, type RawListArgs } from "./raw.js";
 import type { RequestOptions } from "./send.js";
 
 export interface LogModel {
@@ -27,19 +28,20 @@ export interface LogsService {
       page?: number;
       perPage?: number;
       count?: boolean;
-    },
+    } & RawListArgs,
     opts?: RequestOptions,
   ): Promise<ListResult<LogModel>>;
   findOne(id: string, opts?: RequestOptions): Promise<LogModel>;
   stats(
-    args?: { where?: Where<LogFields> },
+    args?: { where?: Where<LogFields>; filter?: string },
     opts?: RequestOptions,
   ): Promise<{ total: number; date: string }[]>;
   truncate(opts?: RequestOptions): Promise<void>;
 }
 
-const filterOf = (where?: Where<LogFields>) =>
-  (where ? toFilter(toAst(where)) : "") || undefined;
+const filterOf = (args?: { where?: Where<LogFields>; filter?: string }) =>
+  joinFilter(args?.where ? toFilter(toAst(args.where)) : "", args?.filter) ||
+  undefined;
 
 export function createLogs(client: Pick<HeybeClient, "send">): LogsService {
   return {
@@ -50,8 +52,8 @@ export function createLogs(client: Pick<HeybeClient, "send">): LogsService {
           page: args?.page,
           perPage: args?.perPage,
           skipTotal: args?.count === false ? 1 : undefined,
-          filter: filterOf(args?.where),
-          sort: toSort(args?.orderBy) || undefined,
+          filter: filterOf(args),
+          sort: joinSort(toSort(args?.orderBy), args?.sort) || undefined,
         },
       });
     },
@@ -60,7 +62,7 @@ export function createLogs(client: Pick<HeybeClient, "send">): LogsService {
     stats: (args, opts) =>
       client.send("/api/logs/stats", {
         ...opts,
-        query: { filter: filterOf(args?.where) },
+        query: { filter: filterOf(args) },
       }),
     truncate: (opts) => client.send("/api/logs", { ...opts, method: "DELETE" }),
   };
