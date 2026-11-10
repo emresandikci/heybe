@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useErrorsUnder, useFieldError } from "../app/errors";
 import { Checkbox } from "../ui/Checkbox";
 import { CodeArea } from "../ui/CodeArea";
@@ -12,6 +12,7 @@ export function TextInput({
   onChange,
   hint,
   type,
+  autoComplete,
 }: {
   path: string;
   label: string;
@@ -19,12 +20,14 @@ export function TextInput({
   onChange(value: string): void;
   hint?: string;
   type?: string;
+  autoComplete?: string;
 }) {
   return (
     <TextField
       label={label}
       hint={hint}
       type={type}
+      autoComplete={autoComplete}
       value={value}
       error={useFieldError(path)}
       onChange={(e) => onChange(e.target.value)}
@@ -111,6 +114,45 @@ export function LinesInput({
             .filter(Boolean),
         );
       }}
+    />
+  );
+}
+
+export function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset className="flex flex-col gap-3 rounded border border-slate-200 p-3 dark:border-slate-700">
+      <legend className="px-1 text-sm font-semibold">{title}</legend>
+      {children}
+    </fieldset>
+  );
+}
+
+export function SecretInput({
+  path,
+  label,
+  value,
+  onChange,
+}: {
+  path: string;
+  label: string;
+  value: string;
+  onChange(value: string): void;
+}) {
+  return (
+    <TextInput
+      path={path}
+      label={label}
+      type="password"
+      autoComplete="new-password"
+      hint="Leave empty to keep the current value"
+      value={value}
+      onChange={onChange}
     />
   );
 }

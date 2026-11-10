@@ -1,16 +1,19 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { Button } from "../ui/Button";
-import { Select } from "../ui/Select";
-import { useToast } from "../ui/Toasts";
-import { CheckInput, LinesInput, NumberInput, TextInput } from "./inputs";
 import {
-  changedSections,
-  useSaveSettings,
+  CheckInput,
+  LinesInput,
+  NumberInput,
+  Section,
+  TextInput,
+} from "./inputs";
+import {
   useSettings,
   type RateLimitRule,
   type SettingsModel,
 } from "./use-settings";
+import { useSettingsForm } from "./use-settings-form";
 
 export function ApplicationPage() {
   const settings = useSettings();
@@ -18,54 +21,9 @@ export function ApplicationPage() {
   return <ApplicationForm settings={settings.data} />;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <fieldset className="flex flex-col gap-3 rounded border border-slate-200 p-3 dark:border-slate-700">
-      <legend className="px-1 text-sm font-semibold">{title}</legend>
-      {children}
-    </fieldset>
-  );
-}
-
 function ApplicationForm({ settings }: { settings: SettingsModel }) {
-  const toast = useToast();
-  const save = useSaveSettings();
-  const [base, setBase] = useState(settings);
-  const [draft, setDraft] = useState(settings);
-  const [version, setVersion] = useState(0);
-  const same = (a: object, b: object) =>
-    JSON.stringify(a) === JSON.stringify(b);
-
-  const load = (next: SettingsModel) => {
-    setBase(next);
-    setDraft(next);
-    setVersion((v) => v + 1);
-  };
-  if (!same(settings, base) && same(draft, base)) load(settings);
-
-  const set = <K extends keyof SettingsModel>(
-    key: K,
-    patch: Partial<SettingsModel[K]> | SettingsModel[K],
-  ) =>
-    setDraft((d) => ({
-      ...d,
-      [key]: Array.isArray(patch) ? patch : { ...d[key], ...patch },
-    }));
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    save.mutate(changedSections(base, draft), {
-      onSuccess: (saved) => {
-        load(saved);
-        toast.success("Settings saved.");
-      },
-    });
-  };
-
-  const reset = () => {
-    save.reset();
-    load(base);
-  };
+  const { draft, set, version, save, submit, reset } =
+    useSettingsForm(settings);
 
   const { meta, rateLimits, trustedProxy, batch } = draft;
   return (

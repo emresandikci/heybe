@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Outlet,
   createRootRouteWithContext,
@@ -20,6 +21,10 @@ import {
 import { validateRecordsSearch } from "../records/RecordsPage";
 import { Shell } from "../layout/Shell";
 import { ApplicationPage } from "../settings/ApplicationPage";
+import { BackupsPage } from "../settings/BackupsPage";
+import { CronsPage } from "../settings/CronsPage";
+import { MailPage } from "../settings/MailPage";
+import { StoragePage } from "../settings/StoragePage";
 import { SettingsLayout } from "../settings/SettingsLayout";
 import { EmptyState } from "../ui/EmptyState";
 import type { AppContext } from "./context";
@@ -133,18 +138,22 @@ const settingsIndexRoute = createRoute({
   component: ApplicationPage,
 });
 
-const settingsPage = <P extends string>(path: P, title: string) =>
+const settingsPage = <P extends string>(
+  path: P,
+  title: string,
+  component: () => ReactNode = placeholder(title),
+) =>
   createRoute({
     getParentRoute: () => settingsRoute,
     path,
-    component: placeholder(title),
+    component,
   });
 
 const settingsPages = [
-  settingsPage("mail", "Mail"),
-  settingsPage("storage", "File storage"),
-  settingsPage("backups", "Backups"),
-  settingsPage("crons", "Crons"),
+  settingsPage("mail", "Mail", MailPage),
+  settingsPage("storage", "File storage", StoragePage),
+  settingsPage("backups", "Backups", BackupsPage),
+  settingsPage("crons", "Crons", CronsPage),
   settingsPage("export-collections", "Export collections"),
   settingsPage("import-collections", "Import collections"),
   settingsPage("sql", "SQL"),
