@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { fakeServer } from "../test/fake-server";
 import { SUPERUSER, fakeToken, renderApp } from "../test/render";
 
@@ -53,7 +53,9 @@ test("an external redirect value falls back to /collections", async () => {
   await user.click(screen.getByRole("button", { name: "Sign in" }));
 
   await screen.findByRole("button", { name: "Sign out" });
-  expect(router.state.location.pathname).toBe("/collections");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+  );
 });
 
 test("wrong password shows the server message and keeps the email", async () => {
@@ -121,7 +123,9 @@ test("MFA requests an OTP for the email and finishes with mfaId", async () => {
     password: "123456",
     mfaId: "mfa1",
   });
-  expect(router.state.location.pathname).toBe("/collections");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+  );
   expect(client.authStore.token).toBe(authReply.token);
 });
 
@@ -142,7 +146,9 @@ test("OTP-only methods show the send code form and no password input", async () 
     otpId: "otp1",
     password: "123456",
   });
-  expect(router.state.location.pathname).toBe("/collections");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+  );
 });
 
 test("a rate-limited new code request keeps the previous OTP", async () => {
@@ -195,7 +201,9 @@ test("each sign-in step focuses its first input", async () => {
 test("a signed-in superuser opening /login lands on /collections", async () => {
   const { router } = renderApp({ path: "/login" });
   await screen.findByRole("button", { name: "Sign out" });
-  expect(router.state.location.pathname).toBe("/collections");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+  );
 });
 
 for (const status of [204, 400]) {

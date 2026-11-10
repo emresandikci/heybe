@@ -142,3 +142,33 @@ export const settingsFixture = {
   rateLimits: { enabled: false, rules: [] },
   trustedProxy: { headers: [], useLeftmostIP: false },
 };
+
+const scaffoldBase = {
+  id: "",
+  name: "",
+  system: false,
+  indexes: [] as string[],
+  listRule: null,
+  viewRule: null,
+  createRule: null,
+  updateRule: null,
+  deleteRule: null,
+  created: "",
+  updated: "",
+};
+
+export const scaffoldsFixture: Record<string, CollectionModel> = {
+  base: { ...scaffoldBase, type: "base", fields: [{ ...idField, help: "" }] },
+  view: { ...scaffoldBase, type: "view", fields: [], viewQuery: "" },
+  auth: {
+    ...scaffoldBase,
+    type: "auth",
+    fields: [{ ...idField, help: "" }, ...users.fields.slice(1, 6)],
+    indexes: [
+      "CREATE UNIQUE INDEX `idx_tokenKey_abc` ON `` (`tokenKey`)",
+      "CREATE UNIQUE INDEX `idx_email_abc` ON `` (`email`) WHERE `email` != ''",
+    ],
+    authRule: "",
+    manageRule: null,
+  },
+};

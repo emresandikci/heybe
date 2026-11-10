@@ -1,9 +1,9 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Outlet, useNavigate } from "@tanstack/react-router";
 import { signOut } from "../auth/session";
 import { useClient } from "../app/context";
-import { keys } from "../app/queries";
+import { useSettings } from "../app/queries";
 import { useTheme, type ThemeChoice } from "../app/theme";
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
@@ -19,10 +19,7 @@ export function Shell() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [theme, setTheme] = useTheme();
-  const settings = useQuery({
-    queryKey: keys.settings,
-    queryFn: ({ signal }) => client.settings.get({ signal }),
-  });
+  const settings = useSettings();
   const meta = (settings.data?.meta ?? {}) as Meta;
   const accent = meta.accentColor || "#2563eb";
   useEffect(() => {

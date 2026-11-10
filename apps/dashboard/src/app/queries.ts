@@ -39,3 +39,18 @@ export function useCollections(): UseQueryResult<CollectionModel[]> {
       ),
   });
 }
+
+export function useSettings(): UseQueryResult<Record<string, unknown>> {
+  const client = useClient();
+  return useQuery({
+    queryKey: keys.settings,
+    queryFn: ({ signal }) => client.settings.get({ signal }),
+  });
+}
+
+export function useHideControls(): boolean {
+  const settings = useSettings();
+  if (!settings.data) return true;
+  return !!(settings.data.meta as { hideControls?: boolean } | undefined)
+    ?.hideControls;
+}

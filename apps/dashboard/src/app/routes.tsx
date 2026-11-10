@@ -12,6 +12,11 @@ import { ConfirmEmailChangePage } from "../auth/public/ConfirmEmailChangePage";
 import { ConfirmPasswordResetPage } from "../auth/public/ConfirmPasswordResetPage";
 import { ConfirmVerificationPage } from "../auth/public/ConfirmVerificationPage";
 import { OAuth2RedirectPage } from "../auth/public/OAuth2RedirectPage";
+import {
+  CollectionPage,
+  CollectionsIndex,
+  CollectionsLayout,
+} from "../collections/CollectionsLayout";
 import { Shell } from "../layout/Shell";
 import { EmptyState } from "../ui/EmptyState";
 import type { AppContext } from "./context";
@@ -91,7 +96,19 @@ const placeholder = (title: string) => () => <EmptyState title={title} />;
 const collectionsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/collections",
-  component: placeholder("Collections"),
+  component: CollectionsLayout,
+});
+
+const collectionsIndexRoute = createRoute({
+  getParentRoute: () => collectionsRoute,
+  path: "/",
+  component: CollectionsIndex,
+});
+
+const collectionRoute = createRoute({
+  getParentRoute: () => collectionsRoute,
+  path: "$collectionId",
+  component: CollectionPage,
 });
 
 const logsRoute = createRoute({
@@ -113,7 +130,7 @@ export const routeTree = rootRoute.addChildren([
   ...publicRoutes,
   shellRoute.addChildren([
     indexRoute,
-    collectionsRoute,
+    collectionsRoute.addChildren([collectionsIndexRoute, collectionRoute]),
     logsRoute,
     settingsRoute,
   ]),

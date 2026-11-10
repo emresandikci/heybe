@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { fakeServer } from "../test/fake-server";
 import { SUPERUSER, fakeToken, renderApp } from "../test/render";
 
@@ -35,7 +35,9 @@ test("installer creates the first superuser with the installer token and signs i
     "/api/collections/_superusers/auth-with-password",
   );
   expect(login!.headers.get("authorization")).toBeNull();
-  expect(router.state.location.pathname).toBe("/collections");
+  await waitFor(() =>
+    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+  );
   expect(client.authStore.token).toBe(fakeToken());
 });
 
