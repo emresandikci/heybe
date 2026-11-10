@@ -14,6 +14,7 @@ export interface ConfirmOptions {
   title: string;
   message: string;
   confirmLabel: string;
+  cancelLabel?: string;
   danger?: boolean;
   typeToConfirm?: string;
 }
@@ -54,7 +55,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         title={options?.title ?? ""}
         footer={
           <>
-            <Button onClick={() => settle(false)}>Cancel</Button>
+            <Button onClick={() => settle(false)}>
+              {options?.cancelLabel ?? "Cancel"}
+            </Button>
             <Button
               variant={options?.danger ? "danger" : "primary"}
               disabled={blocked}

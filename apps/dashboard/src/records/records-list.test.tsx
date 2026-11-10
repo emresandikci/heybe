@@ -202,7 +202,9 @@ test("recent filters keep the last 10", async () => {
 });
 
 test("New record and row click open ?record=", async () => {
-  const { user, router } = open(serve());
+  const { user, router } = open(
+    serve().on("GET", "/api/collections/posts/records/:id", record("b")),
+  );
   await user.click(await screen.findByRole("button", { name: "New record" }));
   expect(router.state.location.search).toMatchObject({ record: "new" });
   await user.click(screen.getByText("Post b"));

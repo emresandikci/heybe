@@ -11,6 +11,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { useToast } from "../ui/Toasts";
 import { ColumnsMenu } from "./ColumnsMenu";
 import { Pagination } from "./Pagination";
+import { RecordEditor } from "./RecordEditor";
 import { RecordsTable } from "./RecordsTable";
 import { SearchBar } from "./SearchBar";
 import type { CellField } from "./cell";
@@ -49,6 +50,9 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
   const columnsKey = `heybe_columns_${collection.id}`;
   const [hidden, setHidden] = useState(() => readList(columnsKey));
   const [selected, setSelected] = useState(new Set<string>());
+  const [prefill, setPrefill] = useState<
+    (Record<string, unknown> & { id: string }) | undefined
+  >();
 
   const page = search.page ?? 1;
   const filter = search.filter ?? "";
@@ -144,7 +148,13 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
           onToggle={toggleColumn}
         />
         {!isView && (
-          <Button variant="primary" onClick={() => update({ record: "new" })}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setPrefill(undefined);
+              update({ record: "new" });
+            }}
+          >
             New record
           </Button>
         )}
@@ -186,6 +196,19 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
           onPage={(value) => {
             setSelected(new Set());
             update({ page: value });
+          }}
+        />
+      )}
+      {search.record && (
+        <RecordEditor
+          key={search.record}
+          collection={collection}
+          recordId={search.record}
+          prefill={prefill}
+          onClose={() => update({ record: undefined })}
+          onDuplicate={(record) => {
+            setPrefill(record);
+            update({ record: "new" });
           }}
         />
       )}

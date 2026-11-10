@@ -9,9 +9,20 @@ export function NumberField({
   ...rest
 }: FieldProps & InputHTMLAttributes<HTMLInputElement>) {
   const ids = useFieldIds({ error, hint });
+  const describedBy =
+    [ids.aria["aria-describedby"], rest["aria-describedby"]]
+      .filter(Boolean)
+      .join(" ") || undefined;
   return (
     <FieldShell {...ids} label={label} error={error} hint={hint}>
-      <input type="number" {...rest} {...ids.aria} className={inputClass} />
+      <input
+        type="number"
+        {...rest}
+        {...ids.aria}
+        aria-invalid={ids.aria["aria-invalid"] ?? rest["aria-invalid"]}
+        aria-describedby={describedBy}
+        className={inputClass}
+      />
     </FieldShell>
   );
 }

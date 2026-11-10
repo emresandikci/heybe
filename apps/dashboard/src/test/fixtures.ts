@@ -26,9 +26,9 @@ const idField = {
   pattern: "^[a-z0-9]+$",
 };
 
-const timestamps = [
-  field("created", "autodate", { onCreate: true, onUpdate: false }),
-  field("updated", "autodate", { onCreate: true, onUpdate: true }),
+const timestamps = (system = false) => [
+  field("created", "autodate", { system, onCreate: true, onUpdate: false }),
+  field("updated", "autodate", { system, onCreate: true, onUpdate: true }),
 ];
 
 const base = {
@@ -68,7 +68,7 @@ const posts: CollectionModel = {
     field("meta", "json", { maxSize: 0 }),
     field("place", "geoPoint"),
     field("when", "date"),
-    ...timestamps,
+    ...timestamps(),
   ],
   indexes: [],
 };
@@ -121,14 +121,19 @@ const users: CollectionModel = {
   type: "auth",
   fields: [
     idField,
-    field("password", "password", { system: true, required: true, min: 8 }),
+    field("password", "password", {
+      system: true,
+      hidden: true,
+      required: true,
+      min: 8,
+    }),
     field("tokenKey", "text", { system: true, hidden: true, required: true }),
     field("email", "email", { system: true, required: true }),
     field("emailVisibility", "bool", { system: true }),
     field("verified", "bool", { system: true }),
     field("name", "text"),
     field("username", "text"),
-    ...timestamps,
+    ...timestamps(),
   ],
   indexes: [
     "CREATE UNIQUE INDEX `idx_email_users` ON `users` (`email`) WHERE `email` != ''",
@@ -156,12 +161,17 @@ const superusers: CollectionModel = {
   system: true,
   fields: [
     idField,
-    field("password", "password", { system: true, required: true, min: 8 }),
+    field("password", "password", {
+      system: true,
+      hidden: true,
+      required: true,
+      min: 8,
+    }),
     field("tokenKey", "text", { system: true, hidden: true, required: true }),
     field("email", "email", { system: true, required: true }),
     field("emailVisibility", "bool", { system: true }),
     field("verified", "bool", { system: true }),
-    ...timestamps,
+    ...timestamps(true),
   ],
   indexes: [],
 };
