@@ -2,6 +2,7 @@ import type { CollectionModel } from "@heybe/client";
 import { Navigate, Outlet, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useCollections, useHideControls } from "../app/queries";
+import { RecordsPage } from "../records/RecordsPage";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { ApiPreview } from "./ApiPreview";
@@ -69,6 +70,7 @@ export function CollectionPage() {
         <h2 className="text-lg font-semibold">{collection.name}</h2>
         <Button onClick={() => setPreview(true)}>API preview</Button>
       </div>
+      <RecordsPage key={collection.id} collection={collection} />
       {preview && (
         <ApiPreview collection={collection} onClose={() => setPreview(false)} />
       )}

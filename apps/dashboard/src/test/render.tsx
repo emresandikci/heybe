@@ -66,6 +66,11 @@ export function renderApp(opts: {
     ["GET", "/api/settings", () => settingsFixture],
     [
       "GET",
+      "/api/collections/:c/records",
+      () => ({ page: 1, perPage: 40, totalItems: 0, totalPages: 1, items: [] }),
+    ],
+    [
+      "GET",
       "/api/collections/_superusers/auth-methods",
       () => ({
         password: { enabled: true, identityFields: ["email"] },

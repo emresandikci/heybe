@@ -17,6 +17,7 @@ import {
   CollectionsIndex,
   CollectionsLayout,
 } from "../collections/CollectionsLayout";
+import { validateRecordsSearch } from "../records/RecordsPage";
 import { Shell } from "../layout/Shell";
 import { EmptyState } from "../ui/EmptyState";
 import type { AppContext } from "./context";
@@ -108,6 +109,7 @@ const collectionsIndexRoute = createRoute({
 const collectionRoute = createRoute({
   getParentRoute: () => collectionsRoute,
   path: "$collectionId",
+  validateSearch: validateRecordsSearch,
   component: CollectionPage,
 });
 
