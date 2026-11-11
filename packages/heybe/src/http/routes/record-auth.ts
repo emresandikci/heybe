@@ -1,4 +1,5 @@
 import { toAst } from "@heybe/query";
+import { verifyPassword as verifyBcrypt } from "../../auth/password";
 import type { App } from "../../app";
 import { authTokenFromRequest, checkSuperuserIp, realIp } from "../middlewares";
 import { recordAuthOrigin } from "../../auth/alerts";
@@ -137,10 +138,7 @@ export async function verifyPassword(
   password: string,
 ): Promise<boolean> {
   try {
-    return await Bun.password.verify(
-      password,
-      (stored as { hash: string }).hash,
-    );
+    return await verifyBcrypt(password, (stored as { hash: string }).hash);
   } catch {
     return false;
   }

@@ -1,4 +1,5 @@
 import { type ListResult, toAst } from "@heybe/query";
+import { verifyPassword } from "../../auth/password";
 import type { App } from "../../app";
 import type { Collection } from "../../collections/model";
 import { fields } from "../../fields";
@@ -340,7 +341,7 @@ export async function checkOldPassword(
     return null;
   let ok = false;
   try {
-    ok = await Bun.password.verify(plain, hash);
+    ok = await verifyPassword(plain, hash);
   } catch {}
   return { hash, plain, ok };
 }
