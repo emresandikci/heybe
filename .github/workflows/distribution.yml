@@ -1,0 +1,77 @@
+name: Distribution
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/**"
+      - "apps/dashboard/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/distribution.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: bun scripts/check-pack.ts
+
+  binary:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: bun-darwin-arm64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build and smoke test
+        working-directory: packages/heybe
+        run: |
+          bun scripts/build-binary.ts --target ${{ matrix.target }}
+          bun scripts/smoke-binary.ts --binary dist/heybe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heybe-${{ matrix.target }}
+          path: packages/heybe/dist/heybe
+          retention-days: 14
