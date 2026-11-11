@@ -1,0 +1,69 @@
+import { expect, test } from "@playwright/test";
+import { api } from "./api";
+
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+test("record create with a file, filter, edit and delete", async ({ page }) => {
+  await api("/api/collections", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "notes",
+      type: "base",
+      fields: [
+        { name: "title", type: "text" },
+        { name: "cover", type: "file", maxSelect: 1 },
+      ],
+    }),
+  });
+
+  await page.goto("#/collections/notes");
+  await page.getByRole("button", { name: "New record" }).click();
+  const create = page.getByRole("dialog", { name: "New record" });
+  await create.getByLabel("title", { exact: true }).fill("hello");
+  await create.getByLabel("Add files").setInputFiles({
+    name: "cat 1.png",
+    mimeType: "image/png",
+    buffer: PNG,
+  });
+  await create.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(create).toBeHidden();
+
+  const table = page.getByRole("table", { name: "notes records" });
+  const thumb = table.getByRole("img", { name: /^cat_1_\w+\.png$/ });
+  await expect(thumb).toBeVisible();
+  await expect
+    .poll(() => thumb.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+
+  const filter = page.getByLabel("Filter records");
+  await filter.fill('title ~ "hel"');
+  await filter.press("Enter");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await filter.fill('title = "x"');
+  await filter.press("Enter");
+  await expect(page.getByText("No records found")).toBeVisible();
+  await page.getByRole("button", { name: "Clear" }).click();
+
+  await table.getByRole("cell", { name: "hello", exact: true }).click();
+  const edit = page.getByRole("dialog", { name: "Edit record" });
+  await edit.getByLabel("title", { exact: true }).fill("hello again");
+  await edit.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(edit).toBeHidden();
+  await expect(
+    table.getByRole("cell", { name: "hello again", exact: true }),
+  ).toBeVisible();
+
+  await table.getByRole("cell", { name: "hello again", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Edit record" })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Delete record" })
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(page.getByText("No records found")).toBeVisible();
+});
