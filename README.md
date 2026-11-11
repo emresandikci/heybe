@@ -91,6 +91,40 @@ pnpm commit
 
 Each package is versioned and released on its own with semantic-release when changes land on `main`.
 
+## Single binary
+
+Build one executable that embeds the dashboard and the sharp native files (needs Bun 1.4 and a prior `pnpm install`):
+
+```bash
+cd packages/heybe
+bun scripts/build-binary.ts          # writes dist/heybe for this machine
+bun scripts/smoke-binary.ts --binary dist/heybe
+./dist/heybe serve
+```
+
+`--target bun-linux-x64` (or `bun-linux-arm64`, `bun-darwin-arm64`) builds for another platform; build on a matching machine so sharp's native package fits. The thumbnail libraries are extracted to the temp directory on first use.
+
+`heybe serve example.com` serves HTTPS with a Let's Encrypt certificate (HTTP-01). Port 80 and 443 must be reachable from the internet. The certificate is cached in `<dir>/.autocert_cache`.
+
+## Migrating from PocketBase
+
+Stop PocketBase, then import its data directory into a fresh Heybe one:
+
+```bash
+heybe import ./pb_data --dir ./heybe_data [--encryptionEnv PB_KEY]
+```
+
+Imported: collections (with their rules, indexes and auth token secrets, so issued tokens stay valid), all records, settings and uploaded files (not when PocketBase uses S3). Not imported: logs, backups, migration history, `pb_hooks` and `pb_migrations`. Port hooks and migrations by hand. `--encryptionEnv` names the environment variable that holds the key when PocketBase settings are encrypted.
+
+## npm
+
+The packages are not published yet. Once they are, `heybe` runs on Bun only:
+
+```bash
+bun add heybe
+bunx heybe serve
+```
+
 ## Dashboard
 
 The superuser panel lives in `apps/dashboard` (React, Vite) and is served by `heybe serve` at `/_/` once it is built. It talks to the server only through `@heybe/client`.
