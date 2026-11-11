@@ -25,10 +25,11 @@ import { LogsPage, validateLogsSearch } from "../logs/LogsPage";
 import { SqlPage } from "../settings/SqlPage";
 import { BackupsPage } from "../settings/BackupsPage";
 import { CronsPage } from "../settings/CronsPage";
+import { ExportPage } from "../settings/ExportPage";
+import { ImportPage } from "../settings/ImportPage";
 import { MailPage } from "../settings/MailPage";
 import { StoragePage } from "../settings/StoragePage";
 import { SettingsLayout } from "../settings/SettingsLayout";
-import { EmptyState } from "../ui/EmptyState";
 import type { AppContext } from "./context";
 
 export const rootRoute = createRootRouteWithContext<AppContext>()({
@@ -101,8 +102,6 @@ const indexRoute = createRoute({
   },
 });
 
-const placeholder = (title: string) => () => <EmptyState title={title} />;
-
 const collectionsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/collections",
@@ -141,11 +140,7 @@ const settingsIndexRoute = createRoute({
   component: ApplicationPage,
 });
 
-const settingsPage = <P extends string>(
-  path: P,
-  title: string,
-  component: () => ReactNode = placeholder(title),
-) =>
+const settingsPage = <P extends string>(path: P, component: () => ReactNode) =>
   createRoute({
     getParentRoute: () => settingsRoute,
     path,
@@ -153,13 +148,13 @@ const settingsPage = <P extends string>(
   });
 
 const settingsPages = [
-  settingsPage("mail", "Mail", MailPage),
-  settingsPage("storage", "File storage", StoragePage),
-  settingsPage("backups", "Backups", BackupsPage),
-  settingsPage("crons", "Crons", CronsPage),
-  settingsPage("export-collections", "Export collections"),
-  settingsPage("import-collections", "Import collections"),
-  settingsPage("sql", "SQL", SqlPage),
+  settingsPage("mail", MailPage),
+  settingsPage("storage", StoragePage),
+  settingsPage("backups", BackupsPage),
+  settingsPage("crons", CronsPage),
+  settingsPage("export-collections", ExportPage),
+  settingsPage("import-collections", ImportPage),
+  settingsPage("sql", SqlPage),
 ];
 
 export const routeTree = rootRoute.addChildren([
