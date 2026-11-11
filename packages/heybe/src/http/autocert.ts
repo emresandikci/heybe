@@ -164,9 +164,9 @@ export function wwwRedirect(hosts: string[]): Middleware {
     id: "pbWWWRedirect",
     priority: -99999,
     fn: (e) => {
-      const url = new URL(e.req.url);
-      const host = e.req.headers.get("host") ?? url.host;
+      const host = e.req.headers.get("host") ?? "";
       if (!host.startsWith("www.") || !hosts.includes(host)) return e.next();
+      const url = new URL(e.req.url);
       const scheme = e.isTLS() ? "https://" : "http://";
       return e.redirect(
         307,

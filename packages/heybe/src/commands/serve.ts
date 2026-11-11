@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { join } from "node:path";
 import type { App } from "../app";
 import {
@@ -72,6 +73,11 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   const http = addrs.http ? parseHttpAddr(addrs.http) : undefined;
   const https = addrs.https ? parseHttpAddr(addrs.https, "https") : undefined;
   const main = (https ?? http)!;
+  // Let's Encrypt rejects IPs, fail before any ACME call
+  if (https && !domains.length && isIP(https.host))
+    throw new Error(
+      `serve --https needs a domain argument: Let's Encrypt cannot issue a certificate for "${https.host}" (e.g. heybe serve example.com)`,
+    );
   const { hosts, wwwRedirects } = certificateHosts(domains, main.host);
   const origins = (
     Array.isArray(values.origins) ? values.origins.map(String) : ["*"]

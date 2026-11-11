@@ -23,7 +23,7 @@ import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
 import type { Timers } from "../timers";
 import type { TlsCert } from "../http/autocert";
-import { serveAddrs } from "./serve";
+import { serveAddrs, serveCommand } from "./serve";
 import { writePbDataDir } from "../import/pb-fixture";
 import { superuserCommand } from "./superuser";
 
@@ -258,6 +258,30 @@ describe("start", () => {
     const cli = testApp({ argv: ["serve", "--http", "--help"] });
     expect(await cli.start()).toBe(1);
     expect(stdout.join("")).toBe("");
+  });
+
+  test("help for a user command leaves the data dir untouched", async () => {
+    const root = mkdtempSync(join(tmpdir(), "heybe-help-"));
+    const dir = join(root, "data");
+    try {
+      for (const argv of [
+        ["hello", "--help"],
+        ["hello", "-h"],
+      ]) {
+        stdout.length = 0;
+        const cli = createApp({ dir, argv });
+        cli.command("hello", () => {}, { description: "Says hello" });
+        expect(await cli.start()).toBe(0);
+        expect(stdout.join("")).toStartWith("Says hello\n");
+        expect(readdirSync(root)).toEqual([]);
+      }
+      const cli = createApp({ dir, argv: ["hello"] });
+      cli.command("hello", () => {});
+      expect(await cli.start()).toBe(0);
+      expect(readdirSync(root)).toEqual(["data"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("help and version through the cli leave the cwd and temp dir untouched, like PB", async () => {
@@ -715,6 +739,20 @@ describe("lifecycle", () => {
     expect(await down(`http://127.0.0.1:${httpPort}/`)).toBe("down");
     clock.advance(24 * HOUR);
     expect(calls).toHaveLength(2);
+  });
+
+  test("serve --https without a domain fails before issuing", async () => {
+    const issue = mock(async () => fixture("example.test"));
+    const cli = testApp({ argv: [], certIssuer: { issue } });
+    try {
+      for (const addr of ["127.0.0.1:0", ":0", "[::1]:0"])
+        await expect(serveCommand(["--https", addr], cli)).rejects.toThrow(
+          "serve --https needs a domain argument",
+        );
+      expect(issue).not.toHaveBeenCalled();
+    } finally {
+      cli.close();
+    }
   });
 
   test("serve with domains defaults the listeners like PB", () => {
