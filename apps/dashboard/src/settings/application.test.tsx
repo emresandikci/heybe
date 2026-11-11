@@ -193,6 +193,18 @@ test("decimals in integer inputs are truncated", async () => {
   ]);
 });
 
+test("clearing an integer input stays empty and sends 0", async () => {
+  const { user, save, sent } = await openApplication();
+  const input = screen.getByLabelText("Max requests") as HTMLInputElement;
+  await user.clear(input);
+  expect(input.value).toBe("");
+  await save();
+  await screen.findByText("Settings saved.");
+  expect(sent()).toEqual([
+    { batch: { ...settingsFixture.batch, maxRequests: 0 } },
+  ]);
+});
+
 test("a background refetch keeps a dirty draft", async () => {
   const { user, queryClient } = await openApplication();
   await user.type(screen.getByLabelText("Application name"), "zzz");

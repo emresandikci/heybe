@@ -8,6 +8,7 @@ import {
   UnclaimedErrors,
   errorMessage,
   flattenErrors,
+  responseData,
   useFieldError,
 } from "../app/errors";
 import { keys } from "../app/queries";
@@ -171,6 +172,7 @@ export function CollectionEditor({
         ? await client.collections.update(source.id, payload)
         : await client.collections.create(payload);
       await queryClient.invalidateQueries({ queryKey: keys.collections });
+      await queryClient.invalidateQueries({ queryKey: ["records", saved.id] });
       toast.success(source ? "Collection saved." : "Collection created.");
       onClose();
       if (!source)
@@ -180,8 +182,9 @@ export function CollectionEditor({
         });
     } catch (err) {
       setError(err);
-      const data = (err as { response?: { data?: unknown } }).response?.data;
-      const withErrors = Object.keys(flattenErrors(data)).map(tabOf);
+      const withErrors = Object.keys(flattenErrors(responseData(err))).map(
+        tabOf,
+      );
       const first = withErrors.find((t) => t !== null);
       if (first && !withErrors.includes(tab)) setTab(first);
     } finally {

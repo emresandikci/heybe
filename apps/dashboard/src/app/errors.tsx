@@ -45,6 +45,9 @@ interface Scope {
 
 const ScopeContext = createContext<Scope | null>(null);
 
+export const responseData = (error: unknown): unknown =>
+  (error as { response?: { data?: unknown } } | null)?.response?.data;
+
 export function ErrorScope({
   error,
   children,
@@ -55,11 +58,9 @@ export function ErrorScope({
   const listeners = useRef(new Set<() => void>());
   const counts = useRef(new Map<string, number>());
   const scope = useMemo<Scope>(() => {
-    const response = (error as { response?: { data?: unknown } } | null)
-      ?.response;
     const notify = () => listeners.current.forEach((fn) => fn());
     return {
-      errors: error ? flattenErrors(response?.data) : {},
+      errors: error ? flattenErrors(responseData(error)) : {},
       message: error ? errorMessage(error) : "",
       claimed: () => new Set(counts.current.keys()),
       subscribe(fn) {
@@ -95,11 +96,13 @@ export function useFieldError(path: string): string | undefined {
 export function UnclaimedErrors() {
   const scope = useContext(ScopeContext);
   const [, rerender] = useState(0);
+  const active = !!scope?.message;
   useLayoutEffect(() => {
+    if (!scope || !active) return;
     const refresh = () => rerender((n) => n + 1);
     refresh();
-    return scope?.subscribe(refresh);
-  }, [scope]);
+    return scope.subscribe(refresh);
+  }, [scope, active]);
   if (!scope || !scope.message) return null;
   const claimed = scope.claimed();
   const rest = Object.entries(scope.errors).filter(

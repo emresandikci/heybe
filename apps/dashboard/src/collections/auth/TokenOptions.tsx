@@ -1,6 +1,7 @@
 import { Button } from "../../ui/Button";
 import { randomSecret } from "../oauth2-providers";
-import { NumOpt, Section, getIn, groupClass, type OptCtx } from "./opts";
+import { NumOpt, getIn, groupClass, type OptCtx } from "./opts";
+import { Section } from "../../ui/Section";
 
 const TOKENS = [
   ["authToken", "Auth token"],

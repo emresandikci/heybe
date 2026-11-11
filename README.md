@@ -101,6 +101,8 @@ pnpm --filter @heybe/dashboard build
 
 The build writes `packages/heybe/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
 
+Record previews block remote images (the dashboard CSP allows none, like PocketBase).
+
 Email templates are written in MJML and compiled in the browser (`mjml-browser`, loaded on demand). The server stores the HTML with the MJML source embedded as a trailing `<!-- heybe:mjml:<base64> -->` comment.
 
 Tests:

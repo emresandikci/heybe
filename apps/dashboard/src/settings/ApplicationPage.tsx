@@ -3,9 +3,9 @@ import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { Button } from "../ui/Button";
 import {
   CheckInput,
+  IntInput,
   LinesInput,
   NumberInput,
-  Section,
   TextInput,
 } from "./inputs";
 import {
@@ -14,6 +14,7 @@ import {
   type SettingsModel,
 } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
+import { Section } from "../ui/Section";
 
 export function ApplicationPage() {
   const settings = useSettings();
@@ -252,29 +253,18 @@ function RuleRow({
         </select>
       ))}
       {cell("maxRequests", (d) => (
-        <input
-          type="number"
-          step={1}
+        <IntInput
           aria-label="Max requests"
           value={rule.maxRequests}
-          onChange={(e) =>
-            onChange({
-              ...rule,
-              maxRequests: Math.trunc(Number(e.target.value)),
-            })
-          }
+          onChange={(maxRequests) => onChange({ ...rule, maxRequests })}
           {...inputProps("maxRequests", d)}
         />
       ))}
       {cell("duration", (d) => (
-        <input
-          type="number"
-          step={1}
+        <IntInput
           aria-label="Duration (seconds)"
           value={rule.duration}
-          onChange={(e) =>
-            onChange({ ...rule, duration: Math.trunc(Number(e.target.value)) })
-          }
+          onChange={(duration) => onChange({ ...rule, duration })}
           {...inputProps("duration", d)}
         />
       ))}

@@ -17,10 +17,11 @@ import { Table, Td, Th } from "../ui/Table";
 import { TextField } from "../ui/TextField";
 import { useToast } from "../ui/Toasts";
 import { formatBytes } from "./format";
-import { NumberInput, Section, TextInput } from "./inputs";
+import { NumberInput, TextInput } from "./inputs";
 import { S3Fields, TestS3Button } from "./S3Fields";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
+import { Section } from "../ui/Section";
 
 export function BackupsPage() {
   const settings = useSettings();

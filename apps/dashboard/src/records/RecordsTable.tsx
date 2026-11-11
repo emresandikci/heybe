@@ -67,8 +67,13 @@ export function RecordsTable({
             className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800"
             onClick={() => onOpen(row.id)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && e.target === e.currentTarget)
+              if (
+                (e.key === "Enter" || e.key === " ") &&
+                e.target === e.currentTarget
+              ) {
+                e.preventDefault();
                 onOpen(row.id);
+              }
             }}
           >
             <Td>

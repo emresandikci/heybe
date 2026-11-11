@@ -312,3 +312,46 @@ test("API preview shows the rule of each endpoint", async () => {
   expect(list.textContent).toContain("Superusers only");
   expect(dialog.textContent).toContain('heybe.records("posts")');
 });
+
+test("saving refetches the records of the collection", async () => {
+  const server = fakeServer()
+    .on("GET", "/api/collections/:c/records", {
+      page: 1,
+      perPage: 40,
+      totalItems: 0,
+      totalPages: 1,
+      items: [],
+    })
+    .on("PATCH", "/api/collections/:id", (req) => ({
+      ...posts,
+      ...(req.body as object),
+    }));
+  const { user, dialog } = await editPosts(server);
+  await screen.findByText("0 records");
+  const before = server.find("GET", "/api/collections/posts/records").length;
+  expect(before).toBeGreaterThan(0);
+  const title = within(fieldGroup("title")).getByLabelText("Field name");
+  await user.clear(title);
+  await user.type(title, "headline");
+  await user.click(
+    within(dialog).getByRole("button", { name: "Save changes" }),
+  );
+  await user.click(
+    within(screen.getByRole("dialog", { name: "Confirm changes" })).getByRole(
+      "button",
+      { name: "Confirm" },
+    ),
+  );
+  await screen.findByText("Collection saved.");
+  expect(
+    server.find("GET", "/api/collections/posts/records").length,
+  ).toBeGreaterThan(before);
+});
+
+test("an unknown collection refetches the list once before showing not found", async () => {
+  const server = fakeServer();
+  const { router } = renderApp({ path: "/collections/pbc_nope", server });
+  await screen.findByText("Collection not found");
+  expect(server.find("GET", "/api/collections")).toHaveLength(2);
+  expect(router.state.location.pathname).toBe("/collections/pbc_nope");
+});

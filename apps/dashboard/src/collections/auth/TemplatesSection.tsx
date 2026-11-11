@@ -4,7 +4,8 @@ import { Button } from "../../ui/Button";
 import type { TemplateKind } from "./mjml-starters";
 import { TemplateBody } from "./TemplateBody";
 import { TestEmailDialog } from "./TestEmailDialog";
-import { Section, TextOpt, getIn, groupClass, type OptCtx } from "./opts";
+import { TextOpt, getIn, groupClass, type OptCtx } from "./opts";
+import { Section } from "../../ui/Section";
 
 const TEMPLATES: {
   path: string[];

@@ -328,3 +328,16 @@ test("relation cells show presentable labels from expand", async () => {
   open(server);
   expect(await screen.findByText("Ada")).toBeTruthy();
 });
+
+test("Space on a focused row opens the record", async () => {
+  const server = serve().on(
+    "GET",
+    "/api/collections/:c/records/:id",
+    record("a"),
+  );
+  const { user, router } = open(server);
+  const row = (await screen.findByText("Post a")).closest("tr")!;
+  row.focus();
+  await user.keyboard(" ");
+  expect(router.state.location.search).toMatchObject({ record: "a" });
+});

@@ -19,15 +19,8 @@ import { ProviderDialog, type Provider } from "./ProviderDialog";
 type Update = (fn: (d: CollectionDraft) => CollectionDraft) => void;
 import { TemplatesSection } from "./TemplatesSection";
 import { TokenOptions } from "./TokenOptions";
-import {
-  BoolOpt,
-  NumOpt,
-  Section,
-  getIn,
-  groupClass,
-  setIn,
-  type OptCtx,
-} from "./opts";
+import { BoolOpt, NumOpt, getIn, groupClass, setIn, type OptCtx } from "./opts";
+import { Section } from "../../ui/Section";
 
 export function AuthOptions({
   draft,

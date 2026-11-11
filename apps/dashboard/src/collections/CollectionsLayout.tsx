@@ -1,6 +1,6 @@
 import type { CollectionModel } from "@heybe/client";
 import { Navigate, Outlet, useParams } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCollections } from "../app/queries";
 import { useHideControls } from "../settings/use-settings";
 import { RecordsPage } from "../records/RecordsPage";
@@ -60,11 +60,21 @@ export function CollectionPage() {
   const { collectionId } = useParams({ strict: false });
   const collections = useCollections();
   const [preview, setPreview] = useState(false);
-  if (!collections.data) return null;
-  const collection = collections.data.find(
+  const [rechecked, setRechecked] = useState<string>();
+  const collection = collections.data?.find(
     (c) => c.id === collectionId || c.name === collectionId,
   );
-  if (!collection) return <EmptyState title="Collection not found" />;
+  const missing = !!collections.data && !collection;
+  const { refetch } = collections;
+  useEffect(() => {
+    if (!missing || rechecked === collectionId) return;
+    setRechecked(collectionId);
+    void refetch();
+  }, [missing, rechecked, collectionId, refetch]);
+  if (!collection) {
+    const settled = rechecked === collectionId && !collections.isFetching;
+    return settled ? <EmptyState title="Collection not found" /> : null;
+  }
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">

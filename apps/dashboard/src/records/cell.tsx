@@ -18,9 +18,9 @@ export const list = (value: unknown): unknown[] =>
   Array.isArray(value) ? value : value ? [value] : [];
 
 function htmlText(html: string): string {
-  return (
-    new DOMParser().parseFromString(html, "text/html").body.textContent ?? ""
-  );
+  const { body } = new DOMParser().parseFromString(html, "text/html");
+  body.querySelectorAll("script, style").forEach((el) => el.remove());
+  return body.textContent ?? "";
 }
 
 function DateCell({ value }: { value: string }) {

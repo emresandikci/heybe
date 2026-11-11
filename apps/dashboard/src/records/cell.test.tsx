@@ -17,8 +17,11 @@ test("text and json cut at 100 characters", () => {
 });
 
 test("editor shows the text of the html", () => {
-  const c = cell("editor", "<p>Hello <b>big</b> world</p><script>x()</script>");
-  expect(c.textContent).toBe("Hello big worldx()");
+  const c = cell(
+    "editor",
+    "<p>Hello <b>big</b> world</p><script>x()</script><style>p{}</style>",
+  );
+  expect(c.textContent).toBe("Hello big world");
   expect(c.querySelector("b, p, script")).toBeNull();
 });
 

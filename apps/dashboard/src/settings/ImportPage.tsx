@@ -2,7 +2,7 @@ import type { CollectionModel } from "@heybe/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState, type ChangeEvent } from "react";
 import { useClient } from "../app/context";
-import { errorMessage, flattenErrors } from "../app/errors";
+import { errorMessage, flattenErrors, responseData } from "../app/errors";
 import { keys, useCollections } from "../app/queries";
 import { Button } from "../ui/Button";
 import { Checkbox } from "../ui/Checkbox";
@@ -91,10 +91,9 @@ export function ImportPage() {
       await queryClient.invalidateQueries({ queryKey: keys.collections });
       toast.success("Collections imported.");
     } catch (err) {
-      const data = (err as { response?: { data?: unknown } }).response?.data;
       setError({
         message: errorMessage(err),
-        details: Object.values(flattenErrors(data)),
+        details: Object.values(flattenErrors(responseData(err))),
       });
     } finally {
       setBusy(false);

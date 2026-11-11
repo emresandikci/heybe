@@ -7,15 +7,10 @@ import { Dialog } from "../ui/Dialog";
 import { Select } from "../ui/Select";
 import { TextField } from "../ui/TextField";
 import { useToast } from "../ui/Toasts";
-import {
-  CheckInput,
-  NumberInput,
-  SecretInput,
-  Section,
-  TextInput,
-} from "./inputs";
+import { CheckInput, NumberInput, SecretInput, TextInput } from "./inputs";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
+import { Section } from "../ui/Section";
 
 export function MailPage() {
   const settings = useSettings();

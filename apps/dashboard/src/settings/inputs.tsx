@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type ChangeEvent, type InputHTMLAttributes } from "react";
 import { useErrorsUnder, useFieldError } from "../app/errors";
 import { Checkbox } from "../ui/Checkbox";
 import { CodeArea } from "../ui/CodeArea";
@@ -35,6 +35,30 @@ export function TextInput({
   );
 }
 
+function useIntText(value: number, onChange: (value: number) => void) {
+  const [text, setText] = useState(String(value));
+  return {
+    value: Number(text) === value ? text : String(value),
+    onChange: (e: ChangeEvent<HTMLInputElement>) => {
+      setText(e.target.value);
+      onChange(Math.trunc(Number(e.target.value)));
+    },
+  };
+}
+
+export function IntInput({
+  value,
+  onChange,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
+  value: number;
+  onChange(value: number): void;
+}) {
+  return (
+    <input type="number" step={1} {...rest} {...useIntText(value, onChange)} />
+  );
+}
+
 export function NumberInput({
   path,
   label,
@@ -49,10 +73,9 @@ export function NumberInput({
   return (
     <NumberField
       label={label}
-      value={value}
       step={1}
       error={useFieldError(path)}
-      onChange={(e) => onChange(Math.trunc(Number(e.target.value)))}
+      {...useIntText(value, onChange)}
     />
   );
 }
@@ -115,21 +138,6 @@ export function LinesInput({
         );
       }}
     />
-  );
-}
-
-export function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <fieldset className="flex flex-col gap-3 rounded border border-slate-200 p-3 dark:border-slate-700">
-      <legend className="px-1 text-sm font-semibold">{title}</legend>
-      {children}
-    </fieldset>
   );
 }
 

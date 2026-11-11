@@ -18,6 +18,7 @@ export default defineConfig({
   build: {
     outDir: "../../packages/heybe/ui/dist",
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1400,
   },
   server: {
     proxy: {

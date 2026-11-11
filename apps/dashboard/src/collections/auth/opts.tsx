@@ -1,7 +1,5 @@
-import { useId, type ReactNode } from "react";
 import { useFieldError } from "../../app/errors";
 import { Checkbox } from "../../ui/Checkbox";
-import { CodeArea } from "../../ui/CodeArea";
 import { NumberField } from "../../ui/NumberField";
 import { TextField } from "../../ui/TextField";
 import type { CollectionDraft } from "../editor-state";
@@ -48,18 +46,6 @@ export function TextOpt({ c, path, label, hint }: OptProps) {
   );
 }
 
-export function CodeOpt({ c, path, label, hint }: OptProps) {
-  return (
-    <CodeArea
-      label={label}
-      hint={hint}
-      value={String(getIn(c.draft, path) ?? "")}
-      error={useFieldError(path.join("."))}
-      onChange={(value) => c.set(path, value)}
-    />
-  );
-}
-
 export function NumOpt({ c, path, label, hint }: OptProps) {
   const value = getIn(c.draft, path);
   return (
@@ -84,24 +70,6 @@ export function BoolOpt({ c, path, label, hint }: OptProps) {
       error={useFieldError(path.join("."))}
       onChange={(e) => c.set(path, e.target.checked)}
     />
-  );
-}
-
-export function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <section aria-labelledby={id} className="flex flex-col gap-3">
-      <h3 id={id} className="text-sm font-semibold">
-        {title}
-      </h3>
-      {children}
-    </section>
   );
 }
 
