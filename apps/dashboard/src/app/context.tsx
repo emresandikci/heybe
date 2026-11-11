@@ -1,15 +1,24 @@
 import type { HeybeClient } from "@heybe/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
+import type { ExtensionRegistry } from "./extensions";
 import { ConfirmProvider } from "../ui/Confirm";
 import { ToastProvider } from "../ui/Toasts";
 
 export interface AppContext {
   client: HeybeClient;
   queryClient: QueryClient;
+  extensions: ExtensionRegistry;
 }
 
 const ClientContext = createContext<HeybeClient | null>(null);
+const ExtensionsContext = createContext<ExtensionRegistry | null>(null);
+
+export function useExtensions(): ExtensionRegistry {
+  const extensions = useContext(ExtensionsContext);
+  if (!extensions) throw new Error("ExtensionsContext is missing");
+  return extensions;
+}
 
 export function useClient(): HeybeClient {
   const client = useContext(ClientContext);
@@ -29,15 +38,18 @@ export function createQueryClient(): QueryClient {
 export function Providers({
   client,
   queryClient,
+  extensions,
   children,
 }: AppContext & { children: ReactNode }) {
   return (
     <ClientContext.Provider value={client}>
-      <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-          <ConfirmProvider>{children}</ConfirmProvider>
-        </ToastProvider>
-      </QueryClientProvider>
+      <ExtensionsContext.Provider value={extensions}>
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>
+            <ConfirmProvider>{children}</ConfirmProvider>
+          </ToastProvider>
+        </QueryClientProvider>
+      </ExtensionsContext.Provider>
     </ClientContext.Provider>
   );
 }

@@ -26,7 +26,7 @@ export async function refreshSession(client: HeybeClient): Promise<boolean> {
   }
 }
 
-export function signOut(ctx: AppContext): void {
+export function signOut(ctx: Pick<AppContext, "client" | "queryClient">): void {
   ctx.client.authStore.clear();
   ctx.queryClient.clear();
 }

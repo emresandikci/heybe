@@ -5,6 +5,10 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { QueryClient } from "@tanstack/react-query";
 import { createDashboardClient } from "../app/client";
 import { Providers, createQueryClient } from "../app/context";
+import {
+  emptyExtensionRegistry,
+  type ExtensionRegistry,
+} from "../app/extensions";
 import { createAppRouter, type AppRouter } from "../app/router";
 import { fakeServer, type FakeServer, type Reply } from "./fake-server";
 import { collectionsFixture, settingsFixture } from "./fixtures";
@@ -37,6 +41,7 @@ export function renderApp(opts: {
   path: string;
   server?: FakeServer;
   auth?: "superuser" | "none" | { token: string; record: AuthRecord };
+  extensions?: ExtensionRegistry;
 }): {
   server: FakeServer;
   client: HeybeClient;
@@ -90,12 +95,17 @@ export function renderApp(opts: {
   else if (auth !== "none") authStore.save(auth.token, auth.record);
   const client = createDashboardClient({ fetch: server.fetch, authStore });
   const queryClient = createQueryClient();
+  const extensions = opts.extensions ?? emptyExtensionRegistry();
   const router = createAppRouter(
-    { client, queryClient },
+    { client, queryClient, extensions },
     createMemoryHistory({ initialEntries: [opts.path] }),
   );
   const result = render(
-    <Providers client={client} queryClient={queryClient}>
+    <Providers
+      client={client}
+      queryClient={queryClient}
+      extensions={extensions}
+    >
       <RouterProvider router={router} />
     </Providers>,
   );

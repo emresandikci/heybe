@@ -18,6 +18,7 @@ import {
   CollectionsIndex,
   CollectionsLayout,
 } from "../collections/CollectionsLayout";
+import { ExtensionPage } from "../extensions/ExtensionPage";
 import { validateRecordsSearch } from "../records/RecordsPage";
 import { Shell } from "../layout/Shell";
 import { ApplicationPage } from "../settings/ApplicationPage";
@@ -128,6 +129,12 @@ const logsRoute = createRoute({
   component: LogsPage,
 });
 
+const extensionRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "/ext/$",
+  component: ExtensionPage,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/settings",
@@ -166,6 +173,7 @@ export const routeTree = rootRoute.addChildren([
     indexRoute,
     collectionsRoute.addChildren([collectionsIndexRoute, collectionRoute]),
     logsRoute,
+    extensionRoute,
     settingsRoute.addChildren([settingsIndexRoute, ...settingsPages]),
   ]),
 ]);
