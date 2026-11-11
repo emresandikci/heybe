@@ -7,13 +7,17 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { connect } from "node:tls";
 import pkg from "../../package.json" with { type: "json" };
 import { type App, type AppOptions, createApp } from "../app";
 import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
+import type { Timers } from "../timers";
+import type { TlsCert } from "../http/autocert";
+import { serveAddrs } from "./serve";
 import { superuserCommand } from "./superuser";
 
 let app: App;
@@ -540,5 +544,122 @@ describe("lifecycle", () => {
     await cli.terminate();
     expect(cli.db.get("SELECT 1 AS one")).toEqual({ one: 1 });
     cli.close();
+  });
+
+  const HOUR = 60 * 60_000;
+  const DAY = 24 * HOUR;
+  const fixture = (host: string): TlsCert => ({
+    cert: readFileSync(
+      join(import.meta.dir, "../http/testdata", `${host}.crt`),
+      "utf8",
+    ),
+    key: readFileSync(
+      join(import.meta.dir, "../http/testdata", `${host}.key`),
+      "utf8",
+    ),
+  });
+  const peerSubject = (port: number) =>
+    new Promise<string>((resolve, reject) => {
+      const socket = connect(
+        { host: "127.0.0.1", port, rejectUnauthorized: false },
+        () => {
+          resolve(socket.getPeerCertificate().subject.CN as string);
+          socket.end();
+        },
+      );
+      socket.on("error", reject);
+    });
+
+  test("serve --https uses the issuer, prints the https banner and renews on the timer", async () => {
+    const example = fixture("example.test");
+    const validTo = Date.parse(
+      new (await import("node:crypto")).X509Certificate(example.cert).validTo,
+    );
+    const clock = fakeClock(
+      new Date(validTo - 30 * DAY - 60 * 60_000).toISOString(),
+    );
+    const issued: TlsCert[] = [example, fixture("other.test")];
+    const calls: string[][] = [];
+    const rescheduled = Promise.withResolvers<void>();
+    const timers: Timers = {
+      ...clock.timers,
+      setTimeout: (fn, ms) => {
+        if (ms === 12 * HOUR && calls.length === 2) rescheduled.resolve();
+        return clock.timers.setTimeout(fn, ms);
+      },
+    };
+    const listen = spyOn(Bun, "serve");
+    const cli = testApp({
+      now: clock.now,
+      timers,
+      certIssuer: {
+        issue: async (hosts) => {
+          calls.push(hosts);
+          return issued[calls.length - 1]!;
+        },
+      },
+      argv: [
+        "serve",
+        "--http",
+        "127.0.0.1:0",
+        "--https",
+        "127.0.0.1:0",
+        "example.test",
+      ],
+    });
+    const started = Promise.withResolvers<void>();
+    spyOn(console, "log").mockImplementation((line: string) => {
+      out.push(String(line));
+      if (String(line).startsWith("Server started")) started.resolve();
+    });
+    const done = cli.start();
+    await started.promise;
+    expect(out[0]).toBe("Server started at https://example.test");
+    expect(calls).toEqual([["example.test", "www.example.test"]]);
+    // the redirect listener starts first, the https one after the certificate
+    const [httpPort, httpsPort] = listen.mock.results.map(
+      (r) => (r.value as Bun.Server<unknown>).port!,
+    );
+    expect(await peerSubject(httpsPort!)).toBe("example.test");
+    const redirect = await fetch(`http://127.0.0.1:${httpPort}/a`, {
+      redirect: "manual",
+    });
+    expect(redirect.headers.get("location")).toBe("https://127.0.0.1/a");
+
+    // shutdown timeout of the swapped listener, then the next 12 h check
+    clock.advance(12 * HOUR);
+    await rescheduled.promise;
+    expect(calls).toHaveLength(2);
+    expect(await peerSubject(httpsPort!)).toBe("other.test");
+
+    process.emit("SIGINT");
+    expect(await done).toBe(0);
+    const down = (url: string) =>
+      fetch(url, { tls: { rejectUnauthorized: false } }).then(
+        () => "up",
+        () => "down",
+      );
+    expect(await down(`https://127.0.0.1:${httpsPort}/api/health`)).toBe(
+      "down",
+    );
+    expect(await down(`http://127.0.0.1:${httpPort}/`)).toBe("down");
+    clock.advance(24 * HOUR);
+    expect(calls).toHaveLength(2);
+  });
+
+  test("serve with domains defaults the listeners like PB", () => {
+    expect(serveAddrs([])).toEqual({ http: "127.0.0.1:8090" });
+    expect(serveAddrs([], undefined, "127.0.0.1:8443")).toEqual({
+      http: "127.0.0.1:8090",
+      https: "127.0.0.1:8443",
+    });
+    expect(serveAddrs(["example.test"])).toEqual({
+      http: "0.0.0.0:80",
+      https: "0.0.0.0:443",
+    });
+    expect(serveAddrs(["example.test"], "127.0.0.1:81", ":8443")).toEqual({
+      http: "127.0.0.1:81",
+      https: ":8443",
+    });
   });
 });

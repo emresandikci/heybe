@@ -1,5 +1,6 @@
 import type { App } from "../app";
 import { ServeEvent } from "../hooks/events";
+import { type TlsCert, wwwRedirect } from "./autocert";
 import { ApiError, errorResponse } from "./errors";
 import {
   DEFAULT_MAX_BODY_SIZE,
@@ -32,12 +33,15 @@ import { registerSqlRoutes } from "./routes/sql";
 const SHUTDOWN_TIMEOUT = 1000;
 
 // `--http` value: "host:port", ":port" (all interfaces), "[ipv6]:port" or a bare port on 127.0.0.1.
-export function parseHttpAddr(addr: string): { host: string; port: number } {
+export function parseHttpAddr(
+  addr: string,
+  flag = "http",
+): { host: string; port: number } {
   const match = /^(?:(\[[^\]]*\]|[^:]*):)?(\d{1,5})$/.exec(addr);
   const port = Number(match?.[2]);
   if (!match || port > 65535)
     throw new Error(
-      `Invalid --http address "${addr}": expected host:port, :port or a port`,
+      `Invalid --${flag} address "${addr}": expected host:port, :port or a port`,
     );
   const host = match[1];
   if (host === undefined) return { host: "127.0.0.1", port };
@@ -77,6 +81,7 @@ export function createRouter(): Router {
 export function serveOptions(opts: {
   host: string;
   port: number;
+  tls?: TlsCert;
   fetch: (req: Request, server: Bun.Server<unknown>) => Promise<Response>;
 }) {
   return {
@@ -84,8 +89,15 @@ export function serveOptions(opts: {
     port: opts.port,
     idleTimeout: 0,
     maxRequestBodySize: 2 ** 32 - 1,
+    tls: opts.tls,
     fetch: opts.fetch,
   };
+}
+
+export interface ServeHandle {
+  url: string;
+  stop(): Promise<void>;
+  setCertificate(tls: TlsCert): Promise<void>;
 }
 
 async function handle(
@@ -122,42 +134,79 @@ function withHeaders(res: Response, headers: Headers): Response {
 // Port of PB apis.Serve: onServe can change the router, its final action starts the server.
 export async function serve(
   app: App,
-  opts: { host: string; port: number; origins?: string[]; router?: Router },
-): Promise<{ url: string; stop(): Promise<void> }> {
+  opts: {
+    host: string;
+    port: number;
+    origins?: string[];
+    router?: Router;
+    tls?: TlsCert;
+    wwwRedirects?: string[];
+  },
+): Promise<ServeHandle> {
   const router = opts.router ?? app.router;
   router.use(cors(opts.origins?.length ? opts.origins : ["*"]));
+  if (opts.wwwRedirects?.length) router.use(wwwRedirect(opts.wwwRedirects));
   registerDashboard(app, router);
   const event = ServeEvent.of({ app, router, server: null, uiExtensions: [] });
+  let fetch: (req: Request, server: Bun.Server<unknown>) => Promise<Response>;
   await app.hooks.onServe.trigger(event, (e) => {
     if (!e.router.hasRoute("GET", "/{path...}"))
       e.router.get("/{path...}", () => {
         throw new ApiError(404, "File not found");
       });
     const mux = e.router.build();
+    fetch = (req, server) => handle(app, mux, req, server);
     e.server = Bun.serve(
-      serveOptions({
-        host: opts.host,
-        port: opts.port,
-        fetch: (req, server) => handle(app, mux, req, server),
-      }),
+      serveOptions({ host: opts.host, port: opts.port, tls: opts.tls, fetch }),
     );
   });
-  const server = event.server;
-  if (!server)
+  if (!event.server)
     throw new Error(
       "The OnServe listener was not initialized. Did you forget to call the ServeEvent.next() method?",
     );
+  let server = event.server;
+  const port = server.port!;
+  // like Go's Server.Shutdown: in-flight requests get up to 1 s, then the rest are closed
+  const shutdown = async (s: Bun.Server<unknown>) => {
+    let timer: unknown;
+    const timeout = new Promise<void>((resolve) => {
+      timer = app.timers.setTimeout(resolve, SHUTDOWN_TIMEOUT);
+    });
+    await Promise.race([s.stop(false), timeout]);
+    app.timers.clearTimeout(timer);
+    await s.stop(true);
+  };
+  let tls = opts.tls;
+  let stopped = false;
+  let swap = Promise.resolve();
+  // Bun has no per-handshake certificate callback: the listener restarts with the new one,
+  // or with the old one when the new one is rejected
+  const swapCertificate = async (next: TlsCert) => {
+    if (stopped) return;
+    await shutdown(server);
+    const listen = (t?: TlsCert) =>
+      Bun.serve(serveOptions({ host: opts.host, port, tls: t, fetch }));
+    try {
+      server = listen(next);
+      tls = next;
+    } catch (err) {
+      server = listen(tls);
+      throw err;
+    } finally {
+      event.server = server;
+    }
+  };
   return {
-    url: `http://${opts.host}:${server.port}`,
-    // like Go's Server.Shutdown: in-flight requests get up to 1 s, then the rest are closed
+    url: `${opts.tls ? "https" : "http"}://${opts.host}:${port}`,
     stop: async () => {
-      let timer: unknown;
-      const timeout = new Promise<void>((resolve) => {
-        timer = app.timers.setTimeout(resolve, SHUTDOWN_TIMEOUT);
-      });
-      await Promise.race([server.stop(false), timeout]);
-      app.timers.clearTimeout(timer);
-      await server.stop(true);
+      stopped = true;
+      await swap;
+      await shutdown(server);
+    },
+    setCertificate: (next) => {
+      const done = swap.then(() => swapCertificate(next));
+      swap = done.catch(() => {});
+      return done;
     },
   };
 }

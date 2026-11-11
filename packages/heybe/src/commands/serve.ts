@@ -1,6 +1,15 @@
+import { join } from "node:path";
 import type { App } from "../app";
+import {
+  AUTOCERT_CACHE_DIR,
+  ChallengeStore,
+  type TlsCert,
+  acmeHttpHandler,
+  certificateHosts,
+  ensureCertificate,
+} from "../http/autocert";
 import { runInstaller } from "../http/routes/installer";
-import { parseHttpAddr, serve } from "../http/server";
+import { type ServeHandle, parseHttpAddr, serve } from "../http/server";
 import { hasDashboard } from "../http/static";
 import { migrationsList } from "../migrations/loader";
 import { MigrationsRunner } from "../migrations/runner";
@@ -9,6 +18,19 @@ import { parseCommandArgs } from "./args";
 import type { CommandHelp } from "./help";
 
 export const DEFAULT_TYPES_FILE = "./heybe-env.d.ts";
+
+const RENEW_CHECK_INTERVAL = 12 * 60 * 60 * 1000;
+
+// PB cmd/serve.go listener defaults
+export function serveAddrs(
+  domains: string[],
+  http?: string,
+  https?: string,
+): { http?: string; https?: string } {
+  if (domains.length)
+    return { http: http || "0.0.0.0:80", https: https || "0.0.0.0:443" };
+  return { http: http || "127.0.0.1:8090", https: https || undefined };
+}
 
 export const serveHelp: CommandHelp = {
   use: "serve [domain(s)]",
@@ -37,13 +59,20 @@ export const serveHelp: CommandHelp = {
 };
 
 export async function serveCommand(args: string[], app: App): Promise<void> {
-  const { values } = parseCommandArgs(args, {
+  const { values, positionals: domains } = parseCommandArgs(args, {
     http: { type: "string" },
+    https: { type: "string" },
     origins: { type: "string", multiple: true },
   });
-  const { host, port } = parseHttpAddr(
-    typeof values.http === "string" ? values.http : "127.0.0.1:8090",
+  const addrs = serveAddrs(
+    domains,
+    typeof values.http === "string" ? values.http : undefined,
+    typeof values.https === "string" ? values.https : undefined,
   );
+  const http = addrs.http ? parseHttpAddr(addrs.http) : undefined;
+  const https = addrs.https ? parseHttpAddr(addrs.https, "https") : undefined;
+  const main = (https ?? http)!;
+  const { hosts, wwwRedirects } = certificateHosts(domains, main.host);
   const origins = (
     Array.isArray(values.origins) ? values.origins.map(String) : ["*"]
   ).flatMap((o) => o.split(","));
@@ -52,11 +81,70 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
     app.collections.onChange = () => writeTypesSafely(app, DEFAULT_TYPES_FILE);
     writeTypesSafely(app, DEFAULT_TYPES_FILE);
   }
-  const server = await serve(app, { host, port, origins });
-  console.log(`Server started at ${server.url}`);
-  if (hasDashboard(app)) console.log(`> Dashboard: ${server.url}/_/`);
-  console.log(`> REST API:  ${server.url}/api/`);
-  const installer = runInstaller(app, server.url).catch((error) =>
+  let server: ServeHandle;
+  let baseUrl: string;
+  let stopTls = async () => {};
+  if (https) {
+    const challenges = new ChallengeStore();
+    const redirects = http
+      ? Bun.serve({
+          hostname: http.host,
+          port: http.port,
+          fetch: acmeHttpHandler(challenges),
+        })
+      : undefined;
+    const certOpts = {
+      cacheDir: join(app.dataDir, AUTOCERT_CACHE_DIR),
+      hosts,
+      issuer: app.certIssuer,
+      challenges,
+      now: app.now,
+    };
+    let served: TlsCert;
+    try {
+      served = (await ensureCertificate(certOpts)).tls;
+      server = await serve(app, {
+        ...https,
+        origins,
+        tls: served,
+        wwwRedirects,
+      });
+    } catch (err) {
+      await redirects?.stop(true);
+      throw err;
+    }
+    let stopped = false;
+    let renewTimer: unknown;
+    const scheduleRenew = () => {
+      renewTimer = app.timers.setTimeout(async () => {
+        try {
+          // compared with the served one so a failed swap is retried on the next check
+          const { tls } = await ensureCertificate(certOpts);
+          if (tls.cert !== served.cert && !stopped) {
+            await server.setCertificate(tls);
+            served = tls;
+          }
+        } catch (error) {
+          app.logger.error("Failed to renew the TLS certificate", { error });
+        }
+        if (!stopped) scheduleRenew();
+      }, RENEW_CHECK_INTERVAL);
+    };
+    scheduleRenew();
+    stopTls = async () => {
+      stopped = true;
+      app.timers.clearTimeout(renewTimer);
+      await redirects?.stop(true);
+    };
+    baseUrl = domains.length ? `https://${domains[0]}` : server.url;
+  } else {
+    server = await serve(app, { ...http!, origins, wwwRedirects });
+    baseUrl = server.url;
+  }
+  console.log(`Server started at ${baseUrl}`);
+  if (hasDashboard(app)) console.log(`> Dashboard: ${baseUrl}/_/`);
+  console.log(`> REST API:  ${baseUrl}/api/`);
+  const installer = runInstaller(app, baseUrl).catch((error) =>
     app.logger.warn("Failed to initialize installer", { error }),
   );
   // a terminate without a signal, like a restart whose execve failed, also ends serve
@@ -64,6 +152,7 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
   app.onTerminate(
     async (e) => {
       for (const client of app.realtime.clients()) client.discard();
+      await stopTls();
       await server.stop().catch((err) => console.warn("Failed to stop", err));
       await installer;
       terminated.resolve();

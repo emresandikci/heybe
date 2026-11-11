@@ -46,6 +46,12 @@ import {
 import { bindAutomigrate } from "./migrations/automigrate";
 import { registerRealtimeHooks } from "./realtime/broadcast";
 import type { Router } from "./http/router";
+import {
+  AUTOCERT_CACHE_DIR,
+  type CertIssuer,
+  LETS_ENCRYPT_DIRECTORY,
+  acmeIssuer,
+} from "./http/autocert";
 import { createRouter } from "./http/server";
 import { bindUIExtensions } from "./http/static";
 import { type Mailer, appMailer } from "./mail/mailer";
@@ -63,6 +69,7 @@ export interface AppOptions {
   automigrate?: boolean;
   now?: () => Date;
   timers?: Timers;
+  certIssuer?: CertIssuer;
   argv?: string[];
   execve?: (
     path: string,
@@ -110,6 +117,8 @@ export interface App extends HookBinders, RouterMethods {
   scheduler: CronScheduler;
   now: () => Date;
   timers: Timers;
+  // obtains the `serve --https` certificate, Let's Encrypt by default
+  certIssuer: CertIssuer;
   dev: boolean;
   dashboardDir: string;
   migrationsDir: string;
@@ -357,6 +366,12 @@ export function createApp(opts: AppOptions = {}): App {
     scheduler,
     now,
     timers: opts.timers ?? realTimers,
+    certIssuer:
+      opts.certIssuer ??
+      acmeIssuer({
+        directoryUrl: LETS_ENCRYPT_DIRECTORY,
+        accountKeyPath: join(dataDir, AUTOCERT_CACHE_DIR, "account.pem"),
+      }),
     dev: opts.dev ?? flags.dev ?? false,
     dashboardDir: opts.dashboardDir ?? resolve(import.meta.dir, "../ui/dist"),
     migrationsDir:
