@@ -6,6 +6,7 @@ import type { CollectionName, Collections } from "@heybe/query";
 import pkg from "../package.json" with { type: "json" };
 import { parseCommandArgs } from "./commands/args";
 import { type CommandHelp, routeArgv } from "./commands/help";
+import { importCommand, importHelp } from "./commands/import";
 import { migrateCommand, migrateHelp } from "./commands/migrate";
 import { serveCommand, serveHelp } from "./commands/serve";
 import { superuserCommand, superuserHelp } from "./commands/superuser";
@@ -510,5 +511,6 @@ export function createApp(opts: AppOptions = {}): App {
   app.command("superuser", superuserCommand, superuserHelp);
   app.command("migrate", (args, a) => migrateCommand(args, a), migrateHelp);
   app.command("typegen", typegenCommand, typegenHelp);
+  app.command("import", importCommand, importHelp);
   return app;
 }

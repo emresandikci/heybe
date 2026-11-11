@@ -18,6 +18,7 @@ import { fakeClock } from "../test-clock";
 import type { Timers } from "../timers";
 import type { TlsCert } from "../http/autocert";
 import { serveAddrs } from "./serve";
+import { writePbDataDir } from "../import/pb-fixture";
 import { superuserCommand } from "./superuser";
 
 let app: App;
@@ -661,5 +662,52 @@ describe("lifecycle", () => {
       http: "127.0.0.1:81",
       https: ":8443",
     });
+  });
+});
+
+describe("import", () => {
+  test("import prints the summary", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "heybe-import-cmd-"));
+    try {
+      const pbDir = join(dir, "pb_data");
+      writePbDataDir(pbDir, {
+        rows: {
+          users: [{ id: "user00000000001", email: "a@example.com" }],
+        },
+        files: { "_pb_users_auth_/user00000000001/a.txt": "a" },
+      });
+      const cli = testApp({ argv: ["import", pbDir] });
+      expect(await cli.start()).toBe(0);
+      expect(out.at(-1)).toBe(
+        `Imported 6 collections, 1 records and 1 files from ${pbDir}.`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("import without a path fails with exit 1", async () => {
+    expect(await testApp({ argv: ["import"] }).start()).toBe(1);
+    expect(err.at(-1)).toBe("Error: Missing pb_data path argument.");
+  });
+
+  test("import with an empty --encryptionEnv variable names it", async () => {
+    const cli = testApp({
+      argv: ["import", "pb_data", "--encryptionEnv", "HEYBE_TEST_UNSET_KEY"],
+    });
+    expect(await cli.start()).toBe(1);
+    expect(err.at(-1)).toBe(
+      'Error: the --encryptionEnv variable "HEYBE_TEST_UNSET_KEY" is not set or empty',
+    );
+  });
+
+  test("import --help", async () => {
+    expect(await testApp({ argv: ["import", "--help"] }).start()).toBe(0);
+    const text = stdout.join("");
+    expect(text).toContain("Usage:\n  heybe import <pb_data> [flags]\n");
+    expect(text).toContain("      --encryptionEnv string   the env variable");
+    stdout.length = 0;
+    expect(await testApp({ argv: [] }).start()).toBe(0);
+    expect(stdout.join("")).toContain("  import      Imports a PocketBase");
   });
 });
