@@ -91,6 +91,45 @@ pnpm commit
 
 Each package is versioned and released on its own with semantic-release when changes land on `main`.
 
+## Dashboard
+
+The superuser panel lives in `apps/dashboard` (React, Vite) and is served by `heybe serve` at `/_/` once it is built. It talks to the server only through `@heybe/client`.
+
+```bash
+pnpm --filter @heybe/dashboard build
+```
+
+The build writes `packages/heybe/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
+
+Email templates are written in MJML and compiled in the browser (`mjml-browser`, loaded on demand). The server stores the HTML with the MJML source embedded as a trailing `<!-- heybe:mjml:<base64> -->` comment.
+
+Tests:
+
+```bash
+pnpm --filter @heybe/dashboard test
+pnpm --filter @heybe/dashboard exec playwright install chromium   # once
+pnpm test:e2e
+```
+
+Extensions add pages and links to the panel. Register a directory in `onServe` and put a `main.js` in it:
+
+```ts
+app.onServe((e) => {
+  e.uiExtensions.push({ name: "demo", dir: "./ui-extensions/demo" });
+  return e.next();
+});
+```
+
+```js
+window.heybe.dashboard.addPage({
+  path: "demo",
+  title: "Demo",
+  mount(el, { client }) {
+    el.textContent = "Demo extension for " + client.authStore.record.email;
+  },
+});
+```
+
 ## License
 
 [MIT](LICENSE)
