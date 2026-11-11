@@ -1,5 +1,6 @@
 import type { CollectionModel } from "@heybe/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { useForm } from "@tanstack/react-form";
 import { useId, useRef, useState, type ChangeEvent } from "react";
 import { useClient } from "../app/context";
 import { errorMessage, flattenErrors, responseData } from "../app/errors";
@@ -34,11 +35,17 @@ export function ImportPage() {
   const toast = useToast();
   const confirm = useConfirm();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState("");
-  const [deleteMissing, setDeleteMissing] = useState(false);
   const [error, setError] = useState<{ message: string; details: string[] }>();
   const [review, setReview] = useState<Review | null>(null);
-  const [busy, setBusy] = useState(false);
+
+  const form = useForm({
+    defaultValues: { text: "", deleteMissing: false },
+    onSubmitMeta: { step: "review" } as { step: "review" | "import" },
+    onSubmit: async ({ value, meta }) => {
+      if (meta.step === "review") openReview(value);
+      else if (review) await runImport(review, value.deleteMissing);
+    },
+  });
 
   if (!settings.data) return null;
   if (settings.data.meta.hideControls)
@@ -48,11 +55,17 @@ export function ImportPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    setText(await file.text());
+    form.setFieldValue("text", await file.text());
     setError(undefined);
   };
 
-  const openReview = () => {
+  const openReview = ({
+    text,
+    deleteMissing,
+  }: {
+    text: string;
+    deleteMissing: boolean;
+  }) => {
     try {
       const list = parseImport(text);
       setError(undefined);
@@ -65,7 +78,7 @@ export function ImportPage() {
     }
   };
 
-  const runImport = async ({ list, diff }: Review) => {
+  const runImport = async ({ list, diff }: Review, deleteMissing: boolean) => {
     setReview(null);
     const fields = diff.changed.reduce(
       (n, c) => n + c.fields.deleted.length,
@@ -85,7 +98,6 @@ export function ImportPage() {
       });
       if (!ok) return;
     }
-    setBusy(true);
     try {
       await client.collections.import(list, deleteMissing);
       await queryClient.invalidateQueries({ queryKey: keys.collections });
@@ -95,13 +107,17 @@ export function ImportPage() {
         message: errorMessage(err),
         details: Object.values(flattenErrors(responseData(err))),
       });
-    } finally {
-      setBusy(false);
     }
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void form.handleSubmit({ step: "review" });
+      }}
+      className="flex flex-col gap-3"
+    >
       <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
         Imports do not write migration files. Run{" "}
         <code>heybe migrate collections</code> afterwards to snapshot the
@@ -120,21 +136,29 @@ export function ImportPage() {
           onChange={(e) => void load(e)}
         />
       </div>
-      <CodeArea
-        label="Collections JSON"
-        rows={16}
-        value={text}
-        onChange={(value) => {
-          setText(value);
-          setError(undefined);
-        }}
-      />
-      <Checkbox
-        label="Delete collections and fields missing from the import"
-        hint="System collections and system fields are never deleted."
-        checked={deleteMissing}
-        onChange={(e) => setDeleteMissing(e.target.checked)}
-      />
+      <form.Field name="text">
+        {(field) => (
+          <CodeArea
+            label="Collections JSON"
+            rows={16}
+            value={field.state.value}
+            onChange={(value) => {
+              field.handleChange(value);
+              setError(undefined);
+            }}
+          />
+        )}
+      </form.Field>
+      <form.Field name="deleteMissing">
+        {(field) => (
+          <Checkbox
+            label="Delete collections and fields missing from the import"
+            hint="System collections and system fields are never deleted."
+            checked={field.state.value}
+            onChange={(e) => field.handleChange(e.target.checked)}
+          />
+        )}
+      </form.Field>
       {error && (
         <div
           role="alert"
@@ -148,23 +172,29 @@ export function ImportPage() {
           ))}
         </div>
       )}
-      <Button
-        className="self-start"
-        variant="primary"
-        loading={busy}
-        disabled={!text.trim() || !collections.data}
-        onClick={openReview}
+      <form.Subscribe
+        selector={(s) => [s.isSubmitting, !s.values.text.trim()] as const}
       >
-        Review
-      </Button>
+        {([isSubmitting, noText]) => (
+          <Button
+            type="submit"
+            className="self-start"
+            variant="primary"
+            loading={isSubmitting}
+            disabled={noText || !collections.data}
+          >
+            Review
+          </Button>
+        )}
+      </form.Subscribe>
       {review && (
         <ReviewDialog
           diff={review.diff}
           onCancel={() => setReview(null)}
-          onImport={() => void runImport(review)}
+          onImport={() => void form.handleSubmit({ step: "import" })}
         />
       )}
-    </div>
+    </form>
   );
 }
 

@@ -9,88 +9,72 @@ import {
   activeFields,
   finalIndexes,
   type CollectionDraft,
+  type EditorForm,
+  type Provider,
 } from "../editor-state";
 import { parseIndex } from "../index-sql";
 import { OAUTH2_PROVIDERS } from "../oauth2-providers";
 import { RuleInput } from "../rules/RuleInput";
 import { ruleChips } from "../rules/rule-chips";
-import { ProviderDialog, type Provider } from "./ProviderDialog";
-
-type Update = (fn: (d: CollectionDraft) => CollectionDraft) => void;
+import { ProviderDialog } from "./ProviderDialog";
 import { TemplatesSection } from "./TemplatesSection";
 import { TokenOptions } from "./TokenOptions";
-import { BoolOpt, NumOpt, getIn, groupClass, setIn, type OptCtx } from "./opts";
+import { BoolOpt, NumOpt, groupClass, type OptCtx } from "./opts";
 import { Section } from "../../ui/Section";
 
 export function AuthOptions({
+  form,
   draft,
-  update,
-  reshape,
+  clearError,
   saved,
 }: {
+  form: EditorForm;
   draft: CollectionDraft;
-  update: Update;
-  reshape: Update;
+  clearError: () => void;
   saved?: CollectionModel;
 }) {
   const collections = useCollections();
-  const c: OptCtx = {
-    draft,
-    set: (path, value) => update((d) => setIn(d, path, value)),
-    reshape: (path, value) => reshape((d) => setIn(d, path, value)),
-  };
+  const c: OptCtx = { form, draft, clearError };
   return (
     <div className="flex flex-col gap-6">
       <Section title="Password auth">
         <BoolOpt
           c={c}
-          path={["passwordAuth", "enabled"]}
+          path="passwordAuth.enabled"
           label="Enable password auth"
         />
         <IdentityFields c={c} />
       </Section>
       {draft.name !== "_superusers" && <OAuth2Section c={c} />}
       <Section title="One-time password">
-        <BoolOpt
-          c={c}
-          path={["otp", "enabled"]}
-          label="Enable one-time password"
-        />
-        <NumOpt
-          c={c}
-          path={["otp", "duration"]}
-          label="OTP duration (seconds)"
-        />
-        <NumOpt c={c} path={["otp", "length"]} label="OTP length" />
+        <BoolOpt c={c} path="otp.enabled" label="Enable one-time password" />
+        <NumOpt c={c} path="otp.duration" label="OTP duration (seconds)" />
+        <NumOpt c={c} path="otp.length" label="OTP length" />
       </Section>
       <Section title="Multi-factor auth">
         <BoolOpt
           c={c}
-          path={["mfa", "enabled"]}
+          path="mfa.enabled"
           label="Enable multi-factor auth"
           hint="Needs at least two other auth methods."
         />
-        <NumOpt
-          c={c}
-          path={["mfa", "duration"]}
-          label="MFA duration (seconds)"
-        />
-        <RuleInput
-          label="MFA rule"
-          lockable={false}
-          value={String(getIn(draft, ["mfa", "rule"]) ?? "")}
-          onChange={(rule) => c.set(["mfa", "rule"], rule ?? "")}
-          chips={ruleChips(draft, collections.data ?? [], "mfaRule")}
-          errorPath="mfa.rule"
-          emptyHint="Empty rule: MFA applies to every account."
-        />
+        <NumOpt c={c} path="mfa.duration" label="MFA duration (seconds)" />
+        <form.Field name="mfa.rule">
+          {(field) => (
+            <RuleInput
+              label="MFA rule"
+              lockable={false}
+              value={field.state.value ?? ""}
+              onChange={(rule) => field.handleChange(rule ?? "")}
+              chips={ruleChips(draft, collections.data ?? [], "mfaRule")}
+              errorPath="mfa.rule"
+              emptyHint="Empty rule: MFA applies to every account."
+            />
+          )}
+        </form.Field>
       </Section>
       <Section title="Login alerts">
-        <BoolOpt
-          c={c}
-          path={["authAlert", "enabled"]}
-          label="Send login alerts"
-        />
+        <BoolOpt c={c} path="authAlert.enabled" label="Send login alerts" />
       </Section>
       <TokenOptions c={c} />
       <TemplatesSection c={c} saved={saved} />
@@ -99,9 +83,8 @@ export function AuthOptions({
 }
 
 function IdentityFields({ c }: { c: OptCtx }) {
-  const path = ["passwordAuth", "identityFields"];
-  const error = useFieldError(path.join("."));
-  const selected = (getIn(c.draft, path) as string[] | undefined) ?? [];
+  const error = useFieldError("passwordAuth.identityFields");
+  const selected = c.draft.passwordAuth?.identityFields ?? [];
   const names = new Set(
     activeFields(c.draft)
       .filter((f) => !f.hidden)
@@ -126,8 +109,8 @@ function IdentityFields({ c }: { c: OptCtx }) {
             label={name}
             checked={selected.includes(name)}
             onChange={(e) =>
-              c.set(
-                path,
+              c.form.setFieldValue(
+                "passwordAuth.identityFields",
                 e.target.checked
                   ? [...selected, name]
                   : selected.filter((s) => s !== name),
@@ -154,8 +137,7 @@ const MAPPED = [
 ] as const;
 
 function OAuth2Section({ c }: { c: OptCtx }) {
-  const providers =
-    (getIn(c.draft, ["oauth2", "providers"]) as Provider[] | undefined) ?? [];
+  const providers = c.draft.oauth2?.providers ?? [];
   const [picked, setPicked] = useState("");
   const [editing, setEditing] = useState<{
     index: number | null;
@@ -164,13 +146,15 @@ function OAuth2Section({ c }: { c: OptCtx }) {
   const available = OAUTH2_PROVIDERS.filter(
     (p) => !providers.some((x) => x.name === p.name),
   );
-  const setProviders = (list: Provider[]) =>
-    c.reshape(["oauth2", "providers"], list);
+  const setProviders = (list: Provider[]) => {
+    c.clearError();
+    c.form.setFieldValue("oauth2.providers", list);
+  };
   const fields = activeFields(c.draft).map((f) => f.name);
 
   return (
     <Section title="OAuth2">
-      <BoolOpt c={c} path={["oauth2", "enabled"]} label="Enable OAuth2" />
+      <BoolOpt c={c} path="oauth2.enabled" label="Enable OAuth2" />
       <ul className="flex flex-col gap-2">
         {providers.map((p, i) => (
           <ProviderRow
@@ -212,23 +196,22 @@ function OAuth2Section({ c }: { c: OptCtx }) {
       <fieldset className={groupClass}>
         <legend className="px-1 text-sm font-medium">Mapped fields</legend>
         {MAPPED.map(([key, label]) => (
-          <Select
-            key={key}
-            label={label}
-            value={String(
-              getIn(c.draft, ["oauth2", "mappedFields", key]) ?? "",
+          <c.form.Field key={key} name={`oauth2.mappedFields.${key}`}>
+            {(field) => (
+              <Select
+                label={label}
+                value={field.state.value ?? ""}
+                onChange={(e) => field.handleChange(e.target.value)}
+              >
+                <option value="">Not mapped</option>
+                {fields.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </Select>
             )}
-            onChange={(e) =>
-              c.set(["oauth2", "mappedFields", key], e.target.value)
-            }
-          >
-            <option value="">Not mapped</option>
-            {fields.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </Select>
+          </c.form.Field>
         ))}
       </fieldset>
       {editing && (
@@ -243,8 +226,8 @@ function OAuth2Section({ c }: { c: OptCtx }) {
           onSave={(p) => {
             if (editing.index === null) setProviders([...providers, p]);
             else
-              c.set(
-                ["oauth2", "providers"],
+              c.form.setFieldValue(
+                "oauth2.providers",
                 providers.map((x, j) => (j === editing.index ? p : x)),
               );
             setEditing(null);

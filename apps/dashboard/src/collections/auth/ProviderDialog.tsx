@@ -1,3 +1,4 @@
+import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../../app/errors";
@@ -7,10 +8,9 @@ import { Dialog } from "../../ui/Dialog";
 import { NumberField } from "../../ui/NumberField";
 import { Select } from "../../ui/Select";
 import { TextField } from "../../ui/TextField";
+import type { Provider } from "../editor-state";
 import { OAUTH2_PROVIDERS } from "../oauth2-providers";
 import { groupClass } from "./opts";
-
-export type Provider = Record<string, unknown> & { name: string };
 
 const APPLE_MAX_DURATION = 15777000;
 
@@ -57,36 +57,43 @@ export function ProviderDialog({
 }) {
   const info = OAUTH2_PROVIDERS.find((p) => p.name === provider.name);
   const text = (key: string) => String(provider[key] ?? "");
-  const [form, setForm] = useState({
-    clientId: text("clientId"),
-    clientSecret: "",
-    displayName: text("displayName"),
-    authURL: text("authURL"),
-    tokenURL: text("tokenURL"),
-    userInfoURL: text("userInfoURL"),
+  const form = useForm({
+    defaultValues: {
+      clientId: text("clientId"),
+      clientSecret: "",
+      displayName: text("displayName"),
+      authURL: text("authURL"),
+      tokenURL: text("tokenURL"),
+      userInfoURL: text("userInfoURL"),
+      pkce:
+        provider.pkce === true
+          ? "on"
+          : provider.pkce === false
+            ? "off"
+            : "unset",
+    },
+    onSubmit: ({ value: { clientSecret, pkce, ...rest } }) =>
+      onSave({
+        ...provider,
+        ...rest,
+        pkce: pkce === "on" ? true : pkce === "off" ? false : null,
+        ...(clientSecret ? { clientSecret } : {}),
+      }),
   });
-  const [pkce, setPkce] = useState(
-    provider.pkce === true ? "on" : provider.pkce === false ? "off" : "unset",
+  type Key = Exclude<keyof typeof form.state.values, "pkce">;
+  const field = (key: Key, label: string, extra = {}) => (
+    <form.Field name={key}>
+      {(f) => (
+        <Input
+          label={label}
+          path={`${errorPath}.${key}`}
+          value={f.state.value}
+          onChange={f.handleChange}
+          {...extra}
+        />
+      )}
+    </form.Field>
   );
-  const field = (key: keyof typeof form, label: string, extra = {}) => (
-    <Input
-      label={label}
-      path={`${errorPath}.${key}`}
-      value={form[key]}
-      onChange={(v) => setForm({ ...form, [key]: v })}
-      {...extra}
-    />
-  );
-
-  const save = () => {
-    const { clientSecret, ...rest } = form;
-    onSave({
-      ...provider,
-      ...rest,
-      pkce: pkce === "on" ? true : pkce === "off" ? false : null,
-      ...(clientSecret ? { clientSecret } : {}),
-    });
-  };
 
   const urls = (
     <>
@@ -110,7 +117,7 @@ export function ProviderDialog({
       footer={
         <>
           <Button onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" onClick={save}>
+          <Button variant="primary" onClick={() => void form.handleSubmit()}>
             Save provider
           </Button>
         </>
@@ -131,23 +138,25 @@ export function ProviderDialog({
               Generate client secret
             </legend>
             <AppleSecret
-              clientId={form.clientId}
-              onSecret={(clientSecret) =>
-                setForm((f) => ({ ...f, clientSecret }))
-              }
+              clientId={() => form.state.values.clientId}
+              onSecret={(secret) => form.setFieldValue("clientSecret", secret)}
             />
           </fieldset>
         )}
         {field("displayName", "Display name")}
-        <Select
-          label="PKCE"
-          value={pkce}
-          onChange={(e) => setPkce(e.target.value)}
-        >
-          <option value="unset">Provider default</option>
-          <option value="on">On</option>
-          <option value="off">Off</option>
-        </Select>
+        <form.Field name="pkce">
+          {(f) => (
+            <Select
+              label="PKCE"
+              value={f.state.value}
+              onChange={(e) => f.handleChange(e.target.value)}
+            >
+              <option value="unset">Provider default</option>
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </Select>
+          )}
+        </form.Field>
         {info?.needsURLs ? (
           urls
         ) : (
@@ -167,68 +176,75 @@ function AppleSecret({
   clientId,
   onSecret,
 }: {
-  clientId: string;
+  clientId: () => string;
   onSecret: (secret: string) => void;
 }) {
   const client = useClient();
-  const [form, setForm] = useState({
-    teamId: "",
-    keyId: "",
-    privateKey: "",
-    duration: APPLE_MAX_DURATION,
-  });
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-
-  const generate = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const { secret } = await client.settings.generateAppleClientSecret(
-        clientId,
-        form.teamId,
-        form.keyId,
-        form.privateKey,
-        form.duration,
-      );
-      onSecret(secret);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const form = useForm({
+    defaultValues: {
+      teamId: "",
+      keyId: "",
+      privateKey: "",
+      duration: APPLE_MAX_DURATION,
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        const { secret } = await client.settings.generateAppleClientSecret(
+          clientId(),
+          value.teamId,
+          value.keyId,
+          value.privateKey,
+          value.duration,
+        );
+        onSecret(secret);
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
   return (
     <ErrorScope error={error}>
       <UnclaimedErrors />
-      <Input
-        label="Team ID"
-        path="teamId"
-        value={form.teamId}
-        onChange={(teamId) => setForm({ ...form, teamId })}
-      />
-      <Input
-        label="Key ID"
-        path="keyId"
-        value={form.keyId}
-        onChange={(keyId) => setForm({ ...form, keyId })}
-      />
-      <PrivateKey
-        value={form.privateKey}
-        onChange={(privateKey) => setForm({ ...form, privateKey })}
-      />
-      <Duration
-        value={form.duration}
-        onChange={(duration) => setForm({ ...form, duration })}
-      />
-      <Button
-        className="self-start"
-        loading={busy}
-        onClick={() => void generate()}
-      >
-        Generate client secret
-      </Button>
+      <form.Field name="teamId">
+        {(f) => (
+          <Input
+            label="Team ID"
+            path="teamId"
+            value={f.state.value}
+            onChange={f.handleChange}
+          />
+        )}
+      </form.Field>
+      <form.Field name="keyId">
+        {(f) => (
+          <Input
+            label="Key ID"
+            path="keyId"
+            value={f.state.value}
+            onChange={f.handleChange}
+          />
+        )}
+      </form.Field>
+      <form.Field name="privateKey">
+        {(f) => <PrivateKey value={f.state.value} onChange={f.handleChange} />}
+      </form.Field>
+      <form.Field name="duration">
+        {(f) => <Duration value={f.state.value} onChange={f.handleChange} />}
+      </form.Field>
+      <form.Subscribe selector={(s) => s.isSubmitting}>
+        {(isSubmitting) => (
+          <Button
+            className="self-start"
+            loading={isSubmitting}
+            onClick={() => void form.handleSubmit()}
+          >
+            Generate client secret
+          </Button>
+        )}
+      </form.Subscribe>
     </ErrorScope>
   );
 }

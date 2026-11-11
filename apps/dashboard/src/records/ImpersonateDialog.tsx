@@ -1,6 +1,6 @@
 import type { CollectionModel } from "@heybe/client";
+import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { Button } from "../ui/Button";
@@ -21,26 +21,20 @@ export function ImpersonateDialog({
   onClose: () => void;
 }) {
   const client = useClient();
-  const [duration, setDuration] = useState("0");
-  const [durationError, setDurationError] = useState<string>();
   const generate = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (duration: number) => {
       const impersonated = await client
         .auth(collection.name)
-        .impersonate(recordId, Number(duration));
+        .impersonate(recordId, duration);
       return impersonated.authStore.token;
     },
   });
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!/^\d+$/.test(duration)) {
-      setDurationError("Enter a whole number of seconds, 0 or more.");
-      return;
-    }
-    setDurationError(undefined);
-    generate.mutate();
-  };
+  const form = useForm({
+    defaultValues: { duration: "0" },
+    onSubmit: ({ value }) =>
+      generate.mutateAsync(Number(value.duration)).catch(() => undefined),
+  });
 
   return (
     <Dialog
@@ -49,19 +43,42 @@ export function ImpersonateDialog({
       onClose={onClose}
       footer={<Button onClick={onClose}>Close</Button>}
     >
-      <form noValidate onSubmit={submit} className="flex flex-col gap-4">
-        <NumberField
-          label="Token duration (seconds)"
-          hint="0 uses the collection's auth token duration."
-          min={0}
-          step={1}
-          error={durationError}
-          value={duration}
-          onChange={(e) => setDuration(e.target.value)}
-        />
-        <Button type="submit" variant="primary" loading={generate.isPending}>
-          Generate token
-        </Button>
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void form.handleSubmit();
+        }}
+        className="flex flex-col gap-4"
+      >
+        <form.Field
+          name="duration"
+          validators={{
+            onSubmit: ({ value }) =>
+              /^\d+$/.test(value)
+                ? undefined
+                : "Enter a whole number of seconds, 0 or more.",
+          }}
+        >
+          {(field) => (
+            <NumberField
+              label="Token duration (seconds)"
+              hint="0 uses the collection's auth token duration."
+              min={0}
+              step={1}
+              error={field.state.meta.errors[0]}
+              value={field.state.value}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+          )}
+        </form.Field>
+        <form.Subscribe selector={(s) => s.isSubmitting}>
+          {(isSubmitting) => (
+            <Button type="submit" variant="primary" loading={isSubmitting}>
+              Generate token
+            </Button>
+          )}
+        </form.Subscribe>
         {generate.isError && (
           <p role="alert" className="text-sm text-red-600">
             {errorMessage(generate.error)}

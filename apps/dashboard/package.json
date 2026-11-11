@@ -20,6 +20,7 @@
   "dependencies": {
     "@heybe/client": "workspace:*",
     "@heybe/query": "workspace:*",
+    "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.107.0",
     "@tanstack/react-router": "^1.170.0",
     "cheerio": "^1.2.0",

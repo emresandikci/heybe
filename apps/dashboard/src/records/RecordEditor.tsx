@@ -1,7 +1,8 @@
 import type { CollectionModel, WriteData } from "@heybe/client";
+import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, errorMessage } from "../app/errors";
 import { signOut } from "../auth/session";
@@ -108,11 +109,8 @@ function EditorForm({
   const toast = useToast();
   const formId = useId();
   const initial = initialValues(collection, record);
-  const [values, setValues] = useState<FormValues>(initial);
   const [error, setError] = useState<unknown>(null);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const dirty = JSON.stringify(values) !== JSON.stringify(initial);
   const isAuth = collection.type === "auth";
   const records = client.records(collection.name);
   const isSelf =
@@ -125,25 +123,7 @@ function EditorForm({
     void navigate({ to: "/login" });
   };
 
-  const set = (name: string, value: unknown) =>
-    setValues((v) => ({ ...v, [name]: value }));
-
-  const confirmDiscard = async () =>
-    !dirty ||
-    (await confirm({
-      title: "Discard unsaved changes?",
-      message: "Your edits to this record will be lost.",
-      confirmLabel: "Discard",
-      cancelLabel: "Keep editing",
-      danger: true,
-    }));
-
-  const requestClose = async () => {
-    if (await confirmDiscard()) onClose();
-  };
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
+  const save = async (values: FormValues) => {
     let data: WriteData<Record<string, unknown>>;
     try {
       data = toWriteData(
@@ -158,7 +138,6 @@ function EditorForm({
       return;
     }
     setLocalErrors({});
-    setSaving(true);
     setError(null);
     try {
       if (isNew) await records.create(data);
@@ -175,9 +154,26 @@ function EditorForm({
       onClose();
     } catch (err) {
       setError(err);
-    } finally {
-      setSaving(false);
     }
+  };
+
+  const form = useForm({
+    defaultValues: initial,
+    onSubmit: ({ value }) => save(value),
+  });
+
+  const confirmDiscard = async () =>
+    JSON.stringify(form.state.values) === JSON.stringify(initial) ||
+    (await confirm({
+      title: "Discard unsaved changes?",
+      message: "Your edits to this record will be lost.",
+      confirmLabel: "Discard",
+      cancelLabel: "Keep editing",
+      danger: true,
+    }));
+
+  const requestClose = async () => {
+    if (await confirmDiscard()) onClose();
   };
 
   const remove = async () => {
@@ -252,14 +248,18 @@ function EditorForm({
               {readOnly ? "Close" : "Cancel"}
             </Button>
             {!readOnly && (
-              <Button
-                type="submit"
-                form={formId}
-                variant="primary"
-                loading={saving}
-              >
-                Save
-              </Button>
+              <form.Subscribe selector={(s) => s.isSubmitting}>
+                {(isSubmitting) => (
+                  <Button
+                    type="submit"
+                    form={formId}
+                    variant="primary"
+                    loading={isSubmitting}
+                  >
+                    Save
+                  </Button>
+                )}
+              </form.Subscribe>
             )}
           </>
         }
@@ -267,34 +267,53 @@ function EditorForm({
         <form
           id={formId}
           noValidate
-          onSubmit={(e) => void save(e)}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit();
+          }}
           className="flex flex-col gap-4"
         >
           <div className="flex flex-col gap-4">
             {fields.map((f) =>
               f.type === "password" ? (
                 isAuth && (
-                  <PasswordInputs
+                  <form.Subscribe
                     key={f.name}
-                    isNew={isNew}
-                    password={values.password as string}
-                    confirm={values.passwordConfirm as string}
-                    onChange={(password, passwordConfirm) =>
-                      setValues((v) => ({ ...v, password, passwordConfirm }))
-                    }
-                  />
+                    selector={(s) => [
+                      s.values.password,
+                      s.values.passwordConfirm,
+                    ]}
+                  >
+                    {([password, passwordConfirm]) => (
+                      <PasswordInputs
+                        isNew={isNew}
+                        password={password as string}
+                        confirm={passwordConfirm as string}
+                        onChange={(password, passwordConfirm) => {
+                          form.setFieldValue("password", password);
+                          form.setFieldValue(
+                            "passwordConfirm",
+                            passwordConfirm,
+                          );
+                        }}
+                      />
+                    )}
+                  </form.Subscribe>
                 )
               ) : (
-                <FieldInput
-                  key={f.name}
-                  field={f}
-                  value={values[f.name]}
-                  authCollection={isAuth}
-                  record={record}
-                  disabled={readOnly}
-                  localError={localErrors[f.name]}
-                  onChange={(value) => set(f.name, value)}
-                />
+                <form.Field key={f.name} name={f.name}>
+                  {(field) => (
+                    <FieldInput
+                      field={f}
+                      value={field.state.value}
+                      authCollection={isAuth}
+                      record={record}
+                      disabled={readOnly}
+                      localError={localErrors[f.name]}
+                      onChange={field.handleChange}
+                    />
+                  )}
+                </form.Field>
               ),
             )}
           </div>

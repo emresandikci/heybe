@@ -3,65 +3,70 @@ import { errorMessage } from "../app/errors";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toasts";
 import { CheckInput, SecretInput, TextInput } from "./inputs";
-import type { S3Config } from "./use-settings";
+import type { SettingsForm } from "./use-settings-form";
 
 export function S3Fields({
-  value,
-  onChange,
-  secret,
-  onSecretChange,
+  form,
   prefix,
 }: {
-  value: S3Config;
-  onChange(patch: Partial<S3Config>): void;
-  secret: string;
-  onSecretChange(value: string): void;
+  form: SettingsForm;
   prefix: "s3" | "backups.s3";
 }) {
+  const secret =
+    prefix === "s3" ? "secrets.s3Secret" : "secrets.backupsS3Secret";
   return (
     <>
-      <CheckInput
-        path={`${prefix}.enabled`}
-        label="Use S3 storage"
-        checked={value.enabled}
-        onChange={(enabled) => onChange({ enabled })}
-      />
-      <TextInput
-        path={`${prefix}.endpoint`}
-        label="Endpoint"
-        value={value.endpoint}
-        onChange={(endpoint) => onChange({ endpoint })}
-      />
-      <TextInput
-        path={`${prefix}.bucket`}
-        label="Bucket"
-        value={value.bucket}
-        onChange={(bucket) => onChange({ bucket })}
-      />
-      <TextInput
-        path={`${prefix}.region`}
-        label="Region"
-        value={value.region}
-        onChange={(region) => onChange({ region })}
-      />
-      <TextInput
-        path={`${prefix}.accessKey`}
-        label="Access key"
-        value={value.accessKey}
-        onChange={(accessKey) => onChange({ accessKey })}
-      />
-      <SecretInput
-        path={`${prefix}.secret`}
-        label="Secret"
-        value={secret}
-        onChange={onSecretChange}
-      />
-      <CheckInput
-        path={`${prefix}.forcePathStyle`}
-        label="Force path style"
-        checked={value.forcePathStyle}
-        onChange={(forcePathStyle) => onChange({ forcePathStyle })}
-      />
+      <form.Field name={`settings.${prefix}.enabled`}>
+        {(field) => (
+          <CheckInput
+            path={`${prefix}.enabled`}
+            label="Use S3 storage"
+            field={field}
+          />
+        )}
+      </form.Field>
+      <form.Field name={`settings.${prefix}.endpoint`}>
+        {(field) => (
+          <TextInput
+            path={`${prefix}.endpoint`}
+            label="Endpoint"
+            field={field}
+          />
+        )}
+      </form.Field>
+      <form.Field name={`settings.${prefix}.bucket`}>
+        {(field) => (
+          <TextInput path={`${prefix}.bucket`} label="Bucket" field={field} />
+        )}
+      </form.Field>
+      <form.Field name={`settings.${prefix}.region`}>
+        {(field) => (
+          <TextInput path={`${prefix}.region`} label="Region" field={field} />
+        )}
+      </form.Field>
+      <form.Field name={`settings.${prefix}.accessKey`}>
+        {(field) => (
+          <TextInput
+            path={`${prefix}.accessKey`}
+            label="Access key"
+            field={field}
+          />
+        )}
+      </form.Field>
+      <form.Field name={secret}>
+        {(field) => (
+          <SecretInput path={`${prefix}.secret`} label="Secret" field={field} />
+        )}
+      </form.Field>
+      <form.Field name={`settings.${prefix}.forcePathStyle`}>
+        {(field) => (
+          <CheckInput
+            path={`${prefix}.forcePathStyle`}
+            label="Force path style"
+            field={field}
+          />
+        )}
+      </form.Field>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { useForm, useStore } from "@tanstack/react-form";
 import { useId, useState } from "react";
 import { useFieldError } from "../app/errors";
 import { Button } from "../ui/Button";
@@ -111,8 +112,11 @@ function IndexDialog({
   onCancel: () => void;
   onSave: (sql: string) => void;
 }) {
-  const [text, setText] = useState(sql ?? "");
-  const [uniqueChoice, setUniqueChoice] = useState(false);
+  const form = useForm({
+    defaultValues: { text: sql ?? "", uniqueChoice: false },
+    onSubmit: ({ value }) => onSave(value.text.trim()),
+  });
+  const { text, uniqueChoice } = useStore(form.store, (s) => s.values);
   const [newName] = useState(randomIndexName);
   const parsed = parseIndex(text);
   const editable = text.trim() === "" || !!parsed?.simple;
@@ -121,8 +125,9 @@ function IndexDialog({
   const name = parsed?.name ?? newName;
 
   const rebuild = (nextColumns: string[], nextUnique: boolean) => {
-    setUniqueChoice(nextUnique);
-    setText(
+    form.setFieldValue("uniqueChoice", nextUnique);
+    form.setFieldValue(
+      "text",
       nextColumns.length
         ? buildIndex({ table, columns: nextColumns, unique: nextUnique, name })
         : "",
@@ -140,7 +145,7 @@ function IndexDialog({
           <Button
             variant="primary"
             disabled={text.trim() === ""}
-            onClick={() => onSave(text.trim())}
+            onClick={() => void form.handleSubmit()}
           >
             Save index
           </Button>
@@ -178,7 +183,16 @@ function IndexDialog({
           checked={unique}
           onChange={(e) => rebuild(selected, e.target.checked)}
         />
-        <CodeArea label="Index SQL" rows={4} value={text} onChange={setText} />
+        <form.Field name="text">
+          {(field) => (
+            <CodeArea
+              label="Index SQL"
+              rows={4}
+              value={field.state.value}
+              onChange={field.handleChange}
+            />
+          )}
+        </form.Field>
       </div>
     </Dialog>
   );

@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { useClient } from "../../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../../app/errors";
 import { Button } from "../../ui/Button";
@@ -17,36 +18,50 @@ export function TestEmailDialog({
 }) {
   const client = useClient();
   const toast = useToast();
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const send = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await client.settings.testEmail(collection, email, template);
-      toast.success("Test email sent.");
-      onClose();
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const form = useForm({
+    defaultValues: { email: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        await client.settings.testEmail(collection, value.email, template);
+        toast.success("Test email sent.");
+        onClose();
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
   return (
     <ErrorScope error={error}>
       <Dialog open onClose={onClose} title="Send test email">
-        <form onSubmit={send} className="flex flex-col gap-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit();
+          }}
+          className="flex flex-col gap-3"
+        >
           <UnclaimedErrors />
-          <EmailInput value={email} onChange={setEmail} />
+          <form.Field name="email">
+            {(field) => (
+              <EmailInput
+                value={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={busy}>
-              Send
-            </Button>
+            <form.Subscribe selector={(s) => s.isSubmitting}>
+              {(isSubmitting) => (
+                <Button type="submit" variant="primary" loading={isSubmitting}>
+                  Send
+                </Button>
+              )}
+            </form.Subscribe>
           </div>
         </form>
       </Dialog>

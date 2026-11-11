@@ -12,17 +12,8 @@ export function StoragePage() {
 }
 
 function StorageForm({ settings }: { settings: SettingsModel }) {
-  const {
-    draft,
-    set,
-    secrets,
-    setSecret,
-    dirty,
-    version,
-    save,
-    submit,
-    reset,
-  } = useSettingsForm(settings);
+  const { form, dirty, version, save, submit, reset } =
+    useSettingsForm(settings);
   return (
     <ErrorScope error={save.error}>
       <form
@@ -35,13 +26,7 @@ function StorageForm({ settings }: { settings: SettingsModel }) {
           <p className="text-sm">
             Existing files are not moved when you switch storage.
           </p>
-          <S3Fields
-            prefix="s3"
-            value={draft.s3}
-            onChange={(patch) => set("s3", patch)}
-            secret={secrets["s3.secret"] ?? ""}
-            onSecretChange={(value) => setSecret("s3.secret", value)}
-          />
+          <S3Fields form={form} prefix="s3" />
           <TestS3Button filesystem="storage" disabled={dirty} />
         </Section>
         <div className="flex gap-2">

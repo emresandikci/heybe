@@ -1,6 +1,7 @@
 import { tokenExpired } from "@heybe/client";
+import { useForm } from "@tanstack/react-form";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors } from "../app/errors";
 import { Button } from "../ui/Button";
@@ -24,47 +25,40 @@ function Installer({ token }: { token: string }) {
   const client = useClient();
   const navigate = useNavigate();
   const installer = { headers: { Authorization: token } };
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [restoreError, setRestoreError] = useState<unknown>(null);
   const [restoring, setRestoring] = useState(false);
 
-  const create = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await client
-        .records("_superusers")
-        .create({ email, password, passwordConfirm }, undefined, installer);
-      await client.auth("_superusers").withPassword(email, password);
-      await navigate({ to: "/collections" });
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const createForm = useForm({
+    defaultValues: { email: "", password: "", passwordConfirm: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        await client.records("_superusers").create(value, undefined, installer);
+        await client
+          .auth("_superusers")
+          .withPassword(value.email, value.password);
+        await navigate({ to: "/collections" });
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
-  const restore = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!file) return;
-    setBusy(true);
-    setRestoreError(null);
-    try {
-      await client.backups.upload(file, installer);
-      await client.backups.restore(file.name, installer);
-      setRestoring(true);
-    } catch (err) {
-      setRestoreError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const restoreForm = useForm({
+    defaultValues: { file: null as File | null },
+    onSubmit: async ({ value: { file } }) => {
+      if (!file) return;
+      setRestoreError(null);
+      try {
+        await client.backups.upload(file, installer);
+        await client.backups.restore(file.name, installer);
+        setRestoring(true);
+      } catch (err) {
+        setRestoreError(err);
+      }
+    },
+  });
 
   if (restoring)
     return (
@@ -88,44 +82,78 @@ function Installer({ token }: { token: string }) {
   return (
     <AuthCard title="Create your first superuser">
       <ErrorScope error={error}>
-        <form onSubmit={create} className="flex flex-col gap-3">
-          <Field
-            path="email"
-            label="Email"
-            type="email"
-            autoFocus
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Field
-            path="password"
-            label="Password"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Field
-            path="passwordConfirm"
-            label="Confirm password"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={passwordConfirm}
-            onChange={(e) => setPasswordConfirm(e.target.value)}
-          />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void createForm.handleSubmit();
+          }}
+          className="flex flex-col gap-3"
+        >
+          <createForm.Field name="email">
+            {(field) => (
+              <Field
+                path="email"
+                label="Email"
+                type="email"
+                autoFocus
+                autoComplete="username"
+                required
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            )}
+          </createForm.Field>
+          <createForm.Field name="password">
+            {(field) => (
+              <Field
+                path="password"
+                label="Password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            )}
+          </createForm.Field>
+          <createForm.Field name="passwordConfirm">
+            {(field) => (
+              <Field
+                path="passwordConfirm"
+                label="Confirm password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            )}
+          </createForm.Field>
           <UnclaimedErrors />
-          <Button type="submit" variant="primary" loading={busy}>
-            Create superuser
-          </Button>
+          <createForm.Subscribe selector={(s) => s.isSubmitting}>
+            {(isSubmitting) => (
+              <restoreForm.Subscribe selector={(s) => s.isSubmitting}>
+                {(restoreSubmitting) => (
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    loading={isSubmitting}
+                    disabled={restoreSubmitting}
+                  >
+                    Create superuser
+                  </Button>
+                )}
+              </restoreForm.Subscribe>
+            )}
+          </createForm.Subscribe>
         </form>
       </ErrorScope>
       <ErrorScope error={restoreError}>
         <form
-          onSubmit={restore}
+          onSubmit={(e) => {
+            e.preventDefault();
+            void restoreForm.handleSubmit();
+          }}
           className="flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-700"
         >
           <h2 className="font-medium">Restore from a backup</h2>
@@ -134,17 +162,37 @@ function Installer({ token }: { token: string }) {
           </p>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Backup file
-            <input
-              type="file"
-              accept=".zip,application/zip"
-              required
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
+            <restoreForm.Field name="file">
+              {(field) => (
+                <input
+                  type="file"
+                  accept=".zip,application/zip"
+                  required
+                  onChange={(e) =>
+                    field.handleChange(e.target.files?.[0] ?? null)
+                  }
+                />
+              )}
+            </restoreForm.Field>
           </label>
           <UnclaimedErrors />
-          <Button type="submit" loading={busy} disabled={!file}>
-            Upload and restore
-          </Button>
+          <restoreForm.Subscribe
+            selector={(s) => [s.isSubmitting, s.values.file] as const}
+          >
+            {([isSubmitting, file]) => (
+              <createForm.Subscribe selector={(s) => s.isSubmitting}>
+                {(createSubmitting) => (
+                  <Button
+                    type="submit"
+                    loading={isSubmitting}
+                    disabled={!file || createSubmitting}
+                  >
+                    Upload and restore
+                  </Button>
+                )}
+              </createForm.Subscribe>
+            )}
+          </restoreForm.Subscribe>
         </form>
       </ErrorScope>
     </AuthCard>

@@ -5,19 +5,22 @@ import { CodeArea } from "../ui/CodeArea";
 import { NumberField } from "../ui/NumberField";
 import { TextField } from "../ui/TextField";
 
+export interface FieldLike<T> {
+  state: { value: T };
+  handleChange(value: T): void;
+}
+
 export function TextInput({
   path,
   label,
-  value,
-  onChange,
+  field,
   hint,
   type,
   autoComplete,
 }: {
   path: string;
   label: string;
-  value: string;
-  onChange(value: string): void;
+  field: FieldLike<string>;
   hint?: string;
   type?: string;
   autoComplete?: string;
@@ -28,9 +31,9 @@ export function TextInput({
       hint={hint}
       type={type}
       autoComplete={autoComplete}
-      value={value}
+      value={field.state.value}
       error={useFieldError(path)}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => field.handleChange(e.target.value)}
     />
   );
 }
@@ -62,20 +65,18 @@ export function IntInput({
 export function NumberInput({
   path,
   label,
-  value,
-  onChange,
+  field,
 }: {
   path: string;
   label: string;
-  value: number;
-  onChange(value: number): void;
+  field: FieldLike<number>;
 }) {
   return (
     <NumberField
       label={label}
       step={1}
       error={useFieldError(path)}
-      {...useIntText(value, onChange)}
+      {...useIntText(field.state.value, field.handleChange)}
     />
   );
 }
@@ -83,20 +84,18 @@ export function NumberInput({
 export function CheckInput({
   path,
   label,
-  checked,
-  onChange,
+  field,
 }: {
   path: string;
   label: string;
-  checked: boolean;
-  onChange(value: boolean): void;
+  field: FieldLike<boolean>;
 }) {
   return (
     <Checkbox
       label={label}
-      checked={checked}
+      checked={field.state.value}
       error={useFieldError(path)}
-      onChange={(e) => onChange(e.target.checked)}
+      onChange={(e) => field.handleChange(e.target.checked)}
     />
   );
 }
@@ -104,17 +103,15 @@ export function CheckInput({
 export function LinesInput({
   path,
   label,
-  value,
-  onChange,
+  field,
   hint,
 }: {
   path: string;
   label: string;
-  value: string[];
-  onChange(value: string[]): void;
+  field: FieldLike<string[]>;
   hint?: string;
 }) {
-  const [text, setText] = useState(() => value.join("\n"));
+  const [text, setText] = useState(() => field.state.value.join("\n"));
   const own = useFieldError(path);
   const lineErrors = useErrorsUnder(`${path}.`).map(
     ([key, message]) =>
@@ -130,7 +127,7 @@ export function LinesInput({
       error={error}
       onChange={(next) => {
         setText(next);
-        onChange(
+        field.handleChange(
           next
             .split("\n")
             .map((line) => line.trim())
@@ -144,13 +141,11 @@ export function LinesInput({
 export function SecretInput({
   path,
   label,
-  value,
-  onChange,
+  field,
 }: {
   path: string;
   label: string;
-  value: string;
-  onChange(value: string): void;
+  field: FieldLike<string>;
 }) {
   return (
     <TextInput
@@ -159,8 +154,7 @@ export function SecretInput({
       type="password"
       autoComplete="new-password"
       hint="Leave empty to keep the current value"
-      value={value}
-      onChange={onChange}
+      field={field}
     />
   );
 }

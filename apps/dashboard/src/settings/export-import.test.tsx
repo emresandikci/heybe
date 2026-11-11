@@ -93,7 +93,7 @@ test("invalid JSON shows the parse error and no review", async () => {
   await paste(user, screen.getByLabelText("Collections JSON"), '{"name":"a"}');
   await user.click(screen.getByRole("button", { name: "Review" }));
   expect(
-    screen.getByText("Invalid collections JSON: expected an array."),
+    await screen.findByText("Invalid collections JSON: expected an array."),
   ).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
 });
@@ -120,7 +120,9 @@ test("Import PUTs collections without deleteMissing after the review", async () 
   ]);
   await paste(user, screen.getByLabelText("Collections JSON"), json);
   await user.click(screen.getByRole("button", { name: "Review" }));
-  const dialog = within(screen.getByRole("dialog", { name: "Review import" }));
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Review import" }),
+  );
   expect(dialog.getByRole("heading", { name: "Added (1)" })).toBeTruthy();
   expect(dialog.getByText("tags")).toBeTruthy();
   expect(dialog.getByText("posts")).toBeTruthy();
@@ -154,7 +156,9 @@ test("Import with deleteMissing lists deletions and asks to confirm", async () =
     ),
   );
   await user.click(screen.getByRole("button", { name: "Review" }));
-  const dialog = within(screen.getByRole("dialog", { name: "Review import" }));
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Review import" }),
+  );
   const deleted = dialog.getByRole("list", { name: "Deleted (2)" });
   expect(
     within(deleted)
@@ -165,22 +169,22 @@ test("Import with deleteMissing lists deletions and asks to confirm", async () =
   expect(dialog.queryByText("_superusers")).toBeNull();
 
   await user.click(dialog.getByRole("button", { name: "Import" }));
-  const ask = within(screen.getByRole("dialog", { name: "Delete data" }));
+  const ask = within(
+    await screen.findByRole("dialog", { name: "Delete data" }),
+  );
   await user.click(ask.getByRole("button", { name: "Cancel" }));
   expect(server.find("PUT", "/api/collections/import")).toEqual([]);
 
   await user.click(screen.getByRole("button", { name: "Review" }));
   await user.click(
-    within(screen.getByRole("dialog", { name: "Review import" })).getByRole(
-      "button",
-      { name: "Import" },
-    ),
+    within(
+      await screen.findByRole("dialog", { name: "Review import" }),
+    ).getByRole("button", { name: "Import" }),
   );
   await user.click(
-    within(screen.getByRole("dialog", { name: "Delete data" })).getByRole(
-      "button",
-      { name: "Import and delete" },
-    ),
+    within(
+      await screen.findByRole("dialog", { name: "Delete data" }),
+    ).getByRole("button", { name: "Import and delete" }),
   );
   await screen.findByText("Collections imported.");
   expect(server.find("PUT", "/api/collections/import")[0]!.body).toEqual({
@@ -214,10 +218,14 @@ test("deleting only a field asks to confirm", async () => {
     ),
   );
   await user.click(screen.getByRole("button", { name: "Review" }));
-  const dialog = within(screen.getByRole("dialog", { name: "Review import" }));
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Review import" }),
+  );
   expect(dialog.queryByRole("heading", { name: /^Deleted/ })).toBeNull();
   await user.click(dialog.getByRole("button", { name: "Import" }));
-  const ask = within(screen.getByRole("dialog", { name: "Delete data" }));
+  const ask = within(
+    await screen.findByRole("dialog", { name: "Delete data" }),
+  );
   expect(
     ask.getByText(
       "This import deletes 1 field with all their data. This cannot be undone.",
@@ -246,10 +254,9 @@ test("an import error shows the server message", async () => {
   );
   await user.click(screen.getByRole("button", { name: "Review" }));
   await user.click(
-    within(screen.getByRole("dialog", { name: "Review import" })).getByRole(
-      "button",
-      { name: "Import" },
-    ),
+    within(
+      await screen.findByRole("dialog", { name: "Review import" }),
+    ).getByRole("button", { name: "Import" }),
   );
   expect(await screen.findByText("Failed to import collections.")).toBeTruthy();
 });

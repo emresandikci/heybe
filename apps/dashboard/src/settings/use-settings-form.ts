@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useForm, useStore } from "@tanstack/react-form";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useToast } from "../ui/Toasts";
 import {
   changedSections,
@@ -8,71 +9,82 @@ import {
 
 const same = (a: object, b: object) => JSON.stringify(a) === JSON.stringify(b);
 
+const emptySecrets = { smtpPassword: "", s3Secret: "", backupsS3Secret: "" };
+
+const secretPaths: Record<keyof typeof emptySecrets, string> = {
+  smtpPassword: "smtp.password",
+  s3Secret: "s3.secret",
+  backupsS3Secret: "backups.s3.secret",
+};
+
+const initial = (settings: SettingsModel) => ({
+  settings,
+  secrets: emptySecrets,
+});
+
 export function useSettingsForm(settings: SettingsModel, onSaved?: () => void) {
   const toast = useToast();
   const save = useSaveSettings();
-  const [base, setBase] = useState(settings);
-  const [draft, setDraft] = useState(settings);
-  const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [version, setVersion] = useState(0);
-  const typed = Object.entries(secrets).filter(([, value]) => value);
-  const dirty = !same(draft, base) || typed.length > 0;
 
   const load = (next: SettingsModel) => {
-    setBase(next);
-    setDraft(next);
-    setSecrets({});
+    loaded.current = next;
+    form.reset(initial(next), { keepDefaultValues: true });
     setVersion((v) => v + 1);
   };
-  if (!same(settings, base) && !dirty) load(settings);
 
-  const set = <K extends keyof SettingsModel>(
-    key: K,
-    patch: Partial<SettingsModel[K]> | SettingsModel[K],
-  ) =>
-    setDraft((d) => ({
-      ...d,
-      [key]: Array.isArray(patch) ? patch : { ...d[key], ...patch },
-    }));
+  const [initial0] = useState(() => initial(settings));
+  const loaded = useRef(settings);
+  const form = useForm({
+    defaultValues: initial0,
+    onSubmit: ({ value }) => {
+      const payload: Record<string, any> = changedSections(
+        settings,
+        value.settings,
+      );
+      for (const [name, path] of Object.entries(secretPaths)) {
+        const secret = value.secrets[name as keyof typeof emptySecrets];
+        if (!secret) continue;
+        const keys = path.split(".");
+        payload[keys[0]!] ??= structuredClone(
+          value.settings[keys[0] as keyof SettingsModel],
+        );
+        let node = payload[keys[0]!];
+        for (const key of keys.slice(1, -1)) node = node[key];
+        node[keys.at(-1)!] = secret;
+      }
+      save.mutate(payload, {
+        onSuccess: (saved) => {
+          load(saved);
+          toast.success("Settings saved.");
+          onSaved?.();
+        },
+      });
+    },
+  });
 
-  const setSecret = (path: string, value: string) =>
-    setSecrets((s) => ({ ...s, [path]: value }));
+  const dirty = useStore(
+    form.store,
+    (s) =>
+      !same(s.values.settings, settings) ||
+      Object.values(s.values.secrets).some(Boolean),
+  );
+
+  useEffect(() => {
+    if (!dirty && !same(settings, loaded.current)) load(settings);
+  }, [settings]);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const payload: Record<string, any> = changedSections(base, draft);
-    for (const [path, value] of typed) {
-      const keys = path.split(".");
-      payload[keys[0]!] ??= structuredClone(
-        draft[keys[0] as keyof SettingsModel],
-      );
-      let node = payload[keys[0]!];
-      for (const key of keys.slice(1, -1)) node = node[key];
-      node[keys.at(-1)!] = value;
-    }
-    save.mutate(payload, {
-      onSuccess: (saved) => {
-        load(saved);
-        toast.success("Settings saved.");
-        onSaved?.();
-      },
-    });
+    void form.handleSubmit();
   };
 
   const reset = () => {
     save.reset();
-    load(base);
+    load(settings);
   };
 
-  return {
-    draft,
-    set,
-    secrets,
-    setSecret,
-    dirty,
-    version,
-    save,
-    submit,
-    reset,
-  };
+  return { form, dirty, version, save, submit, reset };
 }
+
+export type SettingsForm = ReturnType<typeof useSettingsForm>["form"];

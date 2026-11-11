@@ -1,6 +1,7 @@
 import { HeybeError } from "@heybe/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useClient } from "../app/context";
 import {
   ErrorScope,
@@ -17,7 +18,7 @@ import { Table, Td, Th } from "../ui/Table";
 import { TextField } from "../ui/TextField";
 import { useToast } from "../ui/Toasts";
 import { formatBytes } from "./format";
-import { NumberInput, TextInput } from "./inputs";
+import { NumberInput, TextInput, type FieldLike } from "./inputs";
 import { S3Fields, TestS3Button } from "./S3Fields";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
@@ -207,37 +208,51 @@ function CreateDialog({
 }) {
   const client = useClient();
   const toast = useToast();
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const create = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await client.backups.create(name || undefined);
-      toast.success("Backup created.");
-      onCreated();
-      onClose();
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const form = useForm({
+    defaultValues: { name: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        await client.backups.create(value.name || undefined);
+        toast.success("Backup created.");
+        onCreated();
+        onClose();
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
   return (
     <ErrorScope error={error}>
       <Dialog open onClose={onClose} title="Create backup">
-        <form onSubmit={create} className="flex flex-col gap-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit();
+          }}
+          className="flex flex-col gap-3"
+        >
           <UnclaimedErrors />
-          <NameInput value={name} onChange={setName} />
+          <form.Field name="name">
+            {(field) => (
+              <NameInput
+                value={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={busy}>
-              Create
-            </Button>
+            <form.Subscribe selector={(s) => s.isSubmitting}>
+              {(isSubmitting) => (
+                <Button type="submit" variant="primary" loading={isSubmitting}>
+                  Create
+                </Button>
+              )}
+            </form.Subscribe>
           </div>
         </form>
       </Dialog>
@@ -265,13 +280,9 @@ function NameInput({
 
 const PRESETS = ["", "0 0 * * *", "0 0 * * 0"];
 
-function CronField({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange(value: string): void;
-}) {
+function CronField({ field }: { field: FieldLike<string> }) {
+  const value = field.state.value;
+  const onChange = field.handleChange;
   const [custom, setCustom] = useState(!PRESETS.includes(value));
   return (
     <>
@@ -286,8 +297,7 @@ function CronField({
         <TextInput
           path="backups.cron"
           label="Custom cron expression"
-          value={value}
-          onChange={onChange}
+          field={field}
         />
       )}
     </>
@@ -317,18 +327,8 @@ function ScheduleSelect({
 }
 
 function AutomaticBackups({ settings }: { settings: SettingsModel }) {
-  const {
-    draft,
-    set,
-    secrets,
-    setSecret,
-    dirty,
-    version,
-    save,
-    submit,
-    reset,
-  } = useSettingsForm(settings);
-  const { backups } = draft;
+  const { form, dirty, version, save, submit, reset } =
+    useSettingsForm(settings);
   return (
     <ErrorScope error={save.error}>
       <form
@@ -338,25 +338,19 @@ function AutomaticBackups({ settings }: { settings: SettingsModel }) {
       >
         <UnclaimedErrors />
         <Section title="Automatic backups">
-          <CronField
-            value={backups.cron}
-            onChange={(cron) => set("backups", { cron })}
-          />
-          <NumberInput
-            path="backups.cronMaxKeep"
-            label="Keep the last"
-            value={backups.cronMaxKeep}
-            onChange={(cronMaxKeep) => set("backups", { cronMaxKeep })}
-          />
-          <S3Fields
-            prefix="backups.s3"
-            value={backups.s3}
-            onChange={(patch) =>
-              set("backups", { s3: { ...backups.s3, ...patch } })
-            }
-            secret={secrets["backups.s3.secret"] ?? ""}
-            onSecretChange={(value) => setSecret("backups.s3.secret", value)}
-          />
+          <form.Field name="settings.backups.cron">
+            {(field) => <CronField field={field} />}
+          </form.Field>
+          <form.Field name="settings.backups.cronMaxKeep">
+            {(field) => (
+              <NumberInput
+                path="backups.cronMaxKeep"
+                label="Keep the last"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <S3Fields form={form} prefix="backups.s3" />
           <TestS3Button filesystem="backups" disabled={dirty} />
         </Section>
         <div className="flex gap-2">

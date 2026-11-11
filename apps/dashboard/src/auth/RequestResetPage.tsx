@@ -1,5 +1,6 @@
+import { useForm } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useClient } from "../app/context";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/TextField";
@@ -7,38 +8,50 @@ import { AuthCard } from "./AuthCard";
 
 export function RequestResetPage() {
   const client = useClient();
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    await client
-      .auth("_superusers")
-      .requestPasswordReset(email)
-      .catch(() => undefined);
-    setBusy(false);
-    setSent(true);
-  };
+  const form = useForm({
+    defaultValues: { email: "" },
+    onSubmit: async ({ value }) => {
+      await client
+        .auth("_superusers")
+        .requestPasswordReset(value.email)
+        .catch(() => undefined);
+      setSent(true);
+    },
+  });
 
   return (
     <AuthCard title="Reset password">
       {sent ? (
         <p role="status">If the email exists, a reset link was sent.</p>
       ) : (
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <TextField
-            label="Email"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <Button type="submit" variant="primary" loading={busy}>
-            Send reset link
-          </Button>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit();
+          }}
+          className="flex flex-col gap-3"
+        >
+          <form.Field name="email">
+            {(field) => (
+              <TextField
+                label="Email"
+                type="email"
+                autoComplete="username"
+                required
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            )}
+          </form.Field>
+          <form.Subscribe selector={(s) => s.isSubmitting}>
+            {(isSubmitting) => (
+              <Button type="submit" variant="primary" loading={isSubmitting}>
+                Send reset link
+              </Button>
+            )}
+          </form.Subscribe>
         </form>
       )}
       <Link to="/login" className="text-sm underline">

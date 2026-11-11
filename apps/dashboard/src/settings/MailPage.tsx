@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useForm } from "@tanstack/react-form";
+import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { useCollections } from "../app/queries";
@@ -19,19 +20,9 @@ export function MailPage() {
 }
 
 function MailForm({ settings }: { settings: SettingsModel }) {
-  const {
-    draft,
-    set,
-    secrets,
-    setSecret,
-    dirty,
-    version,
-    save,
-    submit,
-    reset,
-  } = useSettingsForm(settings);
+  const { form, dirty, version, save, submit, reset } =
+    useSettingsForm(settings);
   const [testing, setTesting] = useState(false);
-  const { meta, smtp } = draft;
   return (
     <ErrorScope error={save.error}>
       <form
@@ -41,66 +32,77 @@ function MailForm({ settings }: { settings: SettingsModel }) {
       >
         <UnclaimedErrors />
         <Section title="Sender">
-          <TextInput
-            path="meta.senderName"
-            label="Sender name"
-            value={meta.senderName}
-            onChange={(senderName) => set("meta", { senderName })}
-          />
-          <TextInput
-            path="meta.senderAddress"
-            label="Sender address"
-            value={meta.senderAddress}
-            onChange={(senderAddress) => set("meta", { senderAddress })}
-          />
+          <form.Field name="settings.meta.senderName">
+            {(field) => (
+              <TextInput
+                path="meta.senderName"
+                label="Sender name"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.meta.senderAddress">
+            {(field) => (
+              <TextInput
+                path="meta.senderAddress"
+                label="Sender address"
+                field={field}
+              />
+            )}
+          </form.Field>
         </Section>
         <Section title="SMTP">
-          <CheckInput
-            path="smtp.enabled"
-            label="Use SMTP"
-            checked={smtp.enabled}
-            onChange={(enabled) => set("smtp", { enabled })}
-          />
-          <TextInput
-            path="smtp.host"
-            label="Host"
-            value={smtp.host}
-            onChange={(host) => set("smtp", { host })}
-          />
-          <NumberInput
-            path="smtp.port"
-            label="Port"
-            value={smtp.port}
-            onChange={(port) => set("smtp", { port })}
-          />
-          <TextInput
-            path="smtp.username"
-            label="Username"
-            value={smtp.username}
-            onChange={(username) => set("smtp", { username })}
-          />
-          <SecretInput
-            path="smtp.password"
-            label="Password"
-            value={secrets["smtp.password"] ?? ""}
-            onChange={(value) => setSecret("smtp.password", value)}
-          />
-          <AuthMethod
-            value={smtp.authMethod}
-            onChange={(authMethod) => set("smtp", { authMethod })}
-          />
-          <CheckInput
-            path="smtp.tls"
-            label="TLS"
-            checked={smtp.tls}
-            onChange={(tls) => set("smtp", { tls })}
-          />
-          <TextInput
-            path="smtp.localName"
-            label="Local name"
-            value={smtp.localName}
-            onChange={(localName) => set("smtp", { localName })}
-          />
+          <form.Field name="settings.smtp.enabled">
+            {(field) => (
+              <CheckInput path="smtp.enabled" label="Use SMTP" field={field} />
+            )}
+          </form.Field>
+          <form.Field name="settings.smtp.host">
+            {(field) => (
+              <TextInput path="smtp.host" label="Host" field={field} />
+            )}
+          </form.Field>
+          <form.Field name="settings.smtp.port">
+            {(field) => (
+              <NumberInput path="smtp.port" label="Port" field={field} />
+            )}
+          </form.Field>
+          <form.Field name="settings.smtp.username">
+            {(field) => (
+              <TextInput path="smtp.username" label="Username" field={field} />
+            )}
+          </form.Field>
+          <form.Field name="secrets.smtpPassword">
+            {(field) => (
+              <SecretInput
+                path="smtp.password"
+                label="Password"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.smtp.authMethod">
+            {(field) => (
+              <AuthMethod
+                value={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.smtp.tls">
+            {(field) => (
+              <CheckInput path="smtp.tls" label="TLS" field={field} />
+            )}
+          </form.Field>
+          <form.Field name="settings.smtp.localName">
+            {(field) => (
+              <TextInput
+                path="smtp.localName"
+                label="Local name"
+                field={field}
+              />
+            )}
+          </form.Field>
         </Section>
         <div className="flex gap-2">
           <Button type="submit" variant="primary" loading={save.isPending}>
@@ -150,70 +152,98 @@ function TestEmailDialog({ onClose }: { onClose: () => void }) {
   const client = useClient();
   const toast = useToast();
   const collections = useCollections();
-  const [template, setTemplate] = useState(TEMPLATES[0]!);
-  const [email, setEmail] = useState("");
-  const [collection, setCollection] = useState("_superusers");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const authCollections = (collections.data ?? []).filter(
     (c) => c.type === "auth",
   );
 
-  const send = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await client.settings.testEmail(collection, email, template);
-      toast.success("Test email sent.");
-      onClose();
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const form = useForm({
+    defaultValues: {
+      template: TEMPLATES[0]!,
+      email: "",
+      collection: "_superusers",
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        await client.settings.testEmail(
+          value.collection,
+          value.email,
+          value.template,
+        );
+        toast.success("Test email sent.");
+        onClose();
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
   return (
     <ErrorScope error={error}>
       <Dialog open onClose={onClose} title="Send test email">
-        <form onSubmit={send} className="flex flex-col gap-3">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit();
+          }}
+          className="flex flex-col gap-3"
+        >
           <UnclaimedErrors />
           <fieldset className="flex flex-col gap-1">
             <legend className="text-sm font-medium">Template</legend>
-            {TEMPLATES.map((name) => (
-              <label key={name} className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name="template"
-                  checked={template === name}
-                  onChange={() => setTemplate(name)}
-                />
-                {name}
-              </label>
-            ))}
+            <form.Field name="template">
+              {(field) =>
+                TEMPLATES.map((name) => (
+                  <label key={name} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="template"
+                      checked={field.state.value === name}
+                      onChange={() => field.handleChange(name)}
+                    />
+                    {name}
+                  </label>
+                ))
+              }
+            </form.Field>
           </fieldset>
-          <EmailInput value={email} onChange={setEmail} />
-          <Select
-            label="Auth collection"
-            value={collection}
-            disabled={!collections.data}
-            onChange={(e) => setCollection(e.target.value)}
-          >
-            {!collections.data && (
-              <option value={collection}>{collection}</option>
+          <form.Field name="email">
+            {(field) => (
+              <EmailInput
+                value={field.state.value}
+                onChange={field.handleChange}
+              />
             )}
-            {authCollections.map((c) => (
-              <option key={c.id} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+          </form.Field>
+          <form.Field name="collection">
+            {(field) => (
+              <Select
+                label="Auth collection"
+                value={field.state.value}
+                disabled={!collections.data}
+                onChange={(e) => field.handleChange(e.target.value)}
+              >
+                {!collections.data && (
+                  <option value={field.state.value}>{field.state.value}</option>
+                )}
+                {authCollections.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </form.Field>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={busy}>
-              Send
-            </Button>
+            <form.Subscribe selector={(s) => s.isSubmitting}>
+              {(isSubmitting) => (
+                <Button type="submit" variant="primary" loading={isSubmitting}>
+                  Send
+                </Button>
+              )}
+            </form.Subscribe>
           </div>
         </form>
       </Dialog>

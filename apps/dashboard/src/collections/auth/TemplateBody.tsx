@@ -5,7 +5,8 @@ import { CodeArea } from "../../ui/CodeArea";
 import { useConfirm } from "../../ui/Confirm";
 import { compileMjml, readSource, stripSource, withSource } from "./mjml";
 import { mjmlStarter, type TemplateKind } from "./mjml-starters";
-import { getIn, type OptCtx } from "./opts";
+import type { EmailTemplate } from "../editor-state";
+import type { OptCtx, OptPath } from "./opts";
 
 export interface TemplateState {
   mode: "mjml" | "html";
@@ -54,7 +55,7 @@ export function TemplateBody({
   superuser,
 }: {
   c: OptCtx;
-  path: string[];
+  path: OptPath<EmailTemplate>;
   label: string;
   kind: TemplateKind;
   superuser: boolean;
@@ -62,10 +63,10 @@ export function TemplateBody({
   const store = useContext(TemplateStoreContext)!;
   const confirm = useConfirm();
   const [preview, setPreview] = useState(false);
-  const key = path.join(".");
-  const bodyPath = [...path, "body"];
-  const body = String(getIn(c.draft, bodyPath) ?? "");
-  const serverError = useFieldError(bodyPath.join("."));
+  const key = path;
+  const bodyPath = `${path}.body` as const;
+  const body = c.form.getFieldValue(path)?.body ?? "";
+  const serverError = useFieldError(bodyPath);
   const saved = readSource(body);
   const startNew = saved === null && !c.draft.id;
   const state: TemplateState = store.states[key] ?? {
@@ -82,7 +83,7 @@ export function TemplateBody({
     if (!store.latest(key, ticket)) return;
     const error = errors.length > 0 ? errors.join(" ") : null;
     store.put(key, { mode: "mjml", source, error, compiling: false });
-    if (!error) c.set(bodyPath, withSource(html, source));
+    if (!error) c.form.setFieldValue(bodyPath, withSource(html, source));
   };
 
   useEffect(() => {
@@ -129,7 +130,7 @@ export function TemplateBody({
           value={html}
           error={serverError}
           hint={PLACEHOLDERS}
-          onChange={(value) => c.set(bodyPath, value)}
+          onChange={(value) => c.form.setFieldValue(bodyPath, value)}
         />
       )}
       <div className="flex flex-wrap gap-2">

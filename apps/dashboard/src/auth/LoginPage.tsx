@@ -1,7 +1,8 @@
 import { HeybeError } from "@heybe/client";
+import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, errorMessage } from "../app/errors";
 import { Button } from "../ui/Button";
@@ -19,27 +20,10 @@ export function LoginPage() {
     queryKey: ["superuserAuthMethods"],
     queryFn: ({ signal }) => auth.methods({ signal }),
   });
-  const [identity, setIdentity] = useState("");
-  const [password, setPassword] = useState("");
-  const [otpEmail, setOtpEmail] = useState("");
-  const [otpPassword, setOtpPassword] = useState("");
   const [mfaId, setMfaId] = useState("");
   const [otpId, setOtpId] = useState("");
   const [lastOtpId, setLastOtpId] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-
-  const run = async (action: () => Promise<void>) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await action();
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const done = () => navigate({ href: safeRedirect(search.redirect) });
 
@@ -54,39 +38,54 @@ export function LoginPage() {
     }
   };
 
-  const signInWithPassword = (e: FormEvent) => {
-    e.preventDefault();
-    void run(async () => {
-      try {
-        await auth.withPassword(identity, password);
-      } catch (err) {
-        const id = err instanceof HeybeError && err.response.mfaId;
-        if (err instanceof HeybeError && err.status === 401 && id) {
-          setMfaId(String(id));
-          if (EMAIL.test(identity)) {
-            setOtpEmail(identity);
-            await requestOTP(identity);
-          }
-          return;
+  const signInWithPassword = async ({
+    identity,
+    password,
+  }: {
+    identity: string;
+    password: string;
+  }) => {
+    try {
+      await auth.withPassword(identity, password);
+    } catch (err) {
+      const id = err instanceof HeybeError && err.response.mfaId;
+      if (err instanceof HeybeError && err.status === 401 && id) {
+        setMfaId(String(id));
+        if (EMAIL.test(identity)) {
+          form.setFieldValue("otpEmail", identity);
+          await requestOTP(identity);
         }
-        throw err;
+        return;
       }
-      await done();
-    });
+      throw err;
+    }
+    await done();
   };
 
-  const sendCode = (e: FormEvent) => {
-    e.preventDefault();
-    void run(() => requestOTP(otpEmail));
-  };
-
-  const verify = (e: FormEvent) => {
-    e.preventDefault();
-    void run(async () => {
-      await auth.withOTP(otpId, otpPassword, mfaId ? { mfaId } : {});
-      await done();
-    });
-  };
+  const form = useForm({
+    defaultValues: {
+      identity: "",
+      password: "",
+      otpEmail: "",
+      otpPassword: "",
+    },
+    onSubmitMeta: { step: "password" } as {
+      step: "password" | "sendCode" | "verify";
+    },
+    onSubmit: async ({ value, meta }) => {
+      setError(null);
+      try {
+        if (meta.step === "password") await signInWithPassword(value);
+        else if (meta.step === "sendCode") await requestOTP(value.otpEmail);
+        else {
+          await auth.withOTP(otpId, value.otpPassword, mfaId ? { mfaId } : {});
+          await done();
+        }
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
   let body: ReactNode;
   if (methods.isPending) body = <p>Loading...</p>;
@@ -96,32 +95,47 @@ export function LoginPage() {
     body = (
       <form
         key="password"
-        onSubmit={signInWithPassword}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void form.handleSubmit({ step: "password" });
+        }}
         className="flex flex-col gap-3"
       >
-        <Field
-          path="identity"
-          label="Email"
-          type="email"
-          autoFocus
-          autoComplete="username"
-          required
-          value={identity}
-          onChange={(e) => setIdentity(e.target.value)}
-        />
-        <Field
-          path="password"
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        <form.Field name="identity">
+          {(field) => (
+            <Field
+              path="identity"
+              label="Email"
+              type="email"
+              autoFocus
+              autoComplete="username"
+              required
+              value={field.state.value}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+          )}
+        </form.Field>
+        <form.Field name="password">
+          {(field) => (
+            <Field
+              path="password"
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={field.state.value}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+          )}
+        </form.Field>
         <UnclaimedErrors />
-        <Button type="submit" variant="primary" loading={busy}>
-          Sign in
-        </Button>
+        <form.Subscribe selector={(s) => s.isSubmitting}>
+          {(isSubmitting) => (
+            <Button type="submit" variant="primary" loading={isSubmitting}>
+              Sign in
+            </Button>
+          )}
+        </form.Subscribe>
         <Link to="/request-password-reset" className="text-sm underline">
           Forgot password?
         </Link>
@@ -131,43 +145,73 @@ export function LoginPage() {
     body = (
       <form
         key="request-otp"
-        onSubmit={sendCode}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void form.handleSubmit({ step: "sendCode" });
+        }}
         className="flex flex-col gap-3"
       >
         {mfaId && <p className="text-sm">Finish signing in with a code.</p>}
-        <Field
-          path="email"
-          label="Email"
-          type="email"
-          autoFocus
-          autoComplete="username"
-          required
-          value={otpEmail}
-          onChange={(e) => setOtpEmail(e.target.value)}
-        />
+        <form.Field name="otpEmail">
+          {(field) => (
+            <Field
+              path="email"
+              label="Email"
+              type="email"
+              autoFocus
+              autoComplete="username"
+              required
+              value={field.state.value}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+          )}
+        </form.Field>
         <UnclaimedErrors />
-        <Button type="submit" variant="primary" loading={busy}>
-          Send code
-        </Button>
+        <form.Subscribe selector={(s) => s.isSubmitting}>
+          {(isSubmitting) => (
+            <Button type="submit" variant="primary" loading={isSubmitting}>
+              Send code
+            </Button>
+          )}
+        </form.Subscribe>
       </form>
     );
   else if (otpId)
     body = (
-      <form key="verify-otp" onSubmit={verify} className="flex flex-col gap-3">
-        <p className="text-sm">Check {otpEmail} for the code.</p>
-        <Field
-          path="password"
-          label="One-time password"
-          autoFocus
-          autoComplete="one-time-code"
-          required
-          value={otpPassword}
-          onChange={(e) => setOtpPassword(e.target.value)}
-        />
+      <form
+        key="verify-otp"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void form.handleSubmit({ step: "verify" });
+        }}
+        className="flex flex-col gap-3"
+      >
+        <form.Subscribe selector={(s) => s.values.otpEmail}>
+          {(otpEmail) => (
+            <p className="text-sm">Check {otpEmail} for the code.</p>
+          )}
+        </form.Subscribe>
+        <form.Field name="otpPassword">
+          {(field) => (
+            <Field
+              path="password"
+              label="One-time password"
+              autoFocus
+              autoComplete="one-time-code"
+              required
+              value={field.state.value}
+              onChange={(e) => field.handleChange(e.target.value)}
+            />
+          )}
+        </form.Field>
         <UnclaimedErrors />
-        <Button type="submit" variant="primary" loading={busy}>
-          Verify
-        </Button>
+        <form.Subscribe selector={(s) => s.isSubmitting}>
+          {(isSubmitting) => (
+            <Button type="submit" variant="primary" loading={isSubmitting}>
+              Verify
+            </Button>
+          )}
+        </form.Subscribe>
         <Button variant="ghost" onClick={() => setOtpId("")}>
           Send a new code
         </Button>

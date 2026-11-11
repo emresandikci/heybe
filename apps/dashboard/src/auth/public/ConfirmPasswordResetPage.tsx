@@ -1,5 +1,6 @@
+import { useForm } from "@tanstack/react-form";
 import { Link, useParams } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { useClient } from "../../app/context";
 import { ErrorScope, UnclaimedErrors } from "../../app/errors";
 import { Button } from "../../ui/Button";
@@ -25,27 +26,23 @@ function ResetForm({
   collectionId: string;
 }) {
   const client = useClient();
-  const [password, setPassword] = useState("");
-  const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await client
-        .auth(collectionId)
-        .confirmPasswordReset(token, password, passwordConfirm);
-      setDone(true);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const form = useForm({
+    defaultValues: { password: "", passwordConfirm: "" },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        await client
+          .auth(collectionId)
+          .confirmPasswordReset(token, value.password, value.passwordConfirm);
+        setDone(true);
+      } catch (err) {
+        setError(err);
+      }
+    },
+  });
 
   if (done)
     return (
@@ -62,30 +59,48 @@ function ResetForm({
   return (
     <AuthCard title={TITLE}>
       <ErrorScope error={error}>
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <Field
-            path="password"
-            label="New password"
-            type="password"
-            autoFocus
-            autoComplete="new-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Field
-            path="passwordConfirm"
-            label="Confirm new password"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={passwordConfirm}
-            onChange={(e) => setPasswordConfirm(e.target.value)}
-          />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void form.handleSubmit();
+          }}
+          className="flex flex-col gap-3"
+        >
+          <form.Field name="password">
+            {(field) => (
+              <Field
+                path="password"
+                label="New password"
+                type="password"
+                autoFocus
+                autoComplete="new-password"
+                required
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            )}
+          </form.Field>
+          <form.Field name="passwordConfirm">
+            {(field) => (
+              <Field
+                path="passwordConfirm"
+                label="Confirm new password"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+              />
+            )}
+          </form.Field>
           <UnclaimedErrors />
-          <Button type="submit" variant="primary" loading={busy}>
-            Set new password
-          </Button>
+          <form.Subscribe selector={(s) => s.isSubmitting}>
+            {(isSubmitting) => (
+              <Button type="submit" variant="primary" loading={isSubmitting}>
+                Set new password
+              </Button>
+            )}
+          </form.Subscribe>
         </form>
       </ErrorScope>
     </AuthCard>

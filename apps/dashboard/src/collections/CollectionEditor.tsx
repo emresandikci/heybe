@@ -1,7 +1,8 @@
 import type { CollectionModel } from "@heybe/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useStore } from "@tanstack/react-form";
+import { useId, useState } from "react";
 import { useClient } from "../app/context";
 import {
   ErrorScope,
@@ -22,23 +23,21 @@ import { TextField } from "../ui/TextField";
 import { useToast } from "../ui/Toasts";
 import { ChangesDialog } from "./ChangesDialog";
 import {
-  addField,
   diffCollection,
   duplicateDraft,
   draftFrom,
-  hasChanges,
-  moveField,
-  newDraft,
-  removeField,
-  renameCollection,
-  renameField,
-  restoreField,
-  setIndexes,
   finalIndexes,
+  hasChanges,
+  newDraft,
+  newField,
+  renameCollection,
+  setIndexes,
   toPayload,
+  useEditorForm,
   type Changes,
   type CollectionDraft,
   type CollectionType,
+  type EditorForm,
   type FieldType,
 } from "./editor-state";
 import { FIELD_TYPES } from "./field-types";
@@ -65,8 +64,6 @@ const AUTH_OPTION_KEYS = [
   "confirmEmailChangeTemplate",
 ];
 
-type Update = (fn: (d: CollectionDraft) => CollectionDraft) => void;
-
 function tabOf(path: string): string | null {
   const top = path.split(".")[0]!;
   if (RULE_KEYS.includes(top)) return "rules";
@@ -75,10 +72,36 @@ function tabOf(path: string): string | null {
   return null;
 }
 
-const same = (a: CollectionDraft | null, b: CollectionDraft | null) =>
-  JSON.stringify(a && toPayload(a)) === JSON.stringify(b && toPayload(b));
+const same = (a: CollectionDraft, b: CollectionDraft) =>
+  JSON.stringify(toPayload(a)) === JSON.stringify(toPayload(b));
+
+function useScaffolds(enabled: boolean) {
+  const client = useClient();
+  return useQuery({
+    queryKey: ["collectionScaffolds"],
+    queryFn: ({ signal }) => client.collections.scaffolds({ signal }),
+    enabled,
+  });
+}
 
 export function CollectionEditor({
+  collection,
+  onClose,
+}: {
+  collection?: CollectionModel;
+  onClose: () => void;
+}) {
+  const scaffolds = useScaffolds(!collection);
+  if (!collection && !scaffolds.data)
+    return (
+      <Dialog open variant="side" onClose={onClose} title="New collection">
+        <p className="text-sm">Loading…</p>
+      </Dialog>
+    );
+  return <Editor collection={collection} onClose={onClose} />;
+}
+
+function Editor({
   collection,
   onClose,
 }: {
@@ -92,79 +115,17 @@ export function CollectionEditor({
   const toast = useToast();
   const formId = useId();
   const [source, setSource] = useState(collection);
+  const scaffolds = useScaffolds(!source);
   const [initial, setInitial] = useState(() =>
-    collection ? draftFrom(collection) : null,
+    collection ? draftFrom(collection) : newDraft("base", scaffolds.data!),
   );
-  const [draft, setDraft] = useState(initial);
   const [selectedTab, setTab] = useState("fields");
   const [error, setError] = useState<unknown>(null);
-  const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<Changes | null>(null);
-
-  const scaffolds = useQuery({
-    queryKey: ["collectionScaffolds"],
-    queryFn: ({ signal }) => client.collections.scaffolds({ signal }),
-    enabled: !source,
-  });
-
   const templates = useTemplateStore();
-  const start = (d: CollectionDraft) => {
-    setInitial(d);
-    setDraft(d);
-    setError(null);
-    templates.reset();
-  };
 
-  useEffect(() => {
-    if (!draft && scaffolds.data) start(newDraft("base", scaffolds.data));
-  }, [draft, scaffolds.data]);
-
-  const update: Update = (fn) => setDraft((d) => d && fn(d));
-  const reshape: Update = (fn) => {
-    setError(null);
-    update(fn);
-  };
-  const dirty = !same(draft, initial);
-
-  const confirmDiscard = async () =>
-    !dirty ||
-    (await confirm({
-      title: "Discard unsaved changes?",
-      message: "Your edits to this collection will be lost.",
-      confirmLabel: "Discard",
-      danger: true,
-    }));
-
-  const requestClose = async () => {
-    if (await confirmDiscard()) onClose();
-  };
-
-  const changeType = (type: CollectionType) => {
-    if (!scaffolds.data || !draft) return;
-    templates.reset();
-    const next = renameCollection(newDraft(type, scaffolds.data), draft.name);
-    if (type === "view") return setDraft(next);
-    const scaffolded = new Set(
-      scaffolds.data[draft.type]!.indexes.map((sql) => parseIndex(sql)?.name),
-    );
-    const custom = finalIndexes(draft).filter(
-      (sql) => !scaffolded.has(parseIndex(sql)?.name),
-    );
-    setDraft(
-      setIndexes(
-        {
-          ...next,
-          fields: [...next.fields, ...draft.fields.filter((f) => !f.system)],
-        },
-        [...finalIndexes(next), ...custom],
-      ),
-    );
-  };
-
-  const submit = async () => {
-    if (!draft) return;
+  const save = async (draft: CollectionDraft) => {
     setPending(null);
-    setSaving(true);
     setError(null);
     try {
       const payload = toPayload(draft);
@@ -187,19 +148,71 @@ export function CollectionEditor({
       );
       const first = withErrors.find((t) => t !== null);
       if (first && !withErrors.includes(tab)) setTab(first);
-    } finally {
-      setSaving(false);
     }
   };
 
-  const save = (e: FormEvent) => {
-    e.preventDefault();
-    if (!draft || templates.invalid || templates.compiling) return;
-    if (source) {
+  const form = useEditorForm(initial, async (draft, confirmed) => {
+    if (templates.invalid || templates.compiling) return;
+    if (source && !confirmed) {
       const changes = diffCollection(source, draft);
       if (hasChanges(changes)) return setPending(changes);
     }
-    void submit();
+    await save(draft);
+  });
+  const draft = useStore(form.store, (s) => s.values);
+
+  const start = (d: CollectionDraft) => {
+    setInitial(d);
+    form.reset(d);
+    setError(null);
+    templates.reset();
+  };
+
+  const clearError = () => setError(null);
+
+  const confirmDiscard = async () =>
+    same(form.state.values, initial) ||
+    (await confirm({
+      title: "Discard unsaved changes?",
+      message: "Your edits to this collection will be lost.",
+      confirmLabel: "Discard",
+      danger: true,
+    }));
+
+  const requestClose = async () => {
+    if (await confirmDiscard()) onClose();
+  };
+
+  const changeType = (type: CollectionType) => {
+    if (!scaffolds.data) return;
+    const current = form.state.values;
+    templates.reset();
+    const next = renameCollection(newDraft(type, scaffolds.data), current.name);
+    if (type === "view") return form.reset(next, { keepDefaultValues: true });
+    const scaffolded = new Set(
+      scaffolds.data[current.type]!.indexes.map((sql) => parseIndex(sql)?.name),
+    );
+    const custom = finalIndexes(current).filter(
+      (sql) => !scaffolded.has(parseIndex(sql)?.name),
+    );
+    form.reset(
+      setIndexes(
+        {
+          ...next,
+          fields: [...next.fields, ...current.fields.filter((f) => !f.system)],
+        },
+        [...finalIndexes(next), ...custom],
+      ),
+      { keepDefaultValues: true },
+    );
+  };
+
+  const changeIndexes = (indexes: string[]) => {
+    clearError();
+    const next = setIndexes(form.state.values, indexes);
+    form.setFieldValue("_originalName", next._originalName);
+    form.setFieldValue("fields", next.fields);
+    form.setFieldValue("indexes", next.indexes);
   };
 
   const duplicate = async () => {
@@ -207,7 +220,6 @@ export function CollectionEditor({
     setSource(undefined);
     start(duplicateDraft(source));
   };
-
   const truncate = async () => {
     if (!source) return;
     const ok = await confirm({
@@ -250,9 +262,9 @@ export function CollectionEditor({
 
   const system = !!source?.system;
   const tabs = [
-    { value: "fields", label: draft?.type === "view" ? "Query" : "Fields" },
+    { value: "fields", label: draft.type === "view" ? "Query" : "Fields" },
     { value: "rules", label: "API rules" },
-    ...(draft?.type === "auth" ? [{ value: "options", label: "Options" }] : []),
+    ...(draft.type === "auth" ? [{ value: "options", label: "Options" }] : []),
   ];
   const tab = tabs.some((t) => t.value === selectedTab)
     ? selectedTab
@@ -289,75 +301,89 @@ export function CollectionEditor({
                 </span>
               )}
               <Button onClick={() => void requestClose()}>Cancel</Button>
-              <Button
-                type="submit"
-                form={formId}
-                variant="primary"
-                loading={saving}
-                disabled={!draft || templates.invalid || templates.compiling}
-              >
-                {source ? "Save changes" : "Create"}
-              </Button>
+              <form.Subscribe selector={(s) => s.isSubmitting}>
+                {(isSubmitting) => (
+                  <Button
+                    type="submit"
+                    form={formId}
+                    variant="primary"
+                    loading={isSubmitting}
+                    disabled={templates.invalid || templates.compiling}
+                  >
+                    {source ? "Save changes" : "Create"}
+                  </Button>
+                )}
+              </form.Subscribe>
             </>
           }
         >
-          {draft ? (
-            <form id={formId} onSubmit={save} className="flex flex-col gap-4">
-              <UnclaimedErrors />
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <ScopedTextField
-                    label="Name"
-                    path="name"
-                    value={draft.name}
-                    disabled={system}
-                    onChange={(name) =>
-                      update((d) => renameCollection(d, name))
-                    }
-                  />
-                </div>
-                <Select
-                  label="Type"
-                  value={draft.type}
-                  disabled={!!source}
-                  onChange={(e) => changeType(e.target.value as CollectionType)}
-                >
-                  <option value="base">Base</option>
-                  <option value="view">View</option>
-                  <option value="auth">Auth</option>
-                </Select>
+          <form
+            id={formId}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void form.handleSubmit();
+            }}
+            className="flex flex-col gap-4"
+          >
+            <UnclaimedErrors />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <form.Field name="name">
+                  {(field) => (
+                    <ScopedTextField
+                      label="Name"
+                      path="name"
+                      value={field.state.value}
+                      disabled={system}
+                      onChange={field.handleChange}
+                    />
+                  )}
+                </form.Field>
               </div>
-              <Tabs
-                label="Collection sections"
-                tabs={tabs}
-                value={tab}
-                onChange={setTab}
-              />
-              {tab === "fields" &&
-                (draft.type === "view" ? (
-                  <ViewQuery draft={draft} update={update} />
-                ) : (
-                  <FieldsTab draft={draft} update={update} reshape={reshape} />
-                ))}
-              {tab === "rules" && <RulesTab draft={draft} update={update} />}
-              {tab === "options" && (
-                <AuthOptions
+              <Select
+                label="Type"
+                value={draft.type}
+                disabled={!!source}
+                onChange={(e) => changeType(e.target.value as CollectionType)}
+              >
+                <option value="base">Base</option>
+                <option value="view">View</option>
+                <option value="auth">Auth</option>
+              </Select>
+            </div>
+            <Tabs
+              label="Collection sections"
+              tabs={tabs}
+              value={tab}
+              onChange={setTab}
+            />
+            {tab === "fields" &&
+              (draft.type === "view" ? (
+                <ViewQuery form={form} draft={draft} />
+              ) : (
+                <FieldsTab
+                  form={form}
                   draft={draft}
-                  update={update}
-                  reshape={reshape}
-                  saved={source}
+                  clearError={clearError}
+                  onIndexes={changeIndexes}
                 />
-              )}
-            </form>
-          ) : (
-            <p className="text-sm">Loading…</p>
-          )}
+              ))}
+            {tab === "rules" && <RulesTab form={form} draft={draft} />}
+            {tab === "options" && (
+              <AuthOptions
+                form={form}
+                draft={draft}
+                clearError={clearError}
+                saved={source}
+              />
+            )}
+          </form>
         </Dialog>
         {pending && (
           <ChangesDialog
             changes={pending}
             onCancel={() => setPending(null)}
-            onConfirm={() => void submit()}
+            onConfirm={() => void form.handleSubmit({ confirmed: true })}
           />
         )}
       </ErrorScope>
@@ -390,21 +416,26 @@ function ScopedTextField({
 }
 
 function ViewQuery({
+  form,
   draft,
-  update,
 }: {
+  form: EditorForm;
   draft: CollectionDraft;
-  update: Update;
 }) {
+  const error = useFieldError("viewQuery");
   return (
     <div className="flex flex-col gap-3">
-      <CodeArea
-        label="Select query"
-        rows={8}
-        value={String(draft.viewQuery ?? "")}
-        error={useFieldError("viewQuery")}
-        onChange={(viewQuery) => update((d) => ({ ...d, viewQuery }))}
-      />
+      <form.Field name="viewQuery">
+        {(field) => (
+          <CodeArea
+            label="Select query"
+            rows={8}
+            value={field.state.value ?? ""}
+            error={error}
+            onChange={field.handleChange}
+          />
+        )}
+      </form.Field>
       {draft.fields.length > 0 && (
         <div className="flex flex-col gap-1">
           <p className="text-sm font-medium">Fields from the saved query</p>
@@ -425,39 +456,57 @@ function ViewQuery({
 }
 
 function FieldsTab({
+  form,
   draft,
-  update,
-  reshape,
+  clearError,
+  onIndexes,
 }: {
+  form: EditorForm;
   draft: CollectionDraft;
-  update: Update;
-  reshape: Update;
+  clearError: () => void;
+  onIndexes: (indexes: string[]) => void;
 }) {
   const [newType, setNewType] = useState<FieldType>("text");
-  let index = 0;
-  const last = draft.fields.length - 1;
+  const keys = useStore(form.store, (s) => s.values.fields.map((f) => f._key));
+  const removed = useStore(form.store, (s) =>
+    s.values.fields.map((f) => !!f._removed),
+  );
+  let active = 0;
+  const activeIndex = removed.map((r) => (r ? -1 : active++));
+
+  const remove = (i: number) => {
+    const field = form.getFieldValue(`fields[${i}]`);
+    if (field.system) return;
+    clearError();
+    if (field.id) form.setFieldValue(`fields[${i}]._removed`, true);
+    else form.removeFieldValue("fields", i);
+  };
+
   return (
     <div className="flex flex-col gap-3">
-      {draft.fields.map((field, i) => (
-        <FieldRow
-          key={field._key}
-          field={field}
-          errorPath={`fields.${field._removed ? -1 : index++}`}
-          canMoveUp={i > 0}
-          canMoveDown={i < last}
-          onChange={(patch) =>
-            update((d) => ({
-              ...d,
-              fields: d.fields.map((f) =>
-                f._key === field._key ? { ...f, ...patch } : f,
-              ),
-            }))
-          }
-          onRename={(name) => update((d) => renameField(d, field._key, name))}
-          onMove={(by) => reshape((d) => moveField(d, field._key, by))}
-          onRemove={() => reshape((d) => removeField(d, field._key))}
-          onRestore={() => reshape((d) => restoreField(d, field._key))}
-        />
+      {keys.map((key, i) => (
+        <form.Field key={key} name={`fields[${i}]`}>
+          {(row) => (
+            <FieldRow
+              field={row.state.value}
+              errorPath={`fields.${removed[i] ? -1 : activeIndex[i]}`}
+              canMoveUp={i > 0}
+              canMoveDown={i < keys.length - 1}
+              onChange={(patch) =>
+                row.handleChange((f) => ({ ...f, ...patch }))
+              }
+              onMove={(by) => {
+                clearError();
+                form.moveFieldValues("fields", i, i + by);
+              }}
+              onRemove={() => remove(i)}
+              onRestore={() => {
+                clearError();
+                form.setFieldValue(`fields[${i}]._removed`, false);
+              }}
+            />
+          )}
+        </form.Field>
       ))}
       <div className="flex items-end gap-2">
         <div className="flex-1">
@@ -473,14 +522,19 @@ function FieldsTab({
             ))}
           </Select>
         </div>
-        <Button onClick={() => reshape((d) => addField(d, newType))}>
+        <Button
+          onClick={() => {
+            clearError();
+            form.pushFieldValue(
+              "fields",
+              newField(form.state.values.fields, newType),
+            );
+          }}
+        >
           Add field
         </Button>
       </div>
-      <IndexesEditor
-        draft={draft}
-        onChange={(indexes) => reshape((d) => setIndexes(d, indexes))}
-      />
+      <IndexesEditor draft={draft} onChange={onIndexes} />
     </div>
   );
 }

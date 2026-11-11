@@ -1,4 +1,5 @@
 import type { SqlResult } from "@heybe/client";
+import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
@@ -8,46 +9,58 @@ import { Table, Td, Th } from "../ui/Table";
 
 export function SqlPage() {
   const client = useClient();
-  const [query, setQuery] = useState("");
-  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<SqlResult | null>(null);
   const [error, setError] = useState("");
 
-  const run = async () => {
-    if (!query.trim() || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      setResult(await client.sql.run(query));
-    } catch (err) {
-      setResult(null);
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const form = useForm({
+    defaultValues: { query: "" },
+    onSubmit: async ({ value }) => {
+      if (!value.query.trim()) return;
+      setError("");
+      try {
+        setResult(await client.sql.run(value.query));
+      } catch (err) {
+        setResult(null);
+        setError(errorMessage(err));
+      }
+    },
+  });
 
   return (
-    <div className="flex flex-col gap-3">
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void form.handleSubmit();
+      }}
+      className="flex flex-col gap-3"
+    >
       <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
         Queries run directly on the database. They skip API rules, hooks and
         migrations.
       </p>
-      <CodeArea
-        label="SQL query"
-        rows={8}
-        value={query}
-        onChange={setQuery}
-        onRun={() => void run()}
-      />
-      <Button
-        className="self-start"
-        variant="primary"
-        loading={busy}
-        onClick={() => void run()}
-      >
-        Run
-      </Button>
+      <form.Field name="query">
+        {(field) => (
+          <CodeArea
+            label="SQL query"
+            rows={8}
+            value={field.state.value}
+            onChange={field.handleChange}
+            onRun={() => void form.handleSubmit()}
+          />
+        )}
+      </form.Field>
+      <form.Subscribe selector={(s) => s.isSubmitting}>
+        {(isSubmitting) => (
+          <Button
+            type="submit"
+            className="self-start"
+            variant="primary"
+            loading={isSubmitting}
+          >
+            Run
+          </Button>
+        )}
+      </form.Subscribe>
       {error && (
         <div
           role="alert"
@@ -84,6 +97,6 @@ export function SqlPage() {
           )}
         </>
       )}
-    </div>
+    </form>
   );
 }

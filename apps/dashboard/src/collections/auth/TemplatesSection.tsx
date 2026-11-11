@@ -4,41 +4,42 @@ import { Button } from "../../ui/Button";
 import type { TemplateKind } from "./mjml-starters";
 import { TemplateBody } from "./TemplateBody";
 import { TestEmailDialog } from "./TestEmailDialog";
-import { TextOpt, getIn, groupClass, type OptCtx } from "./opts";
+import { TextOpt, getIn, groupClass, type OptCtx, type OptPath } from "./opts";
+import type { EmailTemplate } from "../editor-state";
 import { Section } from "../../ui/Section";
 
 const TEMPLATES: {
-  path: string[];
+  path: OptPath<EmailTemplate>;
   label: string;
   kind: TemplateKind;
   template: string;
 }[] = [
   {
-    path: ["verificationTemplate"],
+    path: "verificationTemplate",
     label: "Verification email",
     kind: "verification",
     template: "verification",
   },
   {
-    path: ["resetPasswordTemplate"],
+    path: "resetPasswordTemplate",
     label: "Password reset email",
     kind: "resetPassword",
     template: "password-reset",
   },
   {
-    path: ["confirmEmailChangeTemplate"],
+    path: "confirmEmailChangeTemplate",
     label: "Email change email",
     kind: "confirmEmailChange",
     template: "email-change",
   },
   {
-    path: ["otp", "emailTemplate"],
+    path: "otp.emailTemplate",
     label: "OTP email",
     kind: "otp",
     template: "otp",
   },
   {
-    path: ["authAlert", "emailTemplate"],
+    path: "authAlert.emailTemplate",
     label: "Login alert email",
     kind: "authAlert",
     template: "login-alert",
@@ -57,12 +58,12 @@ export function TemplatesSection({
     <Section title="Email templates">
       {TEMPLATES.map(({ path, label, kind, template }) => {
         const changed =
-          JSON.stringify(getIn(c.draft, path)) !==
+          JSON.stringify(c.form.getFieldValue(path)) !==
           JSON.stringify(getIn(saved, path));
         return (
           <fieldset key={template} className={groupClass}>
             <legend className="px-1 text-sm font-medium">{label}</legend>
-            <TextOpt c={c} path={[...path, "subject"]} label="Subject" />
+            <TextOpt c={c} path={`${path}.subject`} label="Subject" />
             <TemplateBody
               c={c}
               path={path}

@@ -13,7 +13,6 @@ export interface FieldRowProps {
   canMoveUp: boolean;
   canMoveDown: boolean;
   onChange: (patch: Partial<FieldModel>) => void;
-  onRename: (name: string) => void;
   onMove: (by: -1 | 1) => void;
   onRemove: () => void;
   onRestore: () => void;
@@ -42,7 +41,6 @@ function ActiveRow({
   canMoveUp,
   canMoveDown,
   onChange,
-  onRename,
   onMove,
   onRemove,
 }: FieldRowProps) {
@@ -64,7 +62,7 @@ function ActiveRow({
             value={field.name}
             disabled={field.system}
             error={nameError}
-            onChange={(e) => onRename(e.target.value)}
+            onChange={(e) => onChange({ name: e.target.value })}
           />
         </div>
         <span className="pt-7 text-xs text-slate-500 dark:text-slate-400">

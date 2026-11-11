@@ -14,35 +14,47 @@ export function LogsSettingsDialog({
   settings: SettingsModel;
   onClose(): void;
 }) {
-  const { draft, set, save, submit } = useSettingsForm(settings, onClose);
-  const { logs } = draft;
+  const { form, save, submit } = useSettingsForm(settings, onClose);
   return (
     <ErrorScope error={save.error}>
       <Dialog open onClose={onClose} title="Logs settings">
         <form onSubmit={submit} className="flex flex-col gap-3">
           <UnclaimedErrors />
-          <NumberInput
-            path="logs.maxDays"
-            label="Retention (days)"
-            value={logs.maxDays}
-            onChange={(maxDays) => set("logs", { maxDays })}
-          />
-          <MinLevel
-            value={logs.minLevel}
-            onChange={(minLevel) => set("logs", { minLevel })}
-          />
-          <CheckInput
-            path="logs.logIP"
-            label="Log IP addresses"
-            checked={logs.logIP}
-            onChange={(logIP) => set("logs", { logIP })}
-          />
-          <CheckInput
-            path="logs.logAuthId"
-            label="Log authenticated user ids"
-            checked={logs.logAuthId}
-            onChange={(logAuthId) => set("logs", { logAuthId })}
-          />
+          <form.Field name="settings.logs.maxDays">
+            {(field) => (
+              <NumberInput
+                path="logs.maxDays"
+                label="Retention (days)"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.logs.minLevel">
+            {(field) => (
+              <MinLevel
+                value={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.logs.logIP">
+            {(field) => (
+              <CheckInput
+                path="logs.logIP"
+                label="Log IP addresses"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.logs.logAuthId">
+            {(field) => (
+              <CheckInput
+                path="logs.logAuthId"
+                label="Log authenticated user ids"
+                field={field}
+              />
+            )}
+          </form.Field>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose}>Cancel</Button>
             <Button type="submit" variant="primary" loading={save.isPending}>

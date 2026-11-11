@@ -1,4 +1,5 @@
 import type { CollectionModel } from "@heybe/client";
+import { useForm } from "@tanstack/react-form";
 import { fieldDefaults, nextKey, type FieldType } from "./field-types";
 import { IDENT, quote, randomIndexName, unquote } from "./index-sql";
 
@@ -18,6 +19,11 @@ export type FieldModel = {
   [option: string]: unknown;
 };
 
+export type Provider = Record<string, unknown> & { name: string };
+export type EmailTemplate = { subject: string; body: string };
+type Rule = string | null;
+type Token = { duration: number; secret?: string };
+
 export type CollectionDraft = {
   id: string;
   name: string;
@@ -26,7 +32,38 @@ export type CollectionDraft = {
   system: boolean;
   indexes: string[];
   fields: FieldModel[];
-  [key: string]: unknown;
+  created?: string;
+  updated?: string;
+  viewQuery?: string;
+  listRule?: Rule;
+  viewRule?: Rule;
+  createRule?: Rule;
+  updateRule?: Rule;
+  deleteRule?: Rule;
+  authRule?: Rule;
+  manageRule?: Rule;
+  passwordAuth?: { enabled: boolean; identityFields: string[] };
+  oauth2?: {
+    enabled: boolean;
+    providers: Provider[];
+    mappedFields: Record<"id" | "name" | "username" | "avatarURL", string>;
+  };
+  mfa?: { enabled: boolean; duration: number; rule: string };
+  otp?: {
+    enabled: boolean;
+    duration: number;
+    length: number;
+    emailTemplate: EmailTemplate;
+  };
+  authAlert?: { enabled: boolean; emailTemplate: EmailTemplate };
+  authToken?: Token;
+  passwordResetToken?: Token;
+  emailChangeToken?: Token;
+  verificationToken?: Token;
+  fileToken?: Token;
+  verificationTemplate?: EmailTemplate;
+  resetPasswordTemplate?: EmailTemplate;
+  confirmEmailChangeTemplate?: EmailTemplate;
 };
 
 export interface Changes {
@@ -44,7 +81,7 @@ const RULES = [
   "deleteRule",
   "authRule",
   "manageRule",
-];
+] as const;
 
 const ON = new RegExp(`\\bON\\s+(${IDENT})`, "i");
 const INDEX_NAME = new RegExp(
@@ -90,7 +127,7 @@ export function draftFrom(c: CollectionModel): CollectionDraft {
     fields: copy.fields.map(
       (f) => ({ ...f, _key: nextKey(), _original: f.name }) as FieldModel,
     ),
-  };
+  } as CollectionDraft;
 }
 
 export function newDraft(
@@ -117,14 +154,15 @@ export function duplicateDraft(c: CollectionModel): CollectionDraft {
   };
 }
 
-export function addField(d: CollectionDraft, type: FieldType): CollectionDraft {
-  const taken = new Set(d.fields.map((f) => f.name.toLowerCase()));
+export function newField(fields: FieldModel[], type: FieldType): FieldModel {
+  const taken = new Set(fields.map((f) => f.name.toLowerCase()));
   let name = "field";
   for (let i = 2; taken.has(name); i++) name = `field${i}`;
-  return {
-    ...d,
-    fields: [...d.fields, { ...fieldDefaults(type), ...NEW_FIELD[type], name }],
-  };
+  return { ...fieldDefaults(type), ...NEW_FIELD[type], name };
+}
+
+export function addField(d: CollectionDraft, type: FieldType): CollectionDraft {
+  return { ...d, fields: [...d.fields, newField(d.fields, type)] };
 }
 
 export function renameField(
@@ -258,3 +296,16 @@ export function hasChanges(c: Changes): boolean {
     c.changedRules.length > 0
   );
 }
+
+export function useEditorForm(
+  initial: CollectionDraft,
+  onSubmit: (draft: CollectionDraft, confirmed: boolean) => Promise<void>,
+) {
+  return useForm({
+    defaultValues: initial,
+    onSubmitMeta: { confirmed: false },
+    onSubmit: ({ value, meta }) => onSubmit(value, meta.confirmed),
+  });
+}
+
+export type EditorForm = ReturnType<typeof useEditorForm>;

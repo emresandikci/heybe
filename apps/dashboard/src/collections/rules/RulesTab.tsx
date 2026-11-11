@@ -1,5 +1,5 @@
 import { useCollections } from "../../app/queries";
-import type { CollectionDraft } from "../editor-state";
+import type { CollectionDraft, EditorForm } from "../editor-state";
 import { RuleInput } from "./RuleInput";
 import { ruleChips, type RuleKey } from "./rule-chips";
 
@@ -30,25 +30,28 @@ function rulesFor(type: CollectionDraft["type"]) {
 }
 
 export function RulesTab({
+  form,
   draft,
-  update,
 }: {
+  form: EditorForm;
   draft: CollectionDraft;
-  update: (fn: (d: CollectionDraft) => CollectionDraft) => void;
 }) {
   const collections = useCollections();
   return (
     <div className="flex flex-col gap-3">
       {rulesFor(draft.type).map(({ key, label, emptyHint }) => (
-        <RuleInput
-          key={key}
-          label={label}
-          emptyHint={emptyHint}
-          errorPath={key}
-          value={(draft[key] as string | null | undefined) ?? null}
-          chips={ruleChips(draft, collections.data ?? [], key)}
-          onChange={(value) => update((d) => ({ ...d, [key]: value }))}
-        />
+        <form.Field key={key} name={key}>
+          {(field) => (
+            <RuleInput
+              label={label}
+              emptyHint={emptyHint}
+              errorPath={key}
+              value={field.state.value ?? null}
+              chips={ruleChips(draft, collections.data ?? [], key)}
+              onChange={field.handleChange}
+            />
+          )}
+        </form.Field>
       ))}
     </div>
   );

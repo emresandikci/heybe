@@ -23,10 +23,8 @@ export function ApplicationPage() {
 }
 
 function ApplicationForm({ settings }: { settings: SettingsModel }) {
-  const { draft, set, version, save, submit, reset } =
-    useSettingsForm(settings);
+  const { form, version, save, submit, reset } = useSettingsForm(settings);
 
-  const { meta, rateLimits, trustedProxy, batch } = draft;
   return (
     <ErrorScope error={save.error}>
       <form
@@ -36,96 +34,139 @@ function ApplicationForm({ settings }: { settings: SettingsModel }) {
       >
         <UnclaimedErrors />
         <Section title="Application">
-          <TextInput
-            path="meta.appName"
-            label="Application name"
-            value={meta.appName}
-            onChange={(appName) => set("meta", { appName })}
-          />
-          <TextInput
-            path="meta.appURL"
-            label="Application URL"
-            value={meta.appURL}
-            onChange={(appURL) => set("meta", { appURL })}
-          />
-          <TextInput
-            path="meta.accentColor"
-            label="Accent color"
-            type="color"
-            value={meta.accentColor}
-            onChange={(accentColor) => set("meta", { accentColor })}
-          />
-          <CheckInput
-            path="meta.hideControls"
-            label="Hide collection controls"
-            checked={meta.hideControls}
-            onChange={(hideControls) => set("meta", { hideControls })}
-          />
+          <form.Field name="settings.meta.appName">
+            {(field) => (
+              <TextInput
+                path="meta.appName"
+                label="Application name"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.meta.appURL">
+            {(field) => (
+              <TextInput
+                path="meta.appURL"
+                label="Application URL"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.meta.accentColor">
+            {(field) => (
+              <TextInput
+                path="meta.accentColor"
+                label="Accent color"
+                type="color"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.meta.hideControls">
+            {(field) => (
+              <CheckInput
+                path="meta.hideControls"
+                label="Hide collection controls"
+                field={field}
+              />
+            )}
+          </form.Field>
         </Section>
         <Section title="Access">
-          <LinesInput
-            path="superuserIPs"
-            label="Superuser IPs"
-            hint="Leave empty to allow any IP."
-            value={draft.superuserIPs}
-            onChange={(ips) => set("superuserIPs", ips)}
-          />
-          <LinesInput
-            path="trustedProxy.headers"
-            label="Trusted proxy"
-            value={trustedProxy.headers}
-            onChange={(headers) => set("trustedProxy", { headers })}
-          />
-          <CheckInput
-            path="trustedProxy.useLeftmostIP"
-            label="Use leftmost IP"
-            checked={trustedProxy.useLeftmostIP}
-            onChange={(useLeftmostIP) => set("trustedProxy", { useLeftmostIP })}
-          />
+          <form.Field name="settings.superuserIPs">
+            {(field) => (
+              <LinesInput
+                path="superuserIPs"
+                label="Superuser IPs"
+                hint="Leave empty to allow any IP."
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.trustedProxy.headers">
+            {(field) => (
+              <LinesInput
+                path="trustedProxy.headers"
+                label="Trusted proxy"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.trustedProxy.useLeftmostIP">
+            {(field) => (
+              <CheckInput
+                path="trustedProxy.useLeftmostIP"
+                label="Use leftmost IP"
+                field={field}
+              />
+            )}
+          </form.Field>
         </Section>
         <Section title="Rate limits">
-          <CheckInput
-            path="rateLimits.enabled"
-            label="Enable rate limits"
-            checked={rateLimits.enabled}
-            onChange={(enabled) => set("rateLimits", { enabled })}
-          />
-          <RulesTable
-            rules={rateLimits.rules}
-            onChange={(rules) => set("rateLimits", { rules })}
-          />
-          <LinesInput
-            path="rateLimits.excludedIPs"
-            label="Excluded IPs"
-            value={rateLimits.excludedIPs}
-            onChange={(excludedIPs) => set("rateLimits", { excludedIPs })}
-          />
+          <form.Field name="settings.rateLimits.enabled">
+            {(field) => (
+              <CheckInput
+                path="rateLimits.enabled"
+                label="Enable rate limits"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.rateLimits.rules">
+            {(field) => (
+              <RulesTable
+                rules={field.state.value}
+                onChange={field.handleChange}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.rateLimits.excludedIPs">
+            {(field) => (
+              <LinesInput
+                path="rateLimits.excludedIPs"
+                label="Excluded IPs"
+                field={field}
+              />
+            )}
+          </form.Field>
         </Section>
         <Section title="Batch API">
-          <CheckInput
-            path="batch.enabled"
-            label="Enable batch API"
-            checked={batch.enabled}
-            onChange={(enabled) => set("batch", { enabled })}
-          />
-          <NumberInput
-            path="batch.maxRequests"
-            label="Max requests"
-            value={batch.maxRequests}
-            onChange={(maxRequests) => set("batch", { maxRequests })}
-          />
-          <NumberInput
-            path="batch.timeout"
-            label="Timeout (seconds)"
-            value={batch.timeout}
-            onChange={(timeout) => set("batch", { timeout })}
-          />
-          <NumberInput
-            path="batch.maxBodySize"
-            label="Max body size (bytes)"
-            value={batch.maxBodySize}
-            onChange={(maxBodySize) => set("batch", { maxBodySize })}
-          />
+          <form.Field name="settings.batch.enabled">
+            {(field) => (
+              <CheckInput
+                path="batch.enabled"
+                label="Enable batch API"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.batch.maxRequests">
+            {(field) => (
+              <NumberInput
+                path="batch.maxRequests"
+                label="Max requests"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.batch.timeout">
+            {(field) => (
+              <NumberInput
+                path="batch.timeout"
+                label="Timeout (seconds)"
+                field={field}
+              />
+            )}
+          </form.Field>
+          <form.Field name="settings.batch.maxBodySize">
+            {(field) => (
+              <NumberInput
+                path="batch.maxBodySize"
+                label="Max body size (bytes)"
+                field={field}
+              />
+            )}
+          </form.Field>
         </Section>
         <div className="flex gap-2">
           <Button type="submit" variant="primary" loading={save.isPending}>
