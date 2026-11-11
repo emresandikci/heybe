@@ -2,9 +2,19 @@ import { expect } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 const PB_VERSION = "0.41.1";
+const PB_SHA256 = {
+  darwin_arm64:
+    "e07ff212b7a7ab53c70d47b11d48ac7d011b4961b6eccbcd231bffe7a54173a0",
+  darwin_amd64:
+    "290fba606621ea2edcf777f32a66c7f065bac2cb2175a1556713884bc951988c",
+  linux_amd64:
+    "7504ec99a85fe405fc9941b4d94bdea20733b53707c8251b66fd0daa1444347e",
+  linux_arm64:
+    "341a249f97f4ff1ba8dfff81d357eb281cd346fbddae8b6ea43193f0647e036d",
+};
 export const SUPERUSER_EMAIL = "test@example.com";
 export const SUPERUSER_PASSWORD = "1234567890";
 const REPO_ROOT = resolve(import.meta.dir, "../../..");
@@ -44,6 +54,16 @@ interface Started {
 let active: Started | null = null;
 let idMaps = new Map<Target["name"], Map<string, string>>();
 
+export async function verifySha256(
+  file: string,
+  expected: string,
+): Promise<void> {
+  const hasher = new Bun.CryptoHasher("sha256");
+  hasher.update(await Bun.file(file).arrayBuffer());
+  if (hasher.digest("hex") !== expected)
+    throw new Error(`PocketBase download checksum mismatch: ${basename(file)}`);
+}
+
 async function pocketbaseBinary(): Promise<string> {
   const os = process.platform === "darwin" ? "darwin" : "linux";
   const arch = process.arch === "arm64" ? "arm64" : "amd64";
@@ -57,6 +77,15 @@ async function pocketbaseBinary(): Promise<string> {
   if (!res.ok) throw new Error(`PocketBase download failed: ${res.status}`);
   const zip = join(dir, "pocketbase.zip");
   await Bun.write(zip, res);
+  try {
+    await verifySha256(
+      zip,
+      PB_SHA256[`${os}_${arch}` as keyof typeof PB_SHA256],
+    );
+  } catch (err) {
+    await rm(zip);
+    throw err;
+  }
   const unzip = Bun.spawn(["unzip", "-o", "-q", zip, "pocketbase", "-d", dir]);
   if ((await unzip.exited) !== 0) throw new Error("PocketBase unzip failed");
   await rm(zip);
@@ -99,20 +128,23 @@ async function startOne(
   name: Target["name"],
   command: string[],
   extraFlags: (dir: string) => string[] = () => [],
+  existingDir?: string,
 ): Promise<{ target: Target; stop(): Promise<void> }> {
-  const dir = await mkdtemp(join(tmpdir(), `heybe-contract-${name}-`));
+  const dir =
+    existingDir ?? (await mkdtemp(join(tmpdir(), `heybe-contract-${name}-`)));
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
-  await runOk([
-    ...command,
-    "superuser",
-    "upsert",
-    SUPERUSER_EMAIL,
-    SUPERUSER_PASSWORD,
-    "--dir",
-    dir,
-    ...extraFlags(dir),
-  ]);
+  if (!existingDir || name === "pocketbase")
+    await runOk([
+      ...command,
+      "superuser",
+      "upsert",
+      SUPERUSER_EMAIL,
+      SUPERUSER_PASSWORD,
+      "--dir",
+      dir,
+      ...extraFlags(dir),
+    ]);
   const proc = Bun.spawn(
     [
       ...command,
@@ -128,7 +160,7 @@ async function startOne(
   const stop = async () => {
     proc.kill();
     await proc.exited;
-    await rm(dir, { recursive: true, force: true });
+    if (!existingDir) await rm(dir, { recursive: true, force: true });
   };
   try {
     await waitHealthy(url, name);
@@ -157,6 +189,38 @@ async function startOne(
     throw err;
   }
   return { target: { name, url, superToken, dir }, stop };
+}
+
+const pbFlags = (dir: string) => [
+  "--migrationsDir",
+  join(dir, "pb_migrations"),
+  "--hooksDir",
+  join(dir, "pb_hooks"),
+];
+
+// runs on an existing data dir and leaves it in place on stop
+export async function startPocketBase(
+  dataDir: string,
+): Promise<Target & { stop(): Promise<void> }> {
+  const { target, stop } = await startOne(
+    "pocketbase",
+    [await pocketbaseBinary()],
+    pbFlags,
+    dataDir,
+  );
+  return { ...target, stop };
+}
+
+export async function startHeybe(
+  dataDir: string,
+): Promise<Target & { stop(): Promise<void> }> {
+  const { target, stop } = await startOne(
+    "heybe",
+    ["bun", CLI],
+    (dir) => ["--migrationsDir", join(dir, "heybe_migrations")],
+    dataDir,
+  );
+  return { ...target, stop };
 }
 
 export async function startTargets(
