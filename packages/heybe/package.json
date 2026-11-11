@@ -14,7 +14,9 @@
     "release": "semantic-release -e semantic-release-monorepo",
     "test": "bun test src",
     "test:contract": "bun test ./contract/*.contract.ts",
-    "bench": "bun bench/run.ts"
+    "bench": "bun bench/run.ts",
+    "build:binary": "bun scripts/build-binary.ts",
+    "smoke:binary": "bun scripts/smoke-binary.ts"
   },
   "devDependencies": {
     "@heybe/configs": "workspace:*",

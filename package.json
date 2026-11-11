@@ -28,6 +28,7 @@
     "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/heybe --filter ./packages/client --filter ./apps/dashboard exec tsc -p .",
     "test:e2e": "pnpm --filter @heybe/dashboard e2e",
     "bench": "pnpm --filter heybe bench",
+    "smoke:binary": "pnpm --filter heybe smoke:binary",
     "test:client": "pnpm --filter @heybe/client test:integration",
     "smoke:node": "pnpm -r --filter ./packages/query --filter ./packages/client build && pnpm --filter @heybe/client exec node --input-type=module -e \"await import('@heybe/query'); await import('@heybe/client')\"  && pnpm --filter @heybe/client exec tsc -p smoke"
   },
