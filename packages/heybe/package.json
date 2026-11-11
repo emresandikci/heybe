@@ -4,6 +4,20 @@
   "type": "module",
   "license": "MIT",
   "exports": "./src/index.ts",
+  "bin": {
+    "heybe": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.fixture*.ts",
+    "!src/import/pb-fixture.ts",
+    "!src/**/testdata",
+    "ui/dist"
+  ],
+  "engines": {
+    "bun": ">=1.4.4"
+  },
   "author": "emresandikci",
   "repository": {
     "type": "git",
@@ -16,7 +30,8 @@
     "test:contract": "bun test ./contract/*.contract.ts",
     "bench": "bun bench/run.ts",
     "build:binary": "bun scripts/build-binary.ts",
-    "smoke:binary": "bun scripts/smoke-binary.ts"
+    "smoke:binary": "bun scripts/smoke-binary.ts",
+    "prepack": "pnpm --filter @heybe/dashboard build"
   },
   "devDependencies": {
     "@heybe/configs": "workspace:*",
@@ -24,7 +39,7 @@
     "autocannon": "catalog:"
   },
   "dependencies": {
-    "@heybe/query": "workspace:*",
+    "@heybe/query": "workspace:^",
     "acme-client": "^5.4.0",
     "file-type": "^22.3.0",
     "nodemailer": "^10.4.0",

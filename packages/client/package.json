@@ -27,10 +27,10 @@
     "test:integration": "bun test ./integration/*.integration.ts"
   },
   "peerDependencies": {
-    "@heybe/query": "workspace:*"
+    "@heybe/query": "workspace:^"
   },
   "devDependencies": {
     "@heybe/configs": "workspace:*",
-    "@heybe/query": "workspace:*"
+    "@heybe/query": "workspace:^"
   }
 }

@@ -1,4 +1,5 @@
 const MAIN_BRANCH_NAME = "main";
+const NPM_PUBLISH = false;
 
 const isMainBranch =
   process.env.GITHUB_REF_NAME === MAIN_BRANCH_NAME ||
@@ -36,6 +37,14 @@ module.exports = {
     "@semantic-release/release-notes-generator",
     ...changeLogPlugin,
     ["@semantic-release/npm", { npmPublish: false }],
+    ...(NPM_PUBLISH
+      ? [
+          [
+            "@semantic-release/exec",
+            { publishCmd: "pnpm publish --no-git-checks --access public" },
+          ],
+        ]
+      : []),
     [
       "@semantic-release/git",
       {
