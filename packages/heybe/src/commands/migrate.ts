@@ -6,6 +6,7 @@ import { snapshotTemplate } from "../migrations/automigrate";
 import { migrationsList } from "../migrations/loader";
 import { type Io, MigrationsRunner } from "../migrations/runner";
 import { GLOBAL_OPTIONS, parseCommandArgs } from "./args";
+import type { CommandHelp } from "./help";
 
 const BLANK_TEMPLATE = `import { migrate } from "heybe";
 
@@ -74,6 +75,18 @@ async function create(
   writeFileSync(file, template);
   io.out(`Successfully created file ${JSON.stringify(file)}`);
 }
+
+export const migrateHelp: CommandHelp = {
+  use: "migrate",
+  description: "Executes app DB migration scripts",
+  flags: [],
+  long: `Supported arguments are:
+- up            - runs all available migrations
+- down [number] - reverts the last [number] applied migrations
+- create name   - creates new blank migration template file
+- collections   - creates new migration file with snapshot of the local collections configuration
+- history-sync  - ensures that the _migrations history table doesn't have references to deleted migration files`,
+};
 
 // Port of PB plugins/migratecmd
 export async function migrateCommand(

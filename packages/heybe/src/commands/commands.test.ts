@@ -10,6 +10,7 @@ import {
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pkg from "../../package.json" with { type: "json" };
 import { type App, type AppOptions, createApp } from "../app";
 import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
@@ -18,11 +19,17 @@ import { superuserCommand } from "./superuser";
 let app: App;
 let out: string[];
 let err: string[];
+let stdout: string[];
 
 beforeEach(() => {
   app = testApp({ argv: [] });
   out = [];
   err = [];
+  stdout = [];
+  spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    stdout.push(String(chunk));
+    return true;
+  });
   spyOn(console, "log").mockImplementation((...a) => {
     out.push(a.join(" "));
   });
@@ -176,13 +183,97 @@ describe("start", () => {
     expect(() => app.command("x", () => {})).toThrow();
   });
 
-  test("an unknown or missing command prints the usage and exits 1", async () => {
-    for (const argv of [["nope"], []]) {
-      const cli = testApp({ argv });
-      expect(await cli.start()).toBe(1);
-      expect(err.at(-1)).toContain("serve");
-      expect(err.at(-1)).toContain("superuser");
+  test("no command prints the root help and exits 0", async () => {
+    const cli = testApp({ argv: [] });
+    expect(await cli.start()).toBe(0);
+    const text = stdout.join("");
+    expect(text).toStartWith("heybe CLI\n");
+    expect(text).toContain("  -v, --version");
+    expect(text).toContain("  superuser ");
+  });
+
+  test("an unknown command prints the cobra error and exits 1", async () => {
+    const cli = testApp({ argv: ["nope"] });
+    expect(await cli.start()).toBe(1);
+    expect(err.at(-1)).toMatch(
+      /^\d{4}\/\d\d\/\d\d \d\d:\d\d:\d\d unknown command "nope" for "heybe"$/,
+    );
+  });
+
+  test("--version wins over a command and never boots it", async () => {
+    const serve = mock(() => {});
+    const cli = testApp({ argv: ["--version", "serve"] });
+    cli.onBootstrap(async (e) => {
+      serve();
+      await e.next();
+    });
+    expect(await cli.start()).toBe(0);
+    expect(stdout.join("")).toBe(`heybe version ${pkg.version}\n`);
+    expect(serve).not.toHaveBeenCalled();
+  });
+
+  test("superuser without or with an unknown subcommand prints its help", async () => {
+    for (const argv of [["superuser"], ["superuser", "nope"]]) {
+      stdout.length = 0;
+      expect(await testApp({ argv }).start()).toBe(0);
+      expect(stdout.join("")).toStartWith("Manage superusers\n");
     }
+  });
+
+  test("unknown flags fail per command", async () => {
+    for (const [argv, message] of [
+      [["serve", "--bogus"], "unknown flag: --bogus"],
+      [["superuser", "upsert", "--bogus"], "unknown flag: --bogus"],
+      [["serve", "-v"], "unknown shorthand flag: 'v' in -v"],
+      [["serve", "--version"], "unknown flag: --version"],
+    ] as const) {
+      expect(await testApp({ argv: [...argv] }).start()).toBe(1);
+      expect(err.at(-1)).toEndWith(` ${message}`);
+    }
+  });
+
+  test("a leading unknown flag swallows the next argument and prints the root help", async () => {
+    for (const argv of [
+      ["--bogus", "serve"],
+      ["--dir", "--help"],
+    ]) {
+      stdout.length = 0;
+      expect(await testApp({ argv }).start()).toBe(0);
+      expect(stdout.join("")).toStartWith("heybe CLI\n");
+    }
+  });
+
+  test("a string flag takes --help as its value", async () => {
+    const cli = testApp({ argv: ["serve", "--http", "--help"] });
+    expect(await cli.start()).toBe(1);
+    expect(stdout.join("")).toBe("");
+  });
+
+  test("--version prints the package version", async () => {
+    for (const flag of ["--version", "-v"]) {
+      stdout.length = 0;
+      expect(await testApp({ argv: [flag] }).start()).toBe(0);
+      expect(stdout.join("")).toBe(`heybe version ${pkg.version}\n`);
+    }
+  });
+
+  test("--help prints the deepest matching command help without bootstrapping", async () => {
+    const boots = mock(() => {});
+    for (const [argv, title] of [
+      [["serve", "--http", "127.0.0.1:0", "--help"], "Starts the web server"],
+      [["superuser", "upsert", "-h"], "Creates, or updates"],
+      [["--help"], "heybe CLI"],
+    ] as const) {
+      stdout.length = 0;
+      const cli = testApp({ argv: [...argv] });
+      cli.onBootstrap(async (e) => {
+        boots();
+        await e.next();
+      });
+      expect(await cli.start()).toBe(0);
+      expect(stdout.join("")).toStartWith(title);
+    }
+    expect(boots).not.toHaveBeenCalled();
   });
 
   test("a failing command prints the error and exits 1", async () => {

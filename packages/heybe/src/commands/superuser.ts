@@ -4,8 +4,48 @@ import { isEmail } from "../fields/email";
 import { internalRecords } from "../records/internal";
 import { ValidationError } from "../util";
 import { parseCommandArgs } from "./args";
+import type { CommandHelp } from "./help";
 
 const SUPERUSERS = "_superusers";
+
+export const superuserHelp: CommandHelp = {
+  use: "superuser",
+  description: "Manage superusers",
+  flags: [],
+  commands: [
+    {
+      use: "create",
+      description: "Creates a new superuser",
+      example: "superuser create test@example.com 1234567890",
+    },
+    {
+      use: "delete",
+      description: "Deletes an existing superuser",
+      example: "superuser delete test@example.com",
+    },
+    {
+      use: "ips",
+      description:
+        "Updates the superuser IPs whitelist setting (the IPs/subnets arguments must be space separated; leave empty to clear the whitelist restriction)",
+      example: "superuser ips 127.0.0.1 10.0.0.0/24",
+    },
+    {
+      use: "otp",
+      description: "Creates a new OTP for the specified superuser",
+      example: "superuser otp test@example.com",
+    },
+    {
+      use: "update",
+      description: "Changes the password of a single superuser",
+      example: "superuser update test@example.com 1234567890",
+    },
+    {
+      use: "upsert",
+      description: "Creates, or updates if email exists, a single superuser",
+      example: "superuser upsert test@example.com 1234567890",
+    },
+  ],
+};
 
 function formatErrors(errors: Record<string, unknown>): string {
   const parts = Object.keys(errors)

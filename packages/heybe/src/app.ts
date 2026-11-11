@@ -3,11 +3,13 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { CollectionName, Collections } from "@heybe/query";
+import pkg from "../package.json" with { type: "json" };
 import { parseCommandArgs } from "./commands/args";
-import { migrateCommand } from "./commands/migrate";
-import { serveCommand } from "./commands/serve";
-import { superuserCommand } from "./commands/superuser";
-import { typegenCommand } from "./commands/typegen";
+import { type CommandHelp, routeArgv } from "./commands/help";
+import { migrateCommand, migrateHelp } from "./commands/migrate";
+import { serveCommand, serveHelp } from "./commands/serve";
+import { superuserCommand, superuserHelp } from "./commands/superuser";
+import { typegenCommand, typegenHelp } from "./commands/typegen";
 import { registerAutoBackup } from "./backups/auto";
 import { LOCAL_TEMP_DIR, createBackup } from "./backups/create";
 import { restoreBackup } from "./backups/restore";
@@ -126,7 +128,7 @@ export interface App extends HookBinders, RouterMethods {
   command(
     name: string,
     run: CommandHandler,
-    opts?: { description?: string },
+    opts?: Partial<Omit<CommandHelp, "use">> & { use?: string },
   ): void;
   start(): Promise<number>;
   cron(schedule: string, fn: (app: App) => unknown): string;
@@ -137,6 +139,11 @@ export interface App extends HookBinders, RouterMethods {
 
 const FALSE_VALUES = ["0", "f", "F", "false", "FALSE", "False"];
 const TRUE_VALUES = ["1", "t", "T", "true", "TRUE", "True"];
+
+function logStamp(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 function globalFlags(argv: string[]) {
   const { values, tokens } = parseCommandArgs(argv, {});
@@ -247,7 +254,7 @@ export function createApp(opts: AppOptions = {}): App {
   const router = createRouter();
   const commands = new Map<
     string,
-    { run: CommandHandler; description: string }
+    { run: CommandHandler; help: CommandHelp }
   >();
   const scheduler = new CronScheduler(opts.timers ?? realTimers, now, (m, d) =>
     app.logger.warn(m, d),
@@ -384,28 +391,30 @@ export function createApp(opts: AppOptions = {}): App {
     command: (name, run, opts) => {
       if (commands.has(name))
         throw new Error(`Command "${name}" is already registered`);
-      commands.set(name, { run, description: opts?.description ?? "" });
+      commands.set(name, {
+        run,
+        help: { description: "", ...opts, use: opts?.use ?? name },
+      });
     },
     start: async () => {
-      const { tokens } = parseCommandArgs(argv, {});
-      const first = tokens?.find((t) => t.kind === "positional");
-      const command = first && commands.get(first.value);
-      if (!command) {
-        const lines = [...commands].map(
-          ([name, c]) => `  ${name.padEnd(12)}${c.description}`,
-        );
-        console.error(
-          `Usage: heybe <command>\n\nCommands:\n${lines.join("\n")}`,
-        );
+      const route = routeArgv(
+        argv,
+        [...commands.values()].map((c) => c.help),
+        pkg.version,
+      );
+      if (route.type !== "run") {
+        if (route.type === "print") process.stdout.write(route.text);
+        else console.error(`${logStamp(app.now())} ${route.message}`);
         app.close();
-        return 1;
+        return route.type === "print" ? 0 : 1;
       }
+      const command = commands.get(route.name)!;
       if (app.automigrate) bindAutomigrate(app);
       let code = 0;
       try {
         await app.bootstrap();
         await command.run(
-          argv.filter((_, i) => i !== first.index),
+          argv.filter((_, i) => i !== route.index),
           app,
         );
       } catch (err) {
@@ -482,15 +491,9 @@ export function createApp(opts: AppOptions = {}): App {
   registerAutoBackup(app);
   bindUIExtensions(app);
 
-  app.command("serve", serveCommand, { description: "Starts the web server" });
-  app.command("superuser", superuserCommand, {
-    description: "Manage superusers",
-  });
-  app.command("migrate", (args, a) => migrateCommand(args, a), {
-    description: "Executes app DB migration scripts",
-  });
-  app.command("typegen", typegenCommand, {
-    description: "Generates TypeScript types for the collections",
-  });
+  app.command("serve", serveCommand, serveHelp);
+  app.command("superuser", superuserCommand, superuserHelp);
+  app.command("migrate", (args, a) => migrateCommand(args, a), migrateHelp);
+  app.command("typegen", typegenCommand, typegenHelp);
   return app;
 }
