@@ -176,9 +176,15 @@ export class RequestEvent extends HookEvent {
     } catch {
       throw notFound();
     }
-    const file = Bun.file(path);
+    return this.file(path);
+  }
+
+  // `name` picks the content type when the path's own name does not carry it ($bunfs)
+  file(path: string, name = path): Response {
     return this.send(
-      new Response(file, { headers: { "content-type": file.type } }),
+      new Response(Bun.file(path), {
+        headers: { "content-type": Bun.file(name).type },
+      }),
     );
   }
 

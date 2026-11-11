@@ -7,7 +7,13 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { App, AppOptions } from "../app";
@@ -23,6 +29,7 @@ let root: string;
 let dist: string;
 let app: App | undefined;
 let stop: (() => Promise<void>) | undefined;
+let source: "dir" | "map" = "dir";
 
 const write = (path: string, content: string) => {
   mkdirSync(join(path, ".."), { recursive: true });
@@ -50,7 +57,11 @@ async function start(
   extensions: UIExtension[] = [],
   prepare?: (app: App) => void,
 ): Promise<string> {
-  app = testApp({ dashboardDir: dist, ...opts });
+  const dashboard: AppOptions =
+    source === "dir"
+      ? { dashboardDir: dist }
+      : { dashboardDir: join(root, "none"), dashboardFiles: filesOf(dist) };
+  app = testApp({ ...dashboard, ...opts });
   prepare?.(app);
   app.onServe((e) => {
     e.uiExtensions.push(...extensions);
@@ -61,9 +72,26 @@ async function start(
   return server.url;
 }
 
+const filesOf = (dir: string) =>
+  new Map(
+    readdirSync(dir, { recursive: true, withFileTypes: true })
+      .filter((f) => f.isFile())
+      .map((f) => {
+        const path = join(f.parentPath, f.name);
+        return [path.slice(dir.length + 1), path];
+      }),
+  );
+
 const get = (url: string) => fetch(url, { redirect: "manual" });
 
-describe("dashboard", () => {
+describe.each(["dir", "map"] as const)("dashboard from a %s", (kind) => {
+  beforeEach(() => {
+    source = kind;
+  });
+  afterEach(() => {
+    source = "dir";
+  });
+
   test("GET /_/ serves index.html with the CSP and no cache header", async () => {
     const res = await get(`${await start()}/_/`);
     expect(res.status).toBe(200);
@@ -75,6 +103,8 @@ describe("dashboard", () => {
   test("GET /_/assets/app.js is cached outside dev mode", async () => {
     const res = await get(`${await start()}/_/assets/app.js`);
     expect(await res.text()).toBe("console.log(1)");
+    expect(res.headers.get("content-length")).toBe("14");
+    expect(res.headers.get("content-type")).toStartWith("text/javascript");
     expect(res.headers.get("cache-control")).toBe(CACHE);
     await stop!();
     app!.close();
@@ -143,6 +173,17 @@ describe("dashboard", () => {
     );
     expect(rows.map((r) => r.message)).toEqual(["GET /_/nope.js"]);
   });
+});
+
+test("a map source answers 404 for keys it does not have even if the file exists on disk", async () => {
+  const url = await start({
+    dashboardDir: dist,
+    dashboardFiles: new Map([["index.html", join(dist, "index.html")]]),
+  });
+  expect(await (await get(`${url}/_/`)).text()).toBe("<p>dashboard</p>");
+  const res = await get(`${url}/_/assets/app.js`);
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual(NOT_FOUND);
 });
 
 describe("UI extensions", () => {

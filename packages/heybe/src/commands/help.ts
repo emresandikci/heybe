@@ -123,6 +123,18 @@ export function formatRootHelp(commands: CommandHelp[]): string {
   );
 }
 
+// argv that routeArgv answers with help or the version whatever commands exist
+export function printsOnly(argv: string[]): boolean {
+  let positional = false;
+  for (const arg of argv) {
+    if (arg === "--") return false;
+    if (arg === "--help" || /^-h/.test(arg)) return true;
+    if (!positional && (arg === "--version" || /^-v/.test(arg))) return true;
+    if (!arg.startsWith("-")) positional = true;
+  }
+  return false;
+}
+
 export type Route =
   | { type: "print"; text: string }
   | { type: "fail"; message: string }

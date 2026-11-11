@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import type { CollectionName, Collections } from "@heybe/query";
 import pkg from "../package.json" with { type: "json" };
 import { parseCommandArgs } from "./commands/args";
-import { type CommandHelp, routeArgv } from "./commands/help";
+import { type CommandHelp, printsOnly, routeArgv } from "./commands/help";
 import { importCommand, importHelp } from "./commands/import";
 import { migrateCommand, migrateHelp } from "./commands/migrate";
 import { serveCommand, serveHelp } from "./commands/serve";
@@ -66,6 +66,8 @@ export interface AppOptions {
   dir?: string;
   dev?: boolean;
   dashboardDir?: string;
+  // embedded dashboard of a compiled binary, served instead of dashboardDir
+  dashboardFiles?: ReadonlyMap<string, string>;
   migrationsDir?: string;
   automigrate?: boolean;
   now?: () => Date;
@@ -122,6 +124,7 @@ export interface App extends HookBinders, RouterMethods {
   certIssuer: CertIssuer;
   dev: boolean;
   dashboardDir: string;
+  dashboardFiles: ReadonlyMap<string, string> | null;
   migrationsDir: string;
   automigrate: boolean;
   migrations: MigrationDef[];
@@ -236,11 +239,41 @@ function s3Switch(local: Filesystem, config: () => Readonly<S3Config>) {
   };
 }
 
+// A compiled binary sees ["bun", "/$bunfs/root/<name>", ...args]; re-executing that argv
+// would pass the entry twice.
+export function restartArgv(argv: string[]): string[] {
+  const entry = argv[1] ?? "";
+  return entry.startsWith("/$bunfs/") || entry.startsWith("B:/~BUN/")
+    ? [argv[0]!, ...argv.slice(2)]
+    : argv;
+}
+
+const BUILTIN_COMMANDS = [
+  ["serve", serveCommand, serveHelp],
+  ["superuser", superuserCommand, superuserHelp],
+  ["migrate", (args, a) => migrateCommand(args, a), migrateHelp],
+  ["typegen", typegenCommand, typegenHelp],
+  ["import", importCommand, importHelp],
+] as const satisfies [string, CommandHandler, CommandHelp][];
+
+// help and version leave the data dir untouched, like PB; an empty argv keeps it for
+// programmatic use
+function printsHelp(argv: string[]): boolean {
+  const help = BUILTIN_COMMANDS.map(([name, , h]) => ({
+    ...h,
+    use: h.use ?? name,
+  }));
+  return (
+    argv.length > 0 &&
+    (printsOnly(argv) || routeArgv(argv, help, pkg.version).type === "print")
+  );
+}
+
 export function createApp(opts: AppOptions = {}): App {
   const argv = opts.argv ?? process.argv.slice(2);
   const flags = globalFlags(argv);
   const dir = opts.dir ?? flags.dir ?? "./heybe_data";
-  const memory = dir === "" || dir === ":memory:";
+  const memory = dir === "" || dir === ":memory:" || printsHelp(argv);
   if (!memory) mkdirSync(dir, { recursive: true });
   const dataDir = memory ? mkdtempSync(join(tmpdir(), "heybe-data-")) : dir;
   const now = opts.now ?? (() => new Date());
@@ -312,7 +345,7 @@ export function createApp(opts: AppOptions = {}): App {
       async () => {
         await clearBootstrap(false).catch(() => {});
         try {
-          execve(process.execPath, process.argv, process.env);
+          execve(process.execPath, restartArgv(process.argv), process.env);
         } catch (err) {
           await revert?.();
           await bootstrap(false).catch((error) =>
@@ -375,6 +408,7 @@ export function createApp(opts: AppOptions = {}): App {
       }),
     dev: opts.dev ?? flags.dev ?? false,
     dashboardDir: opts.dashboardDir ?? resolve(import.meta.dir, "../ui/dist"),
+    dashboardFiles: opts.dashboardFiles ?? null,
     migrationsDir:
       opts.migrationsDir ??
       flags.migrationsDir ??
@@ -507,10 +541,7 @@ export function createApp(opts: AppOptions = {}): App {
   registerAutoBackup(app);
   bindUIExtensions(app);
 
-  app.command("serve", serveCommand, serveHelp);
-  app.command("superuser", superuserCommand, superuserHelp);
-  app.command("migrate", (args, a) => migrateCommand(args, a), migrateHelp);
-  app.command("typegen", typegenCommand, typegenHelp);
-  app.command("import", importCommand, importHelp);
+  for (const [name, run, help] of BUILTIN_COMMANDS)
+    app.command(name, run, help);
   return app;
 }

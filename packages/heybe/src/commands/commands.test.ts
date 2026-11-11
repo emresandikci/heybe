@@ -7,12 +7,18 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { connect } from "node:tls";
 import pkg from "../../package.json" with { type: "json" };
-import { type App, type AppOptions, createApp } from "../app";
+import { type App, type AppOptions, createApp, restartArgv } from "../app";
 import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
 import type { Timers } from "../timers";
@@ -254,6 +260,38 @@ describe("start", () => {
     expect(stdout.join("")).toBe("");
   });
 
+  test("help and version through the cli leave the cwd and temp dir untouched, like PB", async () => {
+    const root = mkdtempSync(join(tmpdir(), "heybe-help-"));
+    const cwd = join(root, "cwd");
+    const temp = join(root, "tmp");
+    mkdirSync(cwd);
+    mkdirSync(temp);
+    const cli = join(import.meta.dir, "../cli.ts");
+    try {
+      const runs = [
+        ["--version"],
+        ["--help"],
+        ["serve", "--help"],
+        ["superuser", "--help"],
+        ["superuser"],
+        ["import", "-h"],
+      ].map(async (args) => {
+        const proc = Bun.spawn([process.execPath, cli, ...args], {
+          cwd,
+          env: { ...process.env, TMPDIR: temp },
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+        expect(await proc.exited).toBe(0);
+      });
+      await Promise.all(runs);
+      expect(readdirSync(cwd)).toEqual([]);
+      expect(readdirSync(temp)).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("--version prints the package version", async () => {
     for (const flag of ["--version", "-v"]) {
       stdout.length = 0;
@@ -475,6 +513,37 @@ describe("lifecycle", () => {
     expect(await s.done).toBe(0);
     expect(await s.up()).toBe("down");
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  test("restartArgv drops the $bunfs entry of a compiled binary", () => {
+    expect(
+      restartArgv(["bun", "/$bunfs/root/heybe", "serve", "--dir", "x"]),
+    ).toEqual(["bun", "serve", "--dir", "x"]);
+    expect(restartArgv(["bun", "B:/~BUN/root/heybe.exe", "serve"])).toEqual([
+      "bun",
+      "serve",
+    ]);
+    const source = ["/usr/bin/bun", "/repo/src/cli.ts", "serve"];
+    expect(restartArgv(source)).toEqual(source);
+  });
+
+  test("restart passes restartArgv to execve", async () => {
+    const calls: string[][] = [];
+    const s = await startServe(fakeClock(), (path, args) => {
+      calls.push([path, ...args]);
+      throw new Error("recorded");
+    });
+    const argv = process.argv;
+    process.argv = [argv[0]!, "/$bunfs/root/heybe", "serve", "--dir", "x"];
+    try {
+      await expect(s.cli.restart()).rejects.toThrow("recorded");
+    } finally {
+      process.argv = argv;
+    }
+    expect(calls).toEqual([
+      [process.execPath, argv[0]!, "serve", "--dir", "x"],
+    ]);
+    expect(await s.done).toBe(0);
   });
 
   test("an in-flight request finishes before the server stops", async () => {

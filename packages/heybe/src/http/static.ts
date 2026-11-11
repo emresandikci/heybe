@@ -16,24 +16,26 @@ export const DASHBOARD_CSP =
 const CACHE_CONTROL = "max-age=1209600, stale-while-revalidate=86400";
 const INDEX = "index.html";
 
-// Port of PB apis.Static: serves the `{path...}` wildcard from dir.
-export function serveStatic(dir: string, indexFallback = false): RouteAction {
+// a dir, or "relative/path" -> readable path ($bunfs in a compiled binary)
+export type StaticSource = string | ReadonlyMap<string, string>;
+
+// Port of PB apis.Static: serves the `{path...}` wildcard from source.
+export function serveStatic(
+  source: StaticSource,
+  indexFallback = false,
+): RouteAction {
   return async (e) => {
     if (e.get(SKIP_SUCCESS_ACTIVITY_LOG_KEY) === undefined)
       e.set(SKIP_SUCCESS_ACTIVITY_LOG_KEY, true);
     const filename = cleanPath((e.params.path ?? "").replace(/^\//, ""));
     const fallback = () =>
-      indexFallback && filename !== INDEX ? e.fileFS(dir, INDEX) : null;
+      indexFallback && filename !== INDEX ? sendFile(e, source, INDEX) : null;
 
     // Go fs.FS rejects rooted names and names leaving the root
     if (/^\.\.([/\\]|$)/.test(filename) || filename.startsWith("/"))
       return fallback() ?? notFound();
-    let isDir: boolean;
-    try {
-      isDir = (await stat(join(dir, filename))).isDirectory();
-    } catch {
-      return fallback() ?? notFound();
-    }
+    const isDir = await isDirectory(source, filename);
+    if (isDir === null) return fallback() ?? notFound();
 
     const urlPath = new URL(e.req.url).pathname;
     if (isDir) {
@@ -47,7 +49,7 @@ export function serveStatic(dir: string, indexFallback = false): RouteAction {
     }
 
     try {
-      return await e.fileFS(dir, filename);
+      return await sendFile(e, source, filename);
     } catch (err) {
       const index =
         err instanceof ApiError && err.status === 404 ? fallback() : null;
@@ -55,6 +57,38 @@ export function serveStatic(dir: string, indexFallback = false): RouteAction {
       throw err;
     }
   };
+}
+
+// null when the name does not exist
+async function isDirectory(
+  source: StaticSource,
+  filename: string,
+): Promise<boolean | null> {
+  if (typeof source === "string") {
+    try {
+      return (await stat(join(source, filename))).isDirectory();
+    } catch {
+      return null;
+    }
+  }
+  if (source.has(filename)) return false;
+  const prefix = filename === "." ? "" : `${filename}/`;
+  for (const key of source.keys()) if (key.startsWith(prefix)) return true;
+  return null;
+}
+
+async function sendFile(
+  e: RequestEvent,
+  source: StaticSource,
+  filename: string,
+): Promise<Response> {
+  if (typeof source === "string") return e.fileFS(source, filename);
+  const key = (await isDirectory(source, filename))
+    ? posix.join(filename, INDEX)
+    : filename;
+  const path = source.get(key);
+  if (path === undefined) return notFound();
+  return e.file(path, key);
 }
 
 const notFound = (): never => {
@@ -73,7 +107,9 @@ function safeRedirectPath(path: string): string {
 }
 
 export function hasDashboard(app: App): boolean {
-  return existsSync(join(app.dashboardDir, INDEX));
+  return (
+    app.dashboardFiles?.has(INDEX) ?? existsSync(join(app.dashboardDir, INDEX))
+  );
 }
 
 function dashboardHeaders(cacheRoot: boolean) {
@@ -91,7 +127,7 @@ function dashboardHeaders(cacheRoot: boolean) {
 export function registerDashboard(app: App, router: Router): void {
   if (!hasDashboard(app)) return;
   router
-    .get("/_/{path...}", serveStatic(app.dashboardDir))
+    .get("/_/{path...}", serveStatic(app.dashboardFiles ?? app.dashboardDir))
     .use(dashboardHeaders(false));
 }
 
