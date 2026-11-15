@@ -6,9 +6,48 @@ import { join } from "node:path";
 import { type App, createApp } from "../app";
 import { fakeClock } from "../test-clock";
 import { testApp } from "../test-app";
+import { exclusive } from "../db";
 import { openAuxDb } from "./aux-db";
+import { createLogger } from "./logger";
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+class FakeWorker {
+  static all: FakeWorker[] = [];
+  posted: { id: number }[] = [];
+  terminated = false;
+  onmessage: ((e: { data: unknown }) => void) | null = null;
+  onerror: unknown = null;
+  private closeListeners: (() => void)[] = [];
+  constructor() {
+    FakeWorker.all.push(this);
+  }
+  ref() {}
+  unref() {}
+  postMessage(m: { id: number }) {
+    this.posted.push(m);
+  }
+  addEventListener(_: string, fn: () => void) {
+    this.closeListeners.push(fn);
+  }
+  terminate() {
+    this.terminated = true;
+  }
+  exit() {
+    for (const fn of this.closeListeners) fn();
+  }
+}
+
+async function withFakeWorker(fn: () => Promise<void>) {
+  const real = globalThis.Worker;
+  FakeWorker.all = [];
+  globalThis.Worker = FakeWorker as unknown as typeof Worker;
+  try {
+    await fn();
+  } finally {
+    globalThis.Worker = real;
+  }
+}
 
 interface Row {
   id: string;
@@ -73,7 +112,8 @@ describe("app logger", () => {
     await tick();
     expect(rows()).toHaveLength(0);
     app.logger.warn("last", { n: 1 });
-    await tick();
+    expect(clock.pending()).toBe(0);
+    await app.logger.flush();
     const all = rows();
     expect(all).toHaveLength(200);
     expect(all[199]).toMatchObject({
@@ -92,10 +132,10 @@ describe("app logger", () => {
     app.logger.debug("b");
     app.logger.error("c");
     clock.advance(2999);
-    await tick();
-    expect(rows()).toHaveLength(0);
+    expect(clock.pending()).toBe(1);
     clock.advance(1);
-    await tick();
+    expect(clock.pending()).toBe(0);
+    await app.logger.flush();
     expect(rows().map((r) => [r.message, r.level, r.created])).toEqual([
       ["a", 0, "2026-01-10 12:00:00.000Z"],
       ["c", 8, "2026-01-10 12:00:02.000Z"],
@@ -209,10 +249,10 @@ describe("app logger", () => {
     ]);
   });
 
-  test("a closed aux db does not throw from log or flush", async () => {
+  test("a closed logger does not throw from log or flush", async () => {
     const err = spyOn(console, "error").mockImplementation(() => {});
     try {
-      app.auxDb.close();
+      (app.logger as ReturnType<typeof createLogger>).close();
       app.logger.warn("lost");
       await app.logger.flush();
       for (let i = 0; i < 200; i++) app.logger.info("batch");
@@ -224,6 +264,117 @@ describe("app logger", () => {
     } finally {
       err.mockRestore();
     }
+  });
+
+  test("rows written through the worker are readable from app.auxDb after flush", async () => {
+    app.logger.info("a", { x: 1 });
+    app.logger.warn("b");
+    await app.logger.flush();
+    expect(rows().map((r) => [r.message, r.level, r.data])).toEqual([
+      ["a", 0, '{"x":1}'],
+      ["b", 4, "{}"],
+    ]);
+  });
+
+  test('a batch the worker rejects logs "Failed to write log" and the next batch still lands', async () => {
+    await app.auxDb.write(() =>
+      app.auxDb.run(
+        "CREATE TRIGGER fail BEFORE INSERT ON _logs WHEN NEW.message = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END",
+      ),
+    );
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      app.logger.info("kept?");
+      app.logger.info("boom");
+      await app.logger.flush();
+      expect(err.mock.calls.map((c) => [c[0], String(c[1])])).toEqual([
+        ["Failed to write log", "Error: boom"],
+      ]);
+      app.logger.info("next");
+      await app.logger.flush();
+    } finally {
+      err.mockRestore();
+    }
+    expect(rows().map((r) => r.message)).toEqual(["next"]);
+  });
+
+  test("a batch waiting on the aux mutex when the logger closes starts no worker", async () => {
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await withFakeWorker(async () => {
+        let open: (() => void) | undefined;
+        const held = exclusive(
+          app.auxDb,
+          () => new Promise<void>((r) => (open = r)),
+        );
+        while (!open) await tick();
+        app.logger.info("late");
+        const flushed = app.logger.flush();
+        (app.logger as ReturnType<typeof createLogger>).close();
+        open!();
+        await held;
+        await flushed;
+        expect(FakeWorker.all).toHaveLength(0);
+      });
+      expect(err.mock.calls.map((c) => [c[0], String(c[1])])).toEqual([
+        ["Failed to write log", "Error: the app is closed"],
+      ]);
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  test("a worker that exits mid-batch drops the batch and frees the aux mutex", async () => {
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await withFakeWorker(async () => {
+        app.logger.info("lost");
+        const flushed = app.logger.flush();
+        while (FakeWorker.all[0]?.posted.length !== 1) await tick();
+        FakeWorker.all[0]!.exit();
+        await flushed;
+        await exclusive(app.auxDb, () => {});
+        app.logger.info("next");
+        void app.logger.flush();
+        while (FakeWorker.all[1]?.posted.length !== 1) await tick();
+        (app.logger as ReturnType<typeof createLogger>).close();
+        await app.logger.flush();
+      });
+      expect(err.mock.calls[0]!.map(String)).toEqual([
+        "Failed to write log",
+        "Error: log worker exited",
+      ]);
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  test("batches over the in-flight cap are dropped with one error", async () => {
+    const err = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await withFakeWorker(async () => {
+        for (let i = 0; i < 22 * 200; i++) app.logger.info("m");
+        expect(err.mock.calls.map((c) => [c[0], String(c[1])])).toEqual([
+          [
+            "Failed to write log",
+            "Error: too many log batches in flight, dropping",
+          ],
+        ]);
+        (app.logger as ReturnType<typeof createLogger>).close();
+        await app.logger.flush();
+      });
+    } finally {
+      err.mockRestore();
+    }
+  });
+
+  test("release then log again writes through a new worker", async () => {
+    app.logger.info("a");
+    await app.logger.release();
+    expect(rows().map((r) => r.message)).toEqual(["a"]);
+    app.logger.info("b");
+    await app.logger.flush();
+    expect(rows().map((r) => r.message)).toEqual(["a", "b"]);
   });
 
   test("a batch queued before logs are disabled is dropped", async () => {

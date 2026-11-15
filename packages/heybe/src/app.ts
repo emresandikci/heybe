@@ -525,7 +525,7 @@ export function createApp(opts: AppOptions = {}): App {
     close: () => {
       if (closed) return;
       closed = true;
-      logger.stop();
+      logger.close();
       db.close();
       auxDb.close();
       if (memory) rmSync(dataDir, { recursive: true, force: true });

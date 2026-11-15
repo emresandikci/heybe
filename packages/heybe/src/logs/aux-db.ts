@@ -15,7 +15,7 @@ const SCHEMA = [
 ];
 
 // bun:sqlite blocks the event loop while it waits for a lock, so a locked aux db fails a log batch fast
-const BUSY_TIMEOUT_MS = 100;
+export const BUSY_TIMEOUT_MS = 100;
 
 export function openAuxDb(path: string): Db {
   const db = openDb(path, BUSY_TIMEOUT_MS);

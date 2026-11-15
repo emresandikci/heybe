@@ -69,6 +69,20 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+const logMessages = (file: string) => {
+  const db = new Database(file, { readonly: true });
+  try {
+    return db
+      .query<{ message: string }, []>(
+        "SELECT message FROM _logs WHERE message LIKE '% restore' OR message = 'in backup' ORDER BY rowid",
+      )
+      .all()
+      .map((r) => r.message);
+  } finally {
+    db.close();
+  }
+};
+
 const titles = (a: App) =>
   a.db
     .query<{ title: string }>("SELECT title FROM posts ORDER BY title")
@@ -309,12 +323,31 @@ describe("restoreBackup", () => {
   test("restores the data dir and re-executes the process", async () => {
     await app.records("posts").create({ title: "a" });
     await app.files.write("pbc_1/r1/a.txt", enc("a"));
+    app.logger.warn("in backup");
+    await app.logger.flush();
     await app.createBackup("b1.zip");
     await app.records("posts").create({ title: "b" });
     await app.files.write("pbc_1/r2/b.txt", enc("b"));
     await app.settings.update({ meta: { appName: "Changed" } });
 
+    app.logger.warn("before restore");
     await app.restoreBackup("b1.zip");
+    app.logger.warn("after restore");
+    await app.logger.flush();
+    expect(logMessages(join(dir, "auxiliary.db"))).toEqual([
+      "in backup",
+      "after restore",
+    ]);
+    // macOS fails a new connection to the moved file, so its bytes are searched instead
+    const temp = join(dir, LOCAL_TEMP_DIR);
+    const old = (await readdir(temp)).find((n) =>
+      n.startsWith("old_pb_data_"),
+    )!;
+    const oldAux = join(temp, old, "auxiliary.db");
+    let oldBytes = "";
+    for (const f of [oldAux, `${oldAux}-wal`])
+      if (existsSync(f)) oldBytes += await Bun.file(f).text();
+    expect(oldBytes).toContain("before restore");
 
     expect(execs).toEqual([[process.execPath, process.argv, process.env]]);
     expect(app.activeBackup).toBeNull();

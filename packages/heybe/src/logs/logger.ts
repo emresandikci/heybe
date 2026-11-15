@@ -1,6 +1,8 @@
+import { join } from "node:path";
 import type { App } from "../app";
 import { exclusive } from "../db";
 import { formatDate, newId } from "../util";
+import { BUSY_TIMEOUT_MS } from "./aux-db";
 
 // Port of PB core/base.go initLogger, core/log_model.go, core/log_printer.go and tools/logger/batch_handler.go.
 
@@ -13,6 +15,8 @@ export interface Logger {
   error(message: string, data?: Record<string, unknown>): void;
   log(level: number, message: string, data?: Record<string, unknown>): void;
   flush(): Promise<void>;
+  // flush, then stop the worker; the next write starts a new one
+  release(): Promise<void>;
 }
 
 interface Entry {
@@ -23,14 +27,13 @@ interface Entry {
 }
 
 const BATCH_SIZE = 200;
+const MAX_BATCHES_IN_FLIGHT = 20;
 const FLUSH_DELAY_MS = 3000;
 const MAX_MESSAGE_BYTES = 8000;
 const DEFAULT_MAX_DATA_SIZE = 16 << 10;
 const DAY_MS = 86_400_000;
 const daysAgo = (app: App, days: number) =>
   formatDate(new Date(app.now().getTime() - days * DAY_MS));
-const INSERT =
-  "INSERT INTO _logs (id, level, message, data, created) VALUES (?, ?, ?, ?, ?)";
 
 // errors become their message and bigints their decimal string, like PB's serializeLogError
 const replacer = (_: string, v: unknown) =>
@@ -121,11 +124,64 @@ function printLog(entry: Entry): void {
   process.stdout.write(out);
 }
 
-export function createLogger(app: App): Logger & { stop(): void } {
+export function createLogger(app: App): Logger & { close(): void } {
   let queue: Entry[] = [];
   let timer: unknown = null;
   let stopped = false;
+  let closed = false;
   const writing = new Set<Promise<void>>();
+  // Bun's Worker has ref/unref, the DOM type in scope does not
+  let worker: (Worker & { ref(): void; unref(): void }) | null = null;
+  let lastId = 0;
+  const pending = new Map<
+    number,
+    { resolve: () => void; reject: (err: Error) => void }
+  >();
+
+  let warnedBehind = false;
+
+  const stopWorker = (err = new Error("log worker stopped")) => {
+    worker?.terminate();
+    worker = null;
+    for (const p of pending.values()) p.reject(err);
+    pending.clear();
+  };
+
+  // ref'd only while a batch is in flight, so an idle worker never keeps the process alive
+  const startWorker = () => {
+    const w = new Worker(
+      new URL("./log-worker.ts", import.meta.url),
+    ) as NonNullable<typeof worker>;
+    w.unref();
+    w.onmessage = (e: MessageEvent<{ id: number; error?: string }>) => {
+      const p = pending.get(e.data.id);
+      pending.delete(e.data.id);
+      if (pending.size === 0) w.unref();
+      if (e.data.error === undefined) p?.resolve();
+      else p?.reject(new Error(e.data.error));
+    };
+    const exited = (err: Error) => {
+      if (worker === w) stopWorker(err);
+    };
+    w.onerror = (e) => exited(e.error ?? new Error(e.message));
+    w.addEventListener("close", () => exited(new Error("log worker exited")));
+    return w;
+  };
+
+  const insert = (rows: unknown[][]) =>
+    new Promise<void>((resolve, reject) => {
+      if (closed) throw new Error("the app is closed");
+      worker ??= startWorker();
+      const id = ++lastId;
+      pending.set(id, { resolve, reject });
+      worker.ref();
+      worker.postMessage({
+        id,
+        path: join(app.dataDir, "auxiliary.db"),
+        busyTimeoutMs: BUSY_TIMEOUT_MS,
+        rows,
+      });
+    });
 
   const clearTimer = () => {
     if (timer !== null) app.timers.clearTimeout(timer);
@@ -136,23 +192,41 @@ export function createLogger(app: App): Logger & { stop(): void } {
   const write = async (entries: Entry[]) => {
     const { maxDays, maxDataSize } = app.settings.current().logs;
     if (maxDays <= 0) return;
+    const rows = entries.map((entry) => logRow(app, entry, maxDataSize));
     try {
-      await app.auxDb.write(() => {
-        for (const entry of entries)
-          app.auxDb.run(INSERT, logRow(app, entry, maxDataSize));
-      });
+      // the aux write mutex orders batches with main-thread aux writes and keeps them out of a restore's file swap
+      await exclusive(app.auxDb, () => insert(rows));
     } catch (err) {
       console.error("Failed to write log", err);
     }
   };
 
+  const stop = () => {
+    stopped = true;
+    clearTimer();
+  };
+
   const writeQueued = () => {
     clearTimer();
     if (queue.length === 0) return;
+    // the worker is behind: drop the batch like a failed write
+    if (writing.size >= MAX_BATCHES_IN_FLIGHT) {
+      if (!warnedBehind)
+        console.error(
+          "Failed to write log",
+          new Error("too many log batches in flight, dropping"),
+        );
+      warnedBehind = true;
+      queue = [];
+      return;
+    }
     const p = write(queue);
     queue = [];
     writing.add(p);
-    void p.then(() => writing.delete(p));
+    void p.then(() => {
+      writing.delete(p);
+      if (writing.size === 0) warnedBehind = false;
+    });
   };
 
   const log = (
@@ -185,9 +259,14 @@ export function createLogger(app: App): Logger & { stop(): void } {
       writeQueued();
       await Promise.all(writing);
     },
-    stop: () => {
-      stopped = true;
-      clearTimer();
+    release: async () => {
+      await logger.flush();
+      await exclusive(app.auxDb, () => stopWorker());
+    },
+    close: () => {
+      closed = true;
+      stop();
+      stopWorker();
     },
   };
 
@@ -199,8 +278,8 @@ export function createLogger(app: App): Logger & { stop(): void } {
 
   app.onBootstrapClear(
     async (e) => {
-      await logger.flush();
-      logger.stop();
+      await logger.release();
+      stop();
       return e.next();
     },
     { id: "__pbAppLoggerFlushBeforeStop__", priority: -999 },
