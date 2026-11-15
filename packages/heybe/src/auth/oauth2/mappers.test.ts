@@ -1117,3 +1117,61 @@ describe("apple id_token", () => {
     ]);
   });
 });
+
+describe("provider JSON strictness (Go encoding/json/v2)", () => {
+  test("an integer id above 2^53 stays exact", async () => {
+    const user = await run("gitea", '{"id":9007199254740993,"active":true}', {
+      more: {
+        "https://gitea.com/api/v1/user/emails": { status: 404, body: "" },
+      },
+    });
+    expect(user.id).toBe("9007199254740993");
+    expect(user.rawUser.id).toBe(9007199254740992);
+  });
+
+  test("an id beyond int64 fails", async () => {
+    await expect(
+      run("gitea", '{"id":9223372036854775808,"active":true}'),
+    ).rejects.toThrow("invalid id value");
+  });
+
+  test.each(["1e19", "-1e30", "1e300", "9007199254740993.0", "1.0", "1e3"])(
+    "id %s fails like int64",
+    async (id) => {
+      await expect(run("gitea", `{"id":${id},"active":true}`)).rejects.toThrow(
+        "invalid id value",
+      );
+    },
+  );
+
+  test("duplicate names fail", async () => {
+    await expect(run("gitea", '{"id":1,"id":2,"active":true}')).rejects.toThrow(
+      "duplicate",
+    );
+  });
+
+  test("null email items are zero values, a null list is empty", async () => {
+    const emails = "https://gitea.com/api/v1/user/emails";
+    const profile = '{"id":1,"active":true}';
+    const user = await run("gitea", profile, {
+      more: {
+        [emails]: {
+          body: '[null,{"email":"a@b.co","verified":true,"primary":true}]',
+        },
+      },
+    });
+    expect(user.email).toBe("a@b.co");
+    const none = await run("gitea", profile, {
+      more: { [emails]: { body: "null" } },
+    });
+    expect(none.email).toBe("");
+  });
+
+  test("a non-list emails body fails", async () => {
+    await expect(
+      run("gitea", '{"id":1,"active":true}', {
+        more: { "https://gitea.com/api/v1/user/emails": { body: "{}" } },
+      }),
+    ).rejects.toThrow();
+  });
+});

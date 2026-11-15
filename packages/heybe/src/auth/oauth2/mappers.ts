@@ -7,12 +7,15 @@ import {
   castBool,
   castString,
   fetchRawUserInfo,
+  int,
   isObject,
+  objectList,
   newAuthUser,
   parseObject,
+  toObject,
   typed,
 } from "./flow";
-import { readText } from "./http";
+import { readJson } from "./http";
 import { parseUnverified, validateClaims, validateTokenSignature } from "./jwk";
 
 type Values = Record<string, unknown>;
@@ -20,13 +23,6 @@ type Values = Record<string, unknown>;
 const ID_TOKEN_LEEWAY_MS = 5 * 60_000;
 const APPLE_ISSUER = "https://appleid.apple.com";
 const APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys";
-
-// Go json.Unmarshal into an int64 field
-function int(raw: Values, key: string): number {
-  const n = typed(raw, key, "number");
-  if (!Number.isInteger(n)) throw new Error(`invalid ${key} value`);
-  return n;
-}
 
 // Go json.Unmarshal into a nested struct field: null or missing is the zero value
 function obj(raw: Values, key: string): Values {
@@ -36,15 +32,7 @@ function obj(raw: Values, key: string): Values {
   return v;
 }
 
-function items(raw: Values, key: string): Values[] {
-  const v = raw[key];
-  if (v === undefined || v === null) return [];
-  if (!Array.isArray(v)) throw new Error(`invalid ${key} value`);
-  return v.map((item) => {
-    if (!isObject(item)) throw new Error("invalid list item");
-    return item;
-  });
-}
+const items = (raw: Values, key: string) => objectList(raw[key]);
 
 const authed = (url: string, token: OAuth2Token, signal: AbortSignal) =>
   fetch(url, { headers: { authorization: authorization(token) }, signal });
@@ -99,7 +87,7 @@ const bitbucket: UserFetcher = async (p, token, { signal }) => {
   if (status !== "active") throw new Error("the Bitbucket user is not active");
   const res = await authed(`${p.userInfoURL}/emails`, token, signal);
   if (res.status >= 400) return user;
-  const emails = parseObject(await readText(res, DEFAULT_MAX_BODY_SIZE));
+  const emails = toObject(await readJson(res, DEFAULT_MAX_BODY_SIZE));
   for (const v of items(emails, "values"))
     if (
       typed(v, "is_primary", "boolean") &&
@@ -174,10 +162,8 @@ const gitea: UserFetcher = async (p, token, { signal }) => {
     throw new Error("user account is not active");
   const res = await authed(`${p.userInfoURL}/emails`, token, signal);
   if ([401, 403, 404].includes(res.status)) return user;
-  const emails = JSON.parse(await readText(res, DEFAULT_MAX_BODY_SIZE));
-  if (!Array.isArray(emails)) throw new Error("invalid emails response");
+  const emails = objectList(await readJson(res, DEFAULT_MAX_BODY_SIZE));
   for (const item of emails) {
-    if (!isObject(item)) throw new Error("invalid email item");
     if (
       typed(item, "verified", "boolean") &&
       typed(item, "primary", "boolean")
@@ -195,12 +181,10 @@ async function giteeEmail(
 ): Promise<string> {
   const res = await authed("https://gitee.com/api/v5/emails", token, signal);
   if ([401, 403, 404].includes(res.status)) return "";
-  const text = await readText(res, DEFAULT_MAX_BODY_SIZE);
   try {
-    const list = JSON.parse(text);
+    const list = await readJson(res, DEFAULT_MAX_BODY_SIZE);
     if (!Array.isArray(list)) return "";
-    const emails = list.map((item) => {
-      if (!isObject(item)) throw new Error("invalid email item");
+    const emails = objectList(list).map((item) => {
       const scope = item.scope ?? [];
       if (!Array.isArray(scope) || scope.some((s) => typeof s !== "string"))
         throw new Error("invalid scope");
@@ -369,7 +353,7 @@ const mailcow: UserFetcher = async (p, token, { signal }) => {
     username: typed(raw, "username", "string"),
     email: typed(raw, "email", "string"),
   });
-  if (int(raw, "active") !== 1)
+  if (int(raw, "active") !== 1n)
     throw new Error("the mailcow user is not active");
   // mailcow usernames are usually just the email addresses
   if (user.username.includes("@")) user.username = user.username.split("@")[0]!;
@@ -504,7 +488,7 @@ const strava: UserFetcher = async (p, token, { signal }) => {
   const raw = await userInfo(p, token, signal);
   const id = int(raw, "id");
   return newAuthUser(token, raw, {
-    id: id !== 0 ? String(id) : "",
+    id: id !== 0n ? String(id) : "",
     name: `${typed(raw, "firstname", "string")} ${typed(raw, "lastname", "string")}`,
     username: typed(raw, "username", "string"),
     avatarURL: typed(raw, "profile", "string"),

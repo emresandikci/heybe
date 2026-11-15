@@ -17,7 +17,14 @@ import { PasswordValue } from "../../fields/password";
 import type { PreparedWrite } from "../../records/service";
 import { ValidationError, formatDate, randomSecret } from "../../util";
 import { findAuthRecordByEmail, randomPassword } from "../flows";
-import { readText } from "./http";
+import {
+  Decimal,
+  decodeStrict,
+  parseJson,
+  readCapped,
+  readJson,
+  readText,
+} from "./http";
 import { parseUnverified, validateClaims, validateTokenSignature } from "./jwk";
 import { mappers } from "./mappers";
 import { type ProviderInfo, providers } from "./providers";
@@ -80,7 +87,10 @@ const MAX_REDIRECTS = 10;
 const ID_TOKEN_LEEWAY_MS = 5 * 60_000;
 
 export const isObject = (v: unknown): v is Values =>
-  v !== null && typeof v === "object" && !Array.isArray(v);
+  v !== null &&
+  typeof v === "object" &&
+  !Array.isArray(v) &&
+  !(v instanceof Decimal);
 
 export function providerConfigs(c: Collection): Values[] {
   return (c.oauth2 as { providers: Values[] }).providers;
@@ -204,16 +214,55 @@ export function typed(
   const v = raw[key];
   if (v === undefined || v === null)
     return type === "string" ? "" : type === "number" ? 0 : false;
+  if (type === "number" && typeof v === "bigint") return Number(v);
+  if (type === "number" && v instanceof Decimal) return v.value;
   if (typeof v !== type) throw new Error(`invalid ${key} value`);
   return v;
 }
 
-export function parseObject(text: string): Values {
-  const v = JSON.parse(text);
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
+
+// Go json.Unmarshal into an int64 field: a fraction, a string or an overflow fails
+export function int(raw: Values, key: string): bigint {
+  const v = raw[key];
+  if (v === undefined || v === null) return 0n;
+  if (typeof v === "number" && Number.isSafeInteger(v)) return BigInt(v);
+  if (typeof v === "bigint" && v >= INT64_MIN && v <= INT64_MAX) return v;
+  throw new Error(`invalid ${key} value`);
+}
+
+export function toObject(v: unknown): Values {
   if (v === null) return {};
   if (!isObject(v)) throw new Error("expected a JSON object");
   return v;
 }
+
+export const parseObject = (text: string): Values => toObject(parseJson(text));
+
+// Go json.Unmarshal into a slice of structs: null is an empty slice, a null item the zero value
+export function objectList(v: unknown): Values[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new Error("invalid list value");
+  return v.map((item) => {
+    if (item === null) return {};
+    if (!isObject(item)) throw new Error("invalid list item");
+    return item;
+  });
+}
+
+const numbered = (v: unknown): unknown =>
+  typeof v === "bigint"
+    ? Number(v)
+    : v instanceof Decimal
+      ? v.value
+      : Array.isArray(v)
+        ? v.map(numbered)
+        : isObject(v)
+          ? Object.fromEntries(
+              Object.entries(v).map(([k, x]) => [k, numbered(x)]),
+            )
+          : v;
 
 // cast.ToBool
 export function castBool(v: unknown): boolean {
@@ -251,7 +300,11 @@ function parseToken(app: App, res: Response, text: string): OAuth2Token {
     for (const [k, v] of vals) raw[k] ??= v;
     expiresIn = Number.parseInt(vals.get("expires_in") ?? "", 10) || 0;
   } else {
-    raw = parseObject(text);
+    try {
+      raw = toObject(JSON.parse(text));
+    } catch {
+      throw new Error("oauth2: cannot parse the token response");
+    }
     const e = raw.expires_in;
     expiresIn =
       typeof e === "number"
@@ -359,12 +412,12 @@ export async function fetchRawUserInfo(
     headers: { ...init.headers, authorization: authorization(token) },
     signal,
   });
-  const text = await readText(res, DEFAULT_MAX_BODY_SIZE);
+  const body = await readCapped(res, DEFAULT_MAX_BODY_SIZE);
   if (res.status >= 400)
     throw new Error(
       `failed to fetch OAuth2 user profile via ${url} (${res.status})`,
     );
-  return text;
+  return decodeStrict(body);
 }
 
 export function newAuthUser(
@@ -381,7 +434,7 @@ export function newAuthUser(
     accessToken: token.accessToken,
     refreshToken: token.refreshToken,
     expiry: token.expiry ? formatDate(token.expiry) : "",
-    rawUser,
+    rawUser: numbered(rawUser) as Values,
     ...fields,
   };
 }
@@ -390,8 +443,7 @@ const github: UserFetcher = async (p, token, { signal }) => {
   const rawUser = parseObject(
     await fetchRawUserInfo(p.userInfoURL, token, signal),
   );
-  const id = typed(rawUser, "id", "number");
-  if (!Number.isInteger(id)) throw new Error("invalid id value");
+  const id = int(rawUser, "id");
   const user = newAuthUser(token, rawUser, {
     id: String(id),
     name: typed(rawUser, "name", "string"),
@@ -403,10 +455,8 @@ const github: UserFetcher = async (p, token, { signal }) => {
     signal,
   });
   if ([401, 403, 404].includes(res.status)) return user;
-  const emails = JSON.parse(await readText(res, DEFAULT_MAX_BODY_SIZE));
-  if (!Array.isArray(emails)) throw new Error("invalid emails response");
+  const emails = objectList(await readJson(res, DEFAULT_MAX_BODY_SIZE));
   for (const item of emails) {
-    if (!isObject(item)) throw new Error("invalid email item");
     if (
       typed(item, "verified", "boolean") &&
       typed(item, "primary", "boolean")

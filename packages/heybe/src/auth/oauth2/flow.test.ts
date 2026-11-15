@@ -712,4 +712,33 @@ describe("token auth style cache", () => {
       spy.mockRestore();
     }
   });
+
+  test("a malformed token response fails without echoing its body", async () => {
+    const spy = spyOn(globalThis, "fetch").mockImplementation(
+      (async () =>
+        new Response("{secret-token", {
+          status: 200,
+        })) as unknown as typeof fetch,
+    );
+    try {
+      const p = initProvider({
+        name: "google",
+        clientId: "a",
+        clientSecret: "s",
+        tokenURL: "https://idp.example/token",
+      })!;
+      const input = { code: "c", codeVerifier: "v", redirectURL: "" };
+      const err = await fetchToken(
+        app,
+        p,
+        input,
+        new AbortController().signal,
+      ).catch((e: Error) => e);
+      expect((err as Error).message).toBe(
+        "oauth2: cannot parse the token response",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
