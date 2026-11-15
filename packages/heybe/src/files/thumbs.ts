@@ -40,13 +40,18 @@ export async function createThumb(
   const { default: sharp } = await import("sharp");
   const original = await fs.file(originalKey);
   if (!original) throw new Error(`original ${originalKey} does not exist`);
-  const bytes = await original.blob.bytes();
+  // a local original goes to sharp by path instead of being read into memory
+  const blob = original.blob as Blob & { name?: string };
+  const input =
+    !("presign" in blob) && typeof blob.name === "string"
+      ? blob.name
+      : await blob.bytes();
 
   const maxPixels = positiveEnv(
     "PB_THUMBS_MAX_SOURCE_PIXELS",
     DEFAULT_MAX_SOURCE_PIXELS,
   );
-  const meta = await sharp(bytes, { limitInputPixels: false }).metadata();
+  const meta = await sharp(input, { limitInputPixels: false }).metadata();
   const w = meta.width ?? 0;
   const h = meta.height ?? 0;
   if (w * h > maxPixels)
@@ -54,7 +59,7 @@ export async function createThumb(
       `the original image is too large (${w}x${h}) and exceeds the total max allowed ${maxPixels} pixels`,
     );
 
-  let image = sharp(bytes, { limitInputPixels: maxPixels }).rotate();
+  let image = sharp(input, { limitInputPixels: maxPixels }).rotate();
   if (width === 0 || height === 0)
     image = image.resize({
       width: width || undefined,

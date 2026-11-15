@@ -6,8 +6,11 @@ import sharp from "sharp";
 import type { App } from "../app";
 import { serve } from "../http/server";
 import type { S3Config } from "../settings";
+import { createEvent } from "../http/router";
+import { serveStoredFile } from "../http/routes/files";
+import { fakeClock } from "../test-clock";
 import { testApp } from "../test-app";
-import { s3Filesystem } from "./s3";
+import { S3_TIMEOUT_MS, s3Filesystem } from "./s3";
 import { type FakeS3, startFakeS3 } from "./test-s3";
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -151,6 +154,65 @@ describe("s3Filesystem", () => {
     expect(await s3Filesystem(config).file("pbc_1/a/missing.txt")).toBeNull();
   });
 
+  test("an S3 that never answers rejects after the timeout", async () => {
+    const clock = fakeClock();
+    const fs = s3Filesystem(config, clock.timers);
+    await fs.write("a.txt", enc("hello"));
+    s3.hang();
+    const settled = (p: Promise<unknown>) =>
+      p.then(
+        () => "resolved",
+        (err: Error) => err.message,
+      );
+    const app = testApp();
+    try {
+      const results = Promise.all([
+        settled(fs.file("a.txt")),
+        settled(
+          serveStoredFile(
+            createEvent(app, new Request("http://x/"), {}),
+            fs,
+            "a.txt",
+            "a.txt",
+          ),
+        ),
+      ]);
+      clock.advance(S3_TIMEOUT_MS - 1);
+      expect(clock.pending()).toBe(2);
+      clock.advance(1);
+      expect(await results).toEqual([
+        "S3 request timed out",
+        "S3 request timed out",
+      ]);
+    } finally {
+      app.close();
+    }
+  });
+
+  test("a GET body that stalls after the headers times out", async () => {
+    const clock = fakeClock();
+    const fs = s3Filesystem(config, clock.timers);
+    await fs.write("a.txt", enc("hello"));
+    s3.bodies("stalled");
+    const file = (await fs.open!("a.txt", false))!;
+    const reader = file.read(0, 5).getReader();
+    expect((await reader.read()).value).toEqual(enc("h"));
+    const read = reader.read();
+    // the stream may already be pulling ahead with its timer set
+    if (clock.pending() === 0) await clock.scheduled();
+    clock.advance(S3_TIMEOUT_MS);
+    await expect(read).rejects.toThrow("S3 request timed out");
+  });
+
+  test("a GET without Content-Length takes the size from the stat", async () => {
+    const fs = s3Filesystem(config);
+    await fs.write("a.txt", enc("hello"));
+    s3.bodies("chunked");
+    const file = (await fs.open!("a.txt", false))!;
+    expect(file.size).toBe(5);
+    expect(await new Response(file.read(0, 5)).text()).toBe("hello");
+  });
+
   test("a 500 from S3 rejects write and list with the S3 message", async () => {
     const fs = s3Filesystem(config);
     s3.failNext(500, "InternalError");
@@ -182,7 +244,7 @@ describe("app.files on S3", () => {
       name: "docs",
       viewRule: "",
       createRule: "",
-      fields: [{ name: "doc", type: "file", maxSelect: 1, maxSize: 100000 }],
+      fields: [{ name: "doc", type: "file", maxSelect: 1, maxSize: 1000000 }],
     } as never);
     server = await serve(app, { host: "127.0.0.1", port: 0 });
   });
@@ -259,6 +321,117 @@ describe("app.files on S3", () => {
         ),
       ).exists(),
     ).toBe(true);
+  });
+
+  const download = async (
+    body: string,
+    init: RequestInit,
+  ): Promise<{ res: Response; text: string }> => {
+    await app.settings.update({ s3: config });
+    const r = await app.records("docs").create({
+      doc: new File([body], "a.txt"),
+    });
+    s3.requests.length = 0;
+    const res = await fetch(
+      `${server.url}/api/files/docs/${r.id}/${r.doc}`,
+      init,
+    );
+    return { res, text: await res.text() };
+  };
+  const sent = () => s3.requests.map((q) => [q.method, q.range]);
+
+  test.each([
+    ["GET", {}, 200, [["GET", null]]],
+    [
+      "GET",
+      { range: "bytes=1-3" },
+      206,
+      [
+        ["HEAD", null],
+        ["GET", "bytes=1-3"],
+      ],
+    ],
+    [
+      "GET",
+      { range: "bytes=0-0,2-3" },
+      206,
+      [
+        ["HEAD", null],
+        ["GET", "bytes=0-0"],
+        ["GET", "bytes=2-3"],
+      ],
+    ],
+    ["HEAD", {}, 200, [["HEAD", null]]],
+    ["GET", { "if-none-match": "*" }, 304, [["HEAD", null]]],
+    ["GET", { "if-match": '"x"' }, 412, [["HEAD", null]]],
+    ["GET", { range: "bytes=50-" }, 416, [["HEAD", null]]],
+  ])(
+    "%s %p answers %d with S3 requests %p",
+    async (method, headers, status, requests) => {
+      const { res, text } = await download("hello world", { method, headers });
+      expect(res.status).toBe(status);
+      expect(sent()).toEqual(requests);
+      if (status === 200 && method === "GET") {
+        expect(text).toBe("hello world");
+        expect(res.headers.get("content-length")).toBe("11");
+        expect(res.headers.get("content-type")).toBe(
+          "text/plain; charset=utf-8",
+        );
+      }
+      if (method === "HEAD")
+        expect(res.headers.get("content-length")).toBe("11");
+      const range = (headers as { range?: string }).range;
+      if (range === "bytes=1-3") {
+        expect(text).toBe("ell");
+        expect(res.headers.get("content-length")).toBe("3");
+      }
+      if (range === "bytes=0-0,2-3") {
+        expect(text).toContain("\r\n\r\nh\r\n");
+        expect(text).toContain("\r\n\r\nll\r\n");
+      }
+    },
+  );
+
+  test("a range of a large file is one ranged GET, not the prefix", async () => {
+    const big = "x".repeat(300_000) + "0123456789";
+    const { res, text } = await download(big, {
+      headers: { range: "bytes=300000-300009" },
+    });
+    expect(res.status).toBe(206);
+    expect(text).toBe("0123456789");
+    expect(sent()).toEqual([
+      ["HEAD", null],
+      ["GET", "bytes=300000-300009"],
+    ]);
+  });
+
+  test("a large file streams in one GET", async () => {
+    const big = "y".repeat(300_000);
+    const { res, text } = await download(big, {});
+    expect(res.status).toBe(200);
+    expect(text).toBe(big);
+    expect(sent()).toEqual([["GET", null]]);
+  });
+
+  test("a thumb of an S3 original takes its type from the stat, not a body read", async () => {
+    await app.settings.update({ s3: config });
+    const png = await sharp({
+      create: { width: 4, height: 4, channels: 3, background: "#f00" },
+    })
+      .png()
+      .toBuffer();
+    const r = await app.records("docs").create({
+      doc: new File([png], "a.png"),
+    });
+    const url = `${server.url}/api/files/docs/${r.id}/${r.doc}?thumb=100x100`;
+    expect((await fetch(url)).status).toBe(200);
+    s3.requests.length = 0;
+    expect((await fetch(url)).status).toBe(200);
+    expect(sent()).toEqual([
+      ["HEAD", null],
+      ["HEAD", null],
+      ["GET", null],
+    ]);
   });
 
   test("a record file download while the fake S3 is stopped answers 404 without hanging", async () => {

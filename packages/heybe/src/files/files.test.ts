@@ -9,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import sharp from "sharp";
 import { join } from "node:path";
 import { createApp } from "../app";
 import { createEvent } from "../http/router";
@@ -514,6 +515,24 @@ describe("sniffMime text decoding", () => {
     decode.mockRestore();
   });
 
+  test.each([
+    [
+      `<?xml version="1.0"?>\n<rss version="2.0"><channel/></rss>`,
+      "application/rss+xml",
+    ],
+    [
+      `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"></feed>`,
+      "application/atom+xml",
+    ],
+    [
+      `<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"/>`,
+      "application/vnd.google-earth.kml+xml",
+    ],
+    [`<?xml version="1.0"?><feed></feed>`, "text/xml; charset=utf-8"],
+  ])("xml subtype of %p is %p", async (text, type) => {
+    expect(await sniffMime(new TextEncoder().encode(text))).toBe(type);
+  });
+
   test("binary bytes containing <svg stay application/octet-stream", async () => {
     const bytes = new Uint8Array([0, 1, ...new TextEncoder().encode("<svg>")]);
     expect(await sniffMime(bytes)).toBe("application/octet-stream");
@@ -554,5 +573,111 @@ describe("download sniffs once", () => {
     expect(await res.text()).toBe("hello");
     expect(sniff).toHaveBeenCalledTimes(1);
     sniff.mockRestore();
+  });
+});
+
+describe("download ServeContent", () => {
+  let app: ReturnType<typeof testApp>;
+  let id: string;
+  let name: string;
+
+  beforeEach(async () => {
+    app = testApp();
+    await app.collections.save({
+      name: "docs",
+      viewRule: "",
+      fields: [
+        {
+          name: "doc",
+          type: "file",
+          maxSelect: 1,
+          maxSize: 100000,
+          thumbs: ["10x10"],
+        },
+      ],
+    } as any);
+  });
+  afterEach(() => app.close());
+
+  const upload = async (file: File) => {
+    const r = await app.records("docs").create({ doc: file });
+    id = r.id as string;
+    name = r.doc as string;
+  };
+
+  const get = async (
+    headers: Record<string, string>,
+    init: RequestInit = {},
+    query = "",
+  ) => {
+    const url = new URL(`/api/files/docs/${id}/${name}${query}`, "http://x");
+    const found = createRouter().build().match("GET", url.pathname)!;
+    return found.run(
+      createEvent(app, new Request(url, { headers, ...init }), found.params),
+    );
+  };
+
+  // statuses observed from PB v0.41.1 (contract/files.contract.ts compares the headers)
+  const past = "Thu, 01 Jan 1970 00:00:01 GMT";
+  const future = "Fri, 01 Jan 2100 00:00:00 GMT";
+  test.each([
+    [{ "if-match": "*" }, 200],
+    [{ "if-match": '"abc"' }, 412],
+    [{ "if-match": "garbage, *" }, 412],
+    [{ "if-match": '"abc", *' }, 200],
+    [{ "if-unmodified-since": future }, 200],
+    [{ "if-unmodified-since": past }, 412],
+    [{ "if-match": "*", "if-unmodified-since": past }, 200],
+    [{ "if-none-match": "*" }, 304],
+    [{ "if-none-match": '"abc", *' }, 304],
+    [{ "if-none-match": '"abc"' }, 200],
+    [{ "if-none-match": '"abc"', "if-modified-since": future }, 200],
+    [{ "if-range": '"abc"', range: "bytes=0-3" }, 200],
+    [{ range: "bytes=0-9223372036854775807" }, 206],
+    [{ range: "bytes=0-9223372036854775808" }, 416],
+    [{ range: "bytes=-9223372036854775808" }, 416],
+    [{ range: "bytes=0-1,0-1000" }, 200],
+  ])("%p answers %d", async (headers, status) => {
+    await upload(new File(["hello world!"], "a.txt"));
+    const res = await get(headers);
+    expect(res.status).toBe(status);
+    if (status === 412) {
+      expect(res.headers.get("last-modified")).toMatch(/ GMT$/);
+      expect(await res.text()).toBe("");
+    }
+    if (status === 416) expect(await res.text()).toBe("invalid range\n");
+  });
+
+  test("bytes=0-1,4-5 returns 206 multipart/byteranges", async () => {
+    await upload(new File(["hello world!"], "a.txt"));
+    const res = await get({ range: "bytes=0-1,4-5" });
+    expect(res.status).toBe(206);
+    const type = res.headers.get("content-type")!;
+    const boundary = type.replace("multipart/byteranges; boundary=", "");
+    expect(boundary).toMatch(/^[0-9a-f]{60}$/);
+    const body = await res.text();
+    expect(res.headers.get("content-length")).toBe(String(body.length));
+    const part = (range: string, data: string) =>
+      `--${boundary}\r\nContent-Range: bytes ${range}/12\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${data}`;
+    expect(body).toBe(
+      `${part("0-1", "he")}\r\n${part("4-5", "o ")}\r\n--${boundary}--\r\n`,
+    );
+  });
+
+  test("an aborted request does not start thumb generation", async () => {
+    const png = await sharp({
+      create: { width: 20, height: 20, channels: 3, background: "#f00" },
+    })
+      .png()
+      .toBuffer();
+    await upload(new File([png], "a.png"));
+    const abort = new AbortController();
+    abort.abort();
+    const res = await get({}, { signal: abort.signal }, "?thumb=10x10");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+      new Uint8Array(png),
+    );
+    const c = app.collections.find("docs")!;
+    expect(await app.files.list(`${c.id}/${id}/thumbs_`)).toEqual([]);
   });
 });

@@ -7,9 +7,13 @@ export interface FakeObject {
 export interface FakeS3 {
   endpoint: string;
   objects(bucket: string): Map<string, FakeObject>;
-  requests: { method: string; path: string }[];
+  requests: { method: string; path: string; range: string | null }[];
   // the next request answers an S3 XML error
   failNext(status: number, code: string): void;
+  // every later request stays unanswered until stop
+  hang(): void;
+  // GET bodies are streamed without Content-Length, or stall after their first byte
+  bodies(mode: "chunked" | "stalled"): void;
   stop(): Promise<void>;
 }
 
@@ -62,6 +66,8 @@ export async function startFakeS3(
   >();
   const requests: FakeS3["requests"] = [];
   let failure: { status: number; code: string } | null = null;
+  let hanging = false;
+  let bodyMode: "sized" | "chunked" | "stalled" = "sized";
   let uploadSeq = 0;
 
   const objects = (bucket: string) => {
@@ -98,6 +104,22 @@ export async function startFakeS3(
       "accept-ranges": "bytes",
     };
     const r = range(req.headers.get("range"), o.body.length);
+    if (!r && req.method === "GET" && bodyMode !== "sized") {
+      const data = o.body;
+      let sentFirst = false;
+      return new Response(
+        new ReadableStream({
+          pull(c) {
+            if (bodyMode === "stalled" && sentFirst)
+              return new Promise(() => {});
+            sentFirst = true;
+            c.enqueue(bodyMode === "stalled" ? data.slice(0, 1) : data);
+            if (bodyMode !== "stalled") c.close();
+          },
+        }),
+        { headers },
+      );
+    }
     if (!r) return new Response(o.body, { headers });
     return new Response(o.body.slice(r[0], r[1] + 1), {
       status: 206,
@@ -183,7 +205,12 @@ export async function startFakeS3(
     port: 0,
     fetch(req) {
       const url = new URL(req.url);
-      requests.push({ method: req.method, path: url.pathname + url.search });
+      requests.push({
+        method: req.method,
+        path: url.pathname + url.search,
+        range: req.headers.get("range"),
+      });
+      if (hanging) return new Promise<Response>(() => {});
       if (failure) {
         const { status, code } = failure;
         failure = null;
@@ -199,6 +226,12 @@ export async function startFakeS3(
     requests,
     failNext(status, code) {
       failure = { status, code };
+    },
+    hang() {
+      hanging = true;
+    },
+    bodies(mode) {
+      bodyMode = mode;
     },
     stop: () => server.stop(true),
   };

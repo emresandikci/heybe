@@ -3,7 +3,12 @@ import type { Collection } from "../../collections/model";
 import { findRecordByViewFile } from "../../collections/view";
 import { uniqueStrings } from "../../fields/shared";
 import { sniffMime } from "../../files/mime";
-import { type Filesystem, type StoredFile, fileKey } from "../../files/storage";
+import {
+  type Filesystem,
+  type StoredFile,
+  type RemoteFile,
+  fileKey,
+} from "../../files/storage";
 import { createThumb, thumbGenerator } from "../../files/thumbs";
 import { buildRequestInfo, ruleFilter } from "../../records/rules";
 import { ApiError } from "../errors";
@@ -164,7 +169,7 @@ async function download(e: RequestEvent): Promise<void> {
   ) {
     const original = await readFile(e, originalKey);
     if (!original) throw new ApiError(404, "");
-    originalType = await sniffMime(original.blob);
+    originalType = original.type ?? (await sniffMime(original.blob));
     if (THUMB_TYPES.has(originalType)) {
       served.servedName = `${thumb}_${filename}`;
       served.servedPath = fileKey(
@@ -174,6 +179,7 @@ async function download(e: RequestEvent): Promise<void> {
       );
       if (!(await readFile(e, served.servedPath))) {
         try {
+          if (e.req.signal.aborted) throw new Error("the request was aborted");
           await generateThumb(
             e.app.files,
             originalKey,
@@ -238,9 +244,12 @@ export async function serveStoredFile(
   name: string,
   sniffed?: string,
 ): Promise<void> {
-  const file = await fs.file(key);
+  const file = fs.open
+    ? await fs.open(key, needsStat(e.req))
+    : await fs.file(key);
   if (!file) throw new NotFoundError();
-  const type = sniffed ?? (await sniffMime(file.blob));
+  const type =
+    sniffed ?? ("read" in file ? file.type : await sniffMime(file.blob));
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
   const headers = new Headers({
@@ -253,36 +262,114 @@ export async function serveStoredFile(
   e.response = await serveContent(e.req, file, headers);
 }
 
-const NO_OVERLAP = "invalid range: failed to overlap";
+// A remote file is opened with one GET for a plain GET; otherwise its stat comes first so
+// HEAD, 304, 412 and 416 never start a body request and ranges get their own GETs.
+const needsStat = (req: Request) =>
+  req.method !== "GET" ||
+  [
+    "range",
+    "if-match",
+    "if-none-match",
+    "if-modified-since",
+    "if-unmodified-since",
+  ].some((h) => req.headers.has(h));
 
-// Single range of Go's http.parseRange; null when the header asks for none or several.
-function parseRange(
-  header: string,
-  size: number,
-): { start: number; length: number } | null {
+const SMALL_BODY = 64 << 10;
+
+// Bun.serve drops Content-Length for a stream body, so a stream that ends within SMALL_BODY becomes a Blob.
+async function settle(
+  source: ReadableStream<Uint8Array>,
+): Promise<Blob | ReadableStream<Uint8Array>> {
+  const reader = source.getReader();
+  const chunks: Uint8Array[] = [];
+  let read = 0;
+  while (read <= SMALL_BODY) {
+    const { done, value } = await reader.read();
+    if (done) return new Blob([Buffer.concat(chunks)]);
+    chunks.push(value);
+    read += value.length;
+  }
+  return new ReadableStream<Uint8Array>({
+    start(c) {
+      for (const chunk of chunks) c.enqueue(chunk);
+    },
+    async pull(c) {
+      const { done, value } = await reader.read();
+      if (done) c.close();
+      else c.enqueue(value);
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+}
+
+// the pieces one after another, each stream opened when the previous one ends
+function concat(
+  pieces: (() => ReadableStream<Uint8Array>)[],
+): ReadableStream<Uint8Array> {
+  let next = 0;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  return new ReadableStream<Uint8Array>({
+    async pull(c) {
+      for (;;) {
+        if (!reader) {
+          if (next === pieces.length) return c.close();
+          reader = pieces[next++]!().getReader();
+        }
+        const { done, value } = await reader.read();
+        if (!done) return c.enqueue(value);
+        reader = undefined;
+      }
+    },
+    cancel: (reason) => reader?.cancel(reason),
+  });
+}
+
+type Served = StoredFile | RemoteFile;
+
+const release = (file: Served) => {
+  if ("read" in file) file.close();
+};
+
+interface ByteRange {
+  start: number;
+  length: number;
+}
+
+const NO_OVERLAP = "invalid range: failed to overlap";
+const MAX_INT64 = 2n ** 63n - 1n;
+
+// textproto.TrimString
+const trim = (s: string) => s.replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
+
+// strconv.ParseInt(s, 10, 64); NaN where Go returns an error
+function parseInt64(s: string): number {
+  if (!/^[+-]?\d+$/.test(s)) return NaN;
+  const n = BigInt(s);
+  return n > MAX_INT64 || n < -MAX_INT64 - 1n ? NaN : Number(n);
+}
+
+// Port of Go's net/http parseRange.
+function parseRange(header: string, size: number): ByteRange[] {
+  if (header === "") return [];
   if (!header.startsWith("bytes=")) throw new Error("invalid range");
-  const ranges: { start: number; length: number }[] = [];
+  const ranges: ByteRange[] = [];
   let noOverlap = false;
-  const parts = header
-    .slice(6)
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p !== "");
-  for (const part of parts) {
+  for (const raw of header.slice(6).split(",")) {
+    const part = trim(raw);
+    if (part === "") continue;
     const dash = part.indexOf("-");
     if (dash < 0) throw new Error("invalid range");
-    const from = part.slice(0, dash).trim();
-    const to = part.slice(dash + 1).trim();
-    const int = (v: string) => (/^[+-]?\d+$/.test(v) ? Number(v) : NaN);
+    const from = trim(part.slice(0, dash));
+    const to = trim(part.slice(dash + 1));
     if (from === "") {
-      const n = int(to);
-      if (to === "" || to.startsWith("-") || !(n >= 0))
-        throw new Error("invalid range");
-      const length = Math.min(n, size);
-      ranges.push({ start: size - length, length });
+      if (to === "" || to[0] === "-") throw new Error("invalid range");
+      const n = parseInt64(to);
+      if (!(n >= 0)) throw new Error("invalid range");
+      const start = size - Math.min(n, size);
+      ranges.push({ start, length: size - start });
       continue;
     }
-    const start = int(from);
+    const start = parseInt64(from);
     if (!(start >= 0)) throw new Error("invalid range");
     if (start >= size) {
       noOverlap = true;
@@ -292,98 +379,207 @@ function parseRange(
       ranges.push({ start, length: size - start });
       continue;
     }
-    const end = int(to);
-    if (!(end >= start)) throw new Error("invalid range");
+    const end = parseInt64(to);
+    if (Number.isNaN(end) || start > end) throw new Error("invalid range");
     ranges.push({ start, length: Math.min(end, size - 1) - start + 1 });
   }
   if (noOverlap && ranges.length === 0) throw new Error(NO_OVERLAP);
-  const total = ranges.reduce((n, r) => n + r.length, 0);
-  return ranges.length === 1 && total <= size ? ranges[0]! : null;
+  return ranges;
 }
 
-// Bun answers an S3File body with a redirect to a presigned URL and sends its stream chunked,
-// so the body comes from a fetch of the presigned URL, which keeps Content-Length.
-async function respond(
-  req: Request,
-  blob: Blob,
-  status: number,
-  headers: Headers,
-  start: number,
-  length: number,
-): Promise<Response> {
-  if (!("presign" in blob))
-    return new Response(
-      status === 206 ? blob.slice(start, start + length) : blob,
-      {
-        status,
-        headers,
-      },
-    );
-  const range = status === 206 ? `bytes=${start}-${start + length - 1}` : null;
-  const res = await fetch(
-    (blob as Bun.S3File).presign({
-      method: req.method === "HEAD" ? "HEAD" : "GET",
-    }),
-    {
-      method: req.method === "HEAD" ? "HEAD" : "GET",
-      headers: range ? { range } : {},
-    },
-  ).catch(() => null);
-  if (!res?.ok) throw new ApiError(404, "");
-  headers.set("content-length", String(length));
-  return new Response(res.body, { status, headers });
+const httpSeconds = (value: string) => Math.floor(Date.parse(value) / 1000);
+
+function scanETag(value: string): [string, string] {
+  const s = trim(value);
+  const start = s.startsWith("W/") ? 2 : 0;
+  if (s.length - start < 2 || s[start] !== '"') return ["", ""];
+  for (let i = start + 1; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0x22) return [s.slice(0, i + 1), s.slice(i + 1)];
+    if (!(c === 0x21 || (c >= 0x23 && c <= 0x7e) || c >= 0x80)) return ["", ""];
+  }
+  return ["", ""];
 }
 
-// The parts of Go's http.ServeContent that PB's file route relies on.
-async function serveContent(
-  req: Request,
-  { blob, size, modified: date }: StoredFile,
-  headers: Headers,
-): Promise<Response> {
-  const modified = Math.floor(date.getTime() / 1000);
-  const lastModified = new Date(modified * 1000).toUTCString();
-  const readOnly = req.method === "GET" || req.method === "HEAD";
-  if (modified > 0) headers.set("last-modified", lastModified);
+// Go's If-Match / If-None-Match walk against a response without an ETag (PB sets none):
+// only a "*" met before a malformed entry matches.
+function listHasStar(list: string): boolean {
+  for (let s = list; ;) {
+    s = trim(s);
+    if (s === "") return false;
+    if (s[0] === ",") {
+      s = s.slice(1);
+      continue;
+    }
+    if (s[0] === "*") return true;
+    const [etag, rest] = scanETag(s);
+    if (etag === "") return false;
+    s = rest;
+  }
+}
 
-  const since = Date.parse(req.headers.get("if-modified-since") ?? "");
-  if (
-    readOnly &&
-    modified > 0 &&
-    !Number.isNaN(since) &&
-    modified <= since / 1000
-  ) {
-    headers.delete("content-type");
-    return new Response(null, { status: 304, headers });
+function notModified(headers: Headers): Response {
+  headers.delete("content-type");
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(null, { status: 304, headers });
+}
+
+// Go's serveError for a 416
+function rangeError(message: string, headers: Headers): Response {
+  const failed = new Headers({
+    "content-type": "text/plain; charset=utf-8",
+    "x-content-type-options": "nosniff",
+  });
+  for (const [k, v] of headers)
+    if (!["last-modified", "content-type", "cache-control"].includes(k))
+      failed.set(k, v);
+  return new Response(`${message}\n`, { status: 416, headers: failed });
+}
+
+// Go's checkPreconditions: the response that ends the request, or the Range header to serve.
+function checkPreconditions(
+  req: Request,
+  modified: number,
+  headers: Headers,
+): Response | string {
+  const getOrHead = req.method === "GET" || req.method === "HEAD";
+  const ifMatch = req.headers.get("if-match");
+  let ok: boolean | null = ifMatch ? listHasStar(ifMatch) : null;
+  const ius = req.headers.get("if-unmodified-since");
+  if (ok === null && ius && modified > 0) {
+    const t = httpSeconds(ius);
+    if (!Number.isNaN(t)) ok = modified <= t;
+  }
+  if (ok === false) return new Response(null, { status: 412, headers });
+
+  const inm = req.headers.get("if-none-match");
+  if (inm) {
+    if (listHasStar(inm))
+      return getOrHead
+        ? notModified(headers)
+        : new Response(null, { status: 412, headers });
+  } else {
+    const ims = req.headers.get("if-modified-since");
+    const t = getOrHead && ims && modified > 0 ? httpSeconds(ims) : NaN;
+    if (modified <= t) return notModified(headers);
   }
 
-  let range = readOnly ? (req.headers.get("range") ?? "") : "";
+  const range = req.headers.get("range") ?? "";
   const ifRange = req.headers.get("if-range");
-  if (range && ifRange && Date.parse(ifRange) / 1000 !== modified) range = "";
+  if (range && getOrHead && ifRange) {
+    const matches =
+      scanETag(ifRange)[0] === "" &&
+      modified !== 0 &&
+      httpSeconds(ifRange) === modified;
+    if (!matches) return "";
+  }
+  return range;
+}
 
-  let selected: ReturnType<typeof parseRange> = null;
-  if (range) {
-    try {
-      selected = parseRange(range, size);
-    } catch (err) {
-      const message = (err as Error).message;
-      const failed = new Headers({
-        "content-type": "text/plain; charset=utf-8",
-        "x-content-type-options": "nosniff",
-      });
-      for (const [k, v] of headers)
-        if (!["last-modified", "content-type", "cache-control"].includes(k))
-          failed.set(k, v);
+const contentRange = (r: ByteRange, size: number) =>
+  `bytes ${r.start}-${r.start + r.length - 1}/${size}`;
+
+function randomBoundary(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(30))).toString(
+    "hex",
+  );
+}
+
+// Port of Go's net/http serveContent as PB's file route uses it (Content-Type always set).
+async function serveContent(
+  req: Request,
+  file: Served,
+  headers: Headers,
+): Promise<Response> {
+  const { size } = file;
+  const modified = Math.floor(file.modified.getTime() / 1000);
+  if (modified > 0)
+    headers.set("last-modified", new Date(modified * 1000).toUTCString());
+
+  const checked = checkPreconditions(req, modified, headers);
+  if (checked instanceof Response) {
+    release(file);
+    return checked;
+  }
+
+  let ranges: ByteRange[];
+  try {
+    ranges = parseRange(checked, size);
+  } catch (err) {
+    const message = (err as Error).message;
+    if (message !== NO_OVERLAP || size !== 0) {
+      release(file);
       if (message === NO_OVERLAP)
-        failed.set("content-range", `bytes */${size}`);
-      return new Response(`${message}\n`, { status: 416, headers: failed });
+        headers.set("content-range", `bytes */${size}`);
+      return rangeError(message, headers);
     }
+    ranges = [];
+  }
+  if (ranges.reduce((n, r) => n + r.length, 0) > size) ranges = [];
+
+  const head = req.method === "HEAD";
+  let status = 200;
+  let length = size;
+  let body = async (): Promise<BodyInit> =>
+    "read" in file ? settle(file.read(0, size)) : file.blob;
+
+  if (ranges.length === 1) {
+    const r = ranges[0]!;
+    status = 206;
+    length = r.length;
+    headers.set("content-range", contentRange(r, size));
+    body = async () =>
+      "read" in file
+        ? settle(file.read(r.start, r.length))
+        : file.blob.slice(r.start, r.start + r.length);
+  } else if (ranges.length > 1) {
+    status = 206;
+    const boundary = randomBoundary();
+    const ctype = headers.get("content-type") ?? "";
+    const parts: (string | ByteRange)[] = [];
+    ranges.forEach((r, i) => {
+      parts.push(
+        `${i > 0 ? "\r\n" : ""}--${boundary}\r\nContent-Range: ${contentRange(r, size)}\r\nContent-Type: ${ctype}\r\n\r\n`,
+        r,
+      );
+    });
+    parts.push(`\r\n--${boundary}--\r\n`);
+    length = parts.reduce(
+      (n, p) => n + (typeof p === "string" ? Buffer.byteLength(p) : p.length),
+      0,
+    );
+    headers.set("content-type", `multipart/byteranges; boundary=${boundary}`);
+    body = async () => {
+      if ("read" in file)
+        return settle(
+          concat(
+            parts.map((p) =>
+              typeof p === "string"
+                ? () => new Blob([p]).stream()
+                : () => file.read(p.start, p.length),
+            ),
+          ),
+        );
+      return new Blob(
+        await Promise.all(
+          parts.map((p) =>
+            typeof p === "string"
+              ? p
+              : file.blob.slice(p.start, p.start + p.length).bytes(),
+          ),
+        ),
+      );
+    };
   }
 
   headers.set("accept-ranges", "bytes");
-  if (!selected) return respond(req, blob, 200, headers, 0, size);
-  const { start, length } = selected;
-  headers.set("content-range", `bytes ${start}-${start + length - 1}/${size}`);
-  return respond(req, blob, 206, headers, start, length);
+  headers.set("content-length", String(length));
+  if (head) {
+    release(file);
+    return new Response(null, { status, headers });
+  }
+  return new Response(await body(), { status, headers });
 }
 
 export function registerFileRoutes(router: Router): void {

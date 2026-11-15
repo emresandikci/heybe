@@ -14,6 +14,18 @@ export interface StoredFile {
   blob: Blob;
   size: number;
   modified: Date;
+  // the stored content type, when the filesystem keeps one
+  type?: string;
+}
+
+export interface RemoteFile {
+  size: number;
+  modified: Date;
+  type: string;
+  // length bytes from start, fetched when first read
+  read(start: number, length: number): ReadableStream<Uint8Array>;
+  // drops a body opened but not read
+  close(): void;
 }
 
 export interface FileInfo {
@@ -25,6 +37,8 @@ export interface FileInfo {
 export interface Filesystem {
   write(key: string, data: Blob | Uint8Array, type?: string): Promise<void>;
   file(key: string): Promise<StoredFile | null>;
+  // for serving a remote file: statOnly opens it without a body request, otherwise one GET gives stat and body
+  open?(key: string, statOnly: boolean): Promise<RemoteFile | null>;
   exists(key: string): Promise<boolean>;
   // every file under prefix, sorted by key
   list(prefix: string): Promise<FileInfo[]>;
@@ -197,6 +211,10 @@ export function appFilesystem(current: () => Filesystem): AppFilesystem {
       return current().write(key, data, type);
     },
     file: (key) => current().file(key),
+    get open() {
+      const fs = current();
+      return fs.open?.bind(fs);
+    },
     exists: (key) => current().exists(key),
     list: (prefix) => current().list(prefix),
     async delete(key) {

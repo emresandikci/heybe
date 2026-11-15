@@ -87,6 +87,21 @@ describe("createThumb", () => {
     expect([meta.width, meta.height]).toEqual([width, height]);
   });
 
+  test("a local original is read by sharp from its path", async () => {
+    const local = localFilesystem(root);
+    await local.write("c/r/a.img", await source());
+    const fs = {
+      ...local,
+      async file(key: string) {
+        const stored = (await local.file(key))!;
+        stored.blob.bytes = () => Promise.reject(new Error("read in memory"));
+        return stored;
+      },
+    };
+    await createThumb(fs, "c/r/a.img", "c/r/thumbs_a.img/t", "10x10");
+    expect(await local.exists("c/r/thumbs_a.img/t")).toBe(true);
+  });
+
   test("the thumb keeps the original format, webp becomes png", async () => {
     expect((await run("50x50", "jpeg")).format).toBe("jpeg");
     expect((await run("50x50", "gif")).format).toBe("gif");

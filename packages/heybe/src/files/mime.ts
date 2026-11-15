@@ -179,6 +179,34 @@ function isJson(text: string, truncated: boolean): boolean {
 const withCharset = (mime: string, charset: string) =>
   charset ? `${mime}; charset=${charset}` : mime;
 
+// mimetype's xml children checked before xhtml, matched in the first 512 bytes after leading whitespace
+const XML_SUBTYPES: [string, [string, string][]][] = [
+  ["application/rss+xml", [["<rss", ""]]],
+  ["application/atom+xml", [["<feed", 'xmlns="http://www.w3.org/2005/Atom"']]],
+  [
+    "application/vnd.google-earth.kml+xml",
+    [
+      ["<kml", 'xmlns="http://www.opengis.net/kml/2.2"'],
+      ["<kml", 'xmlns="http://earth.google.com/kml/2.0"'],
+      ["<kml", 'xmlns="http://earth.google.com/kml/2.1"'],
+      ["<kml", 'xmlns="http://earth.google.com/kml/2.2"'],
+    ],
+  ],
+];
+
+function xmlSubtype(head: Uint8Array): string | undefined {
+  let start = 0;
+  while (start < head.length && [9, 10, 12, 13, 32].includes(head[start]!))
+    start++;
+  const raw = Buffer.from(head.subarray(start, start + 512));
+  return XML_SUBTYPES.find(([, sigs]) =>
+    sigs.some(([name, xmlns]) => {
+      const at = raw.indexOf(name);
+      return xmlns === "" ? at > 0 : at !== -1 && at < raw.indexOf(xmlns);
+    }),
+  )?.[0];
+}
+
 const htmlCharset = (head: Uint8Array) =>
   bomOf(head) || charsetFromHtml(head) || charsetOf(head);
 
@@ -201,9 +229,12 @@ export async function sniffMime(data: Blob | Uint8Array): Promise<string> {
   const start = head.subarray(0, 1024);
   if (isHtml(head)) return withCharset("text/html", htmlCharset(start));
   if (isXml(head))
-    return isXhtml(head)
-      ? "application/xhtml+xml"
-      : withCharset("text/xml", charsetFromXml(start) || charsetOf(start));
+    return (
+      xmlSubtype(head) ??
+      (isXhtml(head)
+        ? "application/xhtml+xml"
+        : withCharset("text/xml", charsetFromXml(start) || charsetOf(start)))
+    );
   const charset = charsetOf(head);
   return charset ? `text/plain; charset=${charset}` : "text/plain";
 }
@@ -219,6 +250,9 @@ const EXTENSIONS: Record<string, string> = {
   "image/webp": ".webp",
   "application/pdf": ".pdf",
   "application/zip": ".zip",
+  "application/rss+xml": ".rss",
+  "application/atom+xml": ".atom",
+  "application/vnd.google-earth.kml+xml": ".kml",
 };
 
 export function mimeExtension(mime: string): string {
