@@ -1,5 +1,7 @@
+import os from "node:os";
 import { join } from "node:path";
 import { type Target, startTargets } from "../contract/harness";
+import { waitForQuiet } from "./load";
 
 const AUTOCANNON = join(
   import.meta.dir,
@@ -12,7 +14,6 @@ const CONNECTIONS = 100;
 const DURATION = 10;
 const WARMUP = 3;
 const WORKERS = 4;
-const ROUNDS = 2;
 const FILE_SIZE = 50 * 1024;
 const FILE_BYTES = Uint8Array.from(
   { length: FILE_SIZE },
@@ -33,8 +34,18 @@ interface Scenario {
   expectItems?: boolean;
 }
 
+function flag(name: string): string | undefined {
+  const i = process.argv.indexOf(`--${name}`);
+  return i === -1 ? undefined : process.argv[i + 1];
+}
+
+const ONLY = flag("only")
+  ?.split(",")
+  .map((n) => n.trim());
+const ROUNDS = Number(flag("rounds") ?? 2);
+
 const LIST = "/api/collections/posts/records";
-const scenarios: Scenario[] = [
+const allScenarios: Scenario[] = [
   {
     name: "view one",
     method: "GET",
@@ -84,6 +95,9 @@ const scenarios: Scenario[] = [
     }),
   },
 ];
+
+const selected = (s: Scenario) => !ONLY || ONLY.includes(s.name);
+const scenarios = allScenarios.filter(selected);
 
 const limited = scenarios
   .filter((s) => s.name === "view one" || s.name === "create")
@@ -169,6 +183,7 @@ async function seed(t: Target): Promise<Seeded> {
         },
         { name: "created", type: "autodate", onCreate: true },
       ],
+      indexes: ["CREATE INDEX idx_posts_created ON posts (created)"],
     }),
   );
   await mustJson(
@@ -267,8 +282,21 @@ async function checkScenarios(t: Target, seeded: Seeded) {
 }
 
 const rows: Row[] = [];
+const loads: string[] = [];
+
+if (scenarios.length === 0) {
+  console.error(`no scenario matches --only ${ONLY}`);
+  process.exit(1);
+}
 
 for (let round = 1; round <= ROUNDS; round++) {
+  let startLoad: number;
+  try {
+    startLoad = await waitForQuiet();
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exit(1);
+  }
   const targets = await startTargets();
   try {
     const order =
@@ -313,6 +341,9 @@ for (let round = 1; round <= ROUNDS; round++) {
   } finally {
     await targets.stop();
   }
+  loads.push(
+    `load at round ${round} start: ${startLoad}, end: ${os.loadavg()[0]}`,
+  );
 }
 
 console.log(
@@ -323,6 +354,9 @@ for (const r of rows)
   console.log(
     `| ${r.scenario} | ${r.round} | ${r.target} | ${r.rps} | ${r.p50} | ${r.p99} | ${r.non2xx} | ${r.errors} |`,
   );
+
+console.log();
+for (const line of loads) console.log(line);
 
 if (rows.some((r) => r.non2xx > 0 || r.errors > 0)) {
   console.error("FAILED: non-2xx responses or errors");
