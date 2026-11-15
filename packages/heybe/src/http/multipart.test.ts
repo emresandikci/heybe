@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "./errors";
-import { parseMultipart } from "./multipart";
+import { existsSync } from "node:fs";
+import { TempFiles, inferValue, parseMultipart } from "./multipart";
+
+class RecordingTempFiles extends TempFiles {
+  added: string[] = [];
+  override add(path: string): boolean {
+    this.added.push(path);
+    return super.add(path);
+  }
+}
 
 const request = (entries: [string, string | File][]) => {
   const form = new FormData();
@@ -32,6 +41,7 @@ describe("parseMultipart", () => {
         ["tags", "2"],
       ]),
       1 << 20,
+      new TempFiles(),
     );
     expect(body).toEqual({
       t: true,
@@ -55,6 +65,7 @@ describe("parseMultipart", () => {
         ["many", a],
       ]),
       1 << 20,
+      new TempFiles(),
     );
     expect(body.one).toBeInstanceOf(File);
     expect((body.one as File).name).toBe("a.txt");
@@ -73,6 +84,7 @@ describe("parseMultipart", () => {
         ["@jsonPayload", '{"__proto__":{"title":"polluted"},"a":1}'],
       ]),
       1 << 20,
+      new TempFiles(),
     );
     expect(Object.keys(body).sort()).toEqual(["__proto__", "a"]);
     expect(body.title).toBeUndefined();
@@ -90,6 +102,7 @@ describe("parseMultipart", () => {
         ["files", new File(["f"], "f.txt")],
       ]),
       1 << 20,
+      new TempFiles(),
     );
     expect(body.title).toEqual({ a: 1 });
     expect(body.other).toBe("x");
@@ -107,6 +120,7 @@ describe("parseMultipart", () => {
         ["file", new File(["f"], "f.txt")],
       ]),
       1 << 20,
+      new TempFiles(),
     );
     expect(Object.keys(body)).toEqual(["file"]);
   });
@@ -114,9 +128,15 @@ describe("parseMultipart", () => {
   test("1000 parts parse, one more is PB's 400", async () => {
     const parts = (n: number) =>
       Array.from({ length: n }, (): [string, string] => ["tags", "a"]);
-    const body = await parseMultipart(request(parts(1000)), 1 << 20);
+    const body = await parseMultipart(
+      request(parts(1000)),
+      1 << 20,
+      new TempFiles(),
+    );
     expect(body.tags).toHaveLength(1000);
-    const err = await apiError(parseMultipart(request(parts(1001)), 1 << 20));
+    const err = await apiError(
+      parseMultipart(request(parts(1001)), 1 << 20, new TempFiles()),
+    );
     expect(err.status).toBe(400);
     expect(err.message).toBe(
       "Something went wrong while processing your request.",
@@ -126,7 +146,11 @@ describe("parseMultipart", () => {
   test("an invalid @jsonPayload is a 400", async () => {
     for (const payload of ["{", "[1]", "1"]) {
       const err = await apiError(
-        parseMultipart(request([["@jsonPayload", payload]]), 1 << 20),
+        parseMultipart(
+          request([["@jsonPayload", payload]]),
+          1 << 20,
+          new TempFiles(),
+        ),
       );
       expect(err.status).toBe(400);
     }
@@ -134,7 +158,7 @@ describe("parseMultipart", () => {
 
   test("a body over the limit is rejected while reading", async () => {
     let pulls = 0;
-    const chunk = new Uint8Array(1024);
+    const chunk = new Uint8Array(1024).fill(10);
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
         pulls++;
@@ -146,8 +170,144 @@ describe("parseMultipart", () => {
       headers: { "content-type": "multipart/form-data; boundary=x" },
       body,
     });
-    const err = await apiError(parseMultipart(req, 4096));
+    const err = await apiError(parseMultipart(req, 4096, new TempFiles()));
     expect(err.status).toBe(413);
     expect(pulls).toBeLessThan(10);
+  });
+
+  test("a 20 MiB multipart upload keeps the second file on disk, read lazily", async () => {
+    const first = new Uint8Array(10 << 20).fill(1);
+    const second = new Uint8Array(10 << 20).fill(2);
+    const temp = new RecordingTempFiles();
+    try {
+      const body = await parseMultipart(
+        request([
+          ["a", new File([first], "a.bin")],
+          ["b", new File([second], "b.bin", { type: "image/png" })],
+        ]),
+        Infinity,
+        temp,
+      );
+      expect(temp.added).toHaveLength(1);
+      expect(existsSync(temp.added[0])).toBe(true);
+      const b = body.b as File;
+      expect([b.name, b.type, b.size]).toEqual([
+        "b.bin",
+        "image/png",
+        10 << 20,
+      ]);
+      expect(new Uint8Array(await b.arrayBuffer())).toEqual(second);
+      expect((body.a as File).size).toBe(10 << 20);
+      // the File reads the temp file on use, so it is gone once the request removed it
+      await temp.removeAll();
+      await expect(b.arrayBuffer()).rejects.toThrow();
+    } finally {
+      await temp.removeAll();
+    }
+  });
+
+  test("a long header line in small chunks is scanned once", async () => {
+    const head = new TextEncoder().encode(
+      '--b\r\nContent-Disposition: form-data; name="x"; filename="',
+    );
+    const chunk = new Uint8Array(64).fill(97);
+    let left = (8 << 20) / chunk.length;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(head);
+      },
+      pull(controller) {
+        if (left-- === 0) return controller.close();
+        controller.enqueue(chunk);
+      },
+    });
+    const req = new Request("http://x/", {
+      method: "POST",
+      headers: { "content-type": "multipart/form-data; boundary=b" },
+      body,
+    });
+    const err = await apiError(parseMultipart(req, Infinity, new TempFiles()));
+    expect(err.status).toBe(400);
+  });
+
+  test("boundary split across chunks parses", async () => {
+    const source = request([
+      ["title", "hello"],
+      ["file", new File(["--x\r\n\r\n"], "dir/f.txt")],
+      ["n", "12"],
+    ]);
+    const type = source.headers.get("content-type")!;
+    const bytes = new Uint8Array(await source.arrayBuffer());
+    let i = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (i < bytes.length) controller.enqueue(bytes.slice(i, ++i));
+        else controller.close();
+      },
+    });
+    const body = await parseMultipart(
+      new Request("http://x/", {
+        method: "POST",
+        headers: { "content-type": type },
+        body: stream,
+      }),
+      1 << 20,
+      new TempFiles(),
+    );
+    expect(body.title).toBe("hello");
+    expect(body.n).toBe(12);
+    const file = body.file as File;
+    expect(file.name).toBe("f.txt");
+    expect(await file.text()).toBe("--x\r\n\r\n");
+  });
+
+  test("exponent and numeric @jsonPayload inference matches PB", async () => {
+    expect(inferValue("0.0000001")).toBe(1e-7);
+    expect(inferValue("1000000000000000000000")).toBe(1e21);
+    expect(Object.is(inferValue("-0"), -0)).toBe(true);
+    for (const raw of ["1e3", "1.0", "00", "-.5", "1."])
+      expect(inferValue(raw)).toBe(raw);
+    const body = await parseMultipart(
+      request([
+        ["@jsonPayload", '{"password":12345678,"passwordConfirm":12345678}'],
+      ]),
+      1 << 20,
+      new TempFiles(),
+    );
+    expect(body.password).toBe(12345678);
+  });
+
+  test("quoted-printable parts are decoded like Go", async () => {
+    const raw = (value: string) =>
+      new Request("http://x/", {
+        method: "POST",
+        headers: { "content-type": "multipart/form-data; boundary=b" },
+        body: [
+          "--b",
+          'Content-Disposition: form-data; name="v"',
+          "Content-Transfer-Encoding: Quoted-Printable",
+          "",
+          value,
+          "--b",
+          'Content-Disposition: form-data; name="f"; filename="f.txt"',
+          "Content-Transfer-Encoding: quoted-printable",
+          "",
+          "caf=C3=a9 =3D=",
+          "x",
+          "--b--",
+          "",
+        ].join("\r\n"),
+      });
+    const body = await parseMultipart(
+      raw("a=3Db=\r\nc =zz  "),
+      1 << 20,
+      new TempFiles(),
+    );
+    expect(body.v).toBe("a=bc =zz");
+    expect(await (body.f as File).text()).toBe("café =x");
+    const err = await apiError(
+      parseMultipart(raw("a=\u0001"), 1 << 20, new TempFiles()),
+    );
+    expect(err.status).toBe(400);
   });
 });

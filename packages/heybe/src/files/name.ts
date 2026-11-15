@@ -25,9 +25,19 @@ function snakecase(s: string): string {
     .toLowerCase();
 }
 
+// The last `max` UTF-8 bytes, without a partial code point (Go cuts the bytes, then the regexes drop
+// the broken rune).
+function lastBytes(s: string, max: number): string {
+  const bytes = Buffer.from(s);
+  if (bytes.length <= max) return s;
+  let start = bytes.length - max;
+  while ((bytes[start] & 0xc0) === 0x80) start++;
+  return bytes.subarray(start).toString("utf8");
+}
+
 // `detectedExt` (with the leading dot) is used when the name has no usable extension.
 export function normalizeFilename(original: string, detectedExt = ""): string {
-  const name = original.length > 300 ? original.slice(-300) : original;
+  const name = lastBytes(original, 300);
 
   const ext = extractExtension(name);
   let cleanExt = `.${trimDots(ext.replace(EXT_INVALID, ""))}`;

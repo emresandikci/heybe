@@ -7,7 +7,13 @@ import { Hook, HookEvent } from "../hooks/hook";
 import { pickFields, pickItems } from "../records/serialize";
 import { ApiError, logUnexpected, safeErrorsData, statusText } from "./errors";
 import { readLimited, realIp } from "./middlewares";
-import { parseMultipart } from "./multipart";
+import {
+  type Form,
+  TempFiles,
+  emptyForm,
+  formBody,
+  readMultipart,
+} from "./multipart";
 
 export interface AuthState {
   record: Record<string, unknown>;
@@ -29,7 +35,9 @@ interface RequestState {
   responseHeaders: Headers;
   store: Map<string, unknown>;
   bodyLimit: number;
+  tempFiles: TempFiles;
   body?: Promise<Values>;
+  form?: Promise<Form | null>;
   info?: Promise<RequestInfo>;
 }
 
@@ -69,6 +77,7 @@ export class RequestEvent extends HookEvent {
       responseHeaders: new Headers(),
       store: new Map(re.state.store),
       body: Promise.resolve(info.body),
+      form: Promise.resolve(null),
       info: Promise.resolve(info),
     });
   }
@@ -257,7 +266,21 @@ export class RequestEvent extends HookEvent {
   }
 
   body(): Promise<Values> {
-    return (this.state.body ??= readBody(this.req, this.bodyLimit));
+    return (this.state.body ??= readBody(this));
+  }
+
+  // The multipart or urlencoded body as Go url.Values and files, null for other bodies.
+  form(): Promise<Form | null> {
+    return (this.state.form ??= readForm(
+      this.req,
+      this.bodyLimit,
+      this.state.tempFiles,
+    ));
+  }
+
+  // Removes the temp files of a multipart body spilled to disk, once the request is done.
+  async removeTempFiles(): Promise<void> {
+    await this.state.tempFiles.removeAll();
   }
 
   // Port of PB RequestEvent.RequestInfo: built once per request, the body is read on first use.
@@ -356,6 +379,7 @@ export function createEvent(
     responseHeaders: new Headers(),
     store: new Map(),
     bodyLimit: Infinity,
+    tempFiles: new TempFiles(),
   });
 }
 
@@ -387,36 +411,63 @@ export function buildRequestInfo(
   };
 }
 
-async function readBody(req: Request, limit: number): Promise<Values> {
+async function readForm(
+  req: Request,
+  limit: number,
+  tempFiles: TempFiles,
+): Promise<Form | null> {
   const type = req.headers.get("content-type") ?? "";
-  if (type.startsWith("multipart/form-data")) return parseMultipart(req, limit);
+  if (type.startsWith("multipart/form-data"))
+    return readMultipart(req, limit, tempFiles);
+  if (!type.startsWith("application/x-www-form-urlencoded")) return null;
   const bytes = await readLimited(req, limit);
-  if (bytes.length === 0) return {};
+  const form = emptyForm();
+  if (bytes.length === 0) return form;
+  let data: FormData;
   try {
-    if (type.startsWith("application/json")) {
-      const data = JSON.parse(new TextDecoder().decode(bytes));
-      if (data !== null && typeof data === "object" && !Array.isArray(data))
-        return data as Values;
-      throw new Error("not an object");
-    }
-    if (type.startsWith("application/x-www-form-urlencoded")) {
-      const form = await new Response(bytes, {
-        headers: { "content-type": type },
-      }).formData();
-      const out: Values = {};
-      for (const [key, value] of form.entries()) {
-        const prev = out[key];
-        if (prev === undefined) out[key] = value;
-        else if (Array.isArray(prev)) prev.push(value);
-        else out[key] = [prev, value];
-      }
-      return out;
-    }
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
+    data = await new Response(bytes, {
+      headers: { "content-type": type },
+    }).formData();
+  } catch {
     throw new ApiError(400, "");
   }
-  throw new ApiError(400, "Unsupported Content-Type");
+  for (const [key, value] of data.entries()) {
+    const list = form.values.get(key);
+    if (list) list.push(String(value));
+    else form.values.set(key, [String(value)]);
+  }
+  return form;
+}
+
+async function readBody(e: RequestEvent): Promise<Values> {
+  const type = e.req.headers.get("content-type") ?? "";
+  const form = await e.form();
+  if (form) {
+    if (form.values.size + form.files.size === 0) return {};
+    if (type.startsWith("multipart/form-data")) return formBody(form);
+    const out: Values = Object.create(null);
+    for (const [key, list] of form.values)
+      Object.defineProperty(out, key, {
+        value: list.length === 1 ? list[0] : list,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    return out;
+  }
+  const bytes = await readLimited(e.req, e.bodyLimit);
+  if (bytes.length === 0) return {};
+  if (!type.startsWith("application/json"))
+    throw new ApiError(400, "Unsupported Content-Type");
+  let data: unknown;
+  try {
+    data = JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new ApiError(400, "");
+  }
+  if (data === null || typeof data !== "object" || Array.isArray(data))
+    throw new ApiError(400, "");
+  return data as Values;
 }
 
 export type RouteAction = (e: RequestEvent) => unknown;
@@ -668,7 +719,11 @@ export class Router extends RouterGroup {
           params,
           pattern: route.pattern,
           run: async (e) => {
-            await route.hook.trigger(e, route.action);
+            try {
+              await route.hook.trigger(e, route.action);
+            } finally {
+              await e.removeTempFiles();
+            }
             return e.response ?? new Response(null);
           },
         };

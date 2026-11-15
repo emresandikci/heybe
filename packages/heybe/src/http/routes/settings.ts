@@ -14,9 +14,20 @@ import {
   SettingsListRequestEvent,
   SettingsUpdateRequestEvent,
 } from "../../hooks/events";
-import { SettingsLoadError, publicSettings } from "../../settings";
+import {
+  type SettingsData,
+  SettingsLoadError,
+  publicSettings,
+} from "../../settings";
 import { randomSecret } from "../../util";
 import { ApiError, LOAD_FAILED, loadBody } from "../errors";
+import {
+  type FormField,
+  FormBindError,
+  bindForm,
+  formValues,
+  jsonPayloads,
+} from "../form-bind";
 import type { RequestEvent, Router } from "../router";
 import { requireSuperuser } from "./collections";
 
@@ -31,21 +42,101 @@ function list(e: RequestEvent): unknown {
   });
 }
 
-async function update(e: RequestEvent): Promise<void> {
+const scoped = (prefix: string, keys: [string, FormField[1]][]): FormField[] =>
+  keys.map(([key, kind]) => [`${prefix}.${key}`, kind, `${prefix}.${key}`]);
+
+// PB Settings form fields in struct order. Nested structs keep only their own tag as the prefix, so
+// "s3.*" sets both the storage and the backups S3 configs.
+const SETTINGS_FORM: FormField[] = [
+  ["superuserIPs", "strings", "superuserIPs"],
+  ...scoped("smtp", [
+    ["enabled", "bool"],
+    ["port", "int"],
+    ["host", "string"],
+    ["username", "string"],
+    ["password", "string"],
+    ["authMethod", "string"],
+    ["tls", "bool"],
+    ["localName", "string"],
+  ]),
+  ...scoped("backups", [
+    ["cron", "string"],
+    ["cronMaxKeep", "int"],
+  ]),
+  ...(
+    [
+      ["enabled", "bool"],
+      ["bucket", "string"],
+      ["region", "string"],
+      ["endpoint", "string"],
+      ["accessKey", "string"],
+      ["secret", "string"],
+      ["forcePathStyle", "bool"],
+    ] as const
+  ).map(([key, kind]): FormField => [
+    `s3.${key}`,
+    kind,
+    `backups.s3.${key}`,
+    `s3.${key}`,
+  ]),
+  ...scoped("meta", [
+    ["accentColor", "string"],
+    ["appName", "string"],
+    ["appURL", "string"],
+    ["senderName", "string"],
+    ["senderAddress", "string"],
+    ["hideControls", "bool"],
+  ]),
+  ...scoped("rateLimits", [
+    ["excludedIPs", "strings"],
+    ["enabled", "bool"],
+  ]),
+  ...scoped("trustedProxy", [
+    ["headers", "strings"],
+    ["useLeftmostIP", "bool"],
+  ]),
+  ...scoped("batch", [
+    ["enabled", "bool"],
+    ["maxRequests", "int"],
+    ["timeout", "int"],
+    ["maxBodySize", "int"],
+  ]),
+  ...scoped("logs", [
+    ["maxDataSize", "int"],
+    ["maxDays", "int"],
+    ["minLevel", "int"],
+    ["logIP", "bool"],
+    ["logAuthId", "bool"],
+  ]),
+];
+
+// Port of PB BindBody into the settings: the JSON body, or the form values then each `@jsonPayload`.
+async function bindSettings(e: RequestEvent): Promise<SettingsData> {
+  let form;
   let body: Record<string, unknown> = {};
   try {
-    body = await e.body();
+    form = await e.form();
+    if (!form) body = await e.body();
   } catch (err) {
     if (err instanceof ApiError && err.status === 413) throw err;
     throw new ApiError(400, LOAD_FAILED);
   }
-  let newSettings;
   try {
-    newSettings = e.app.settings.bind(body);
+    if (!form) return e.app.settings.bind(body);
+    const values = formValues(form, e.query);
+    let out = e.app.settings.bind(bindForm(values, SETTINGS_FORM, {}));
+    for (const payload of jsonPayloads(values))
+      out = e.app.settings.bind(payload as SettingsData, out);
+    return out;
   } catch (err) {
-    if (err instanceof SettingsLoadError) throw new ApiError(400, LOAD_FAILED);
+    if (err instanceof SettingsLoadError || err instanceof FormBindError)
+      throw new ApiError(400, LOAD_FAILED);
     throw err;
   }
+}
+
+async function update(e: RequestEvent): Promise<void> {
+  const newSettings = await bindSettings(e);
   const event = SettingsUpdateRequestEvent.from(e, {
     oldSettings: e.app.settings.get(),
     newSettings,
@@ -201,7 +292,7 @@ async function testS3(e: RequestEvent): Promise<Response> {
     new ApiError(400, `Failed to test the S3 filesystem. Raw error: \n${raw}`);
   if (!config.enabled) throw fail("S3 storage filesystem is not enabled");
 
-  const fs = s3Filesystem(config);
+  const fs = s3Filesystem(config, e.app.timers);
   const prefix = `pb_settings_test_${randomSecret(5)}/`;
   try {
     await fs.write(`${prefix}test.txt`, new TextEncoder().encode("test"));

@@ -335,3 +335,79 @@ describe("superuser IP restriction", () => {
     }
   });
 });
+
+describe("settings form bodies", () => {
+  const send = (entries: [string, string][], status: number, query = "") => {
+    const form = new FormData();
+    for (const [k, v] of entries) form.append(k, v);
+    return same(
+      (t) =>
+        fetch(`${t.url}/api/settings${query}`, {
+          method: "PATCH",
+          headers: { authorization: t.superToken },
+          body: form,
+        }),
+      status,
+    );
+  };
+
+  afterAll(() =>
+    patch(
+      {
+        meta: { appName: "Acme" },
+        s3: { bucket: "" },
+        backups: { s3: { bucket: "" } },
+        trustedProxy: { headers: [] },
+      },
+      200,
+    ),
+  );
+
+  test("values bind like PB's Go struct binding", async () => {
+    await send(
+      [
+        ["meta.appName", "X"],
+        ["meta", "1e3"],
+        ["smtp.port", "0x19"],
+        ["s3.bucket", "b"],
+        ["backups.cron", ""],
+        ["logs.logIP", "0"],
+        ["trustedProxy.headers", "X-A"],
+        ["trustedProxy.headers", "X-B"],
+        ["rateLimits.rules", "x"],
+        ["batch.timeout", "+5"],
+        ["batch.maxRequests", "1_0"],
+        ["logs.maxDays", ""],
+      ],
+      200,
+    );
+    await send([["meta.senderName", "N"]], 200, "?meta.appName=Q");
+    await send(
+      [
+        ["meta.appName", "P1"],
+        ["@jsonPayload", '{"meta":{"senderName":"SN"}}'],
+      ],
+      200,
+    );
+    await same(
+      (t) =>
+        fetch(`${t.url}/api/settings`, {
+          method: "PATCH",
+          headers: {
+            authorization: t.superToken,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: "meta.appName=Y&smtp.port=",
+        }),
+      200,
+    );
+  });
+
+  test("values that Go cannot parse are a load error", async () => {
+    await send([["batch.maxRequests", "0.0000001"]], 400);
+    await send([["meta.hideControls", "yes"]], 400);
+    await send([["logs.maxDays", "1e3"]], 400);
+    await send([["@jsonPayload", "{"]], 400);
+    await send([["@jsonPayload", '{"meta":5}']], 400);
+  });
+});

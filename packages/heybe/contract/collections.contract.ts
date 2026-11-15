@@ -980,3 +980,174 @@ describe("delete and truncate", () => {
     await same((t) => api(t, "DELETE", "/api/collections/_mfas/truncate"), 204);
   });
 });
+
+describe("collection form bodies", () => {
+  const send = (
+    method: string,
+    path: string,
+    entries: [string, string][],
+    query = "",
+  ) => {
+    const form = new FormData();
+    for (const [k, v] of entries) form.append(k, v);
+    return (t: Target) =>
+      fetch(`${t.url}${path}${query}`, {
+        method,
+        headers: { authorization: t.superToken },
+        body: form,
+      });
+  };
+  const post = (entries: [string, string][], query = "") =>
+    send("POST", "/api/collections", entries, query);
+  const manage: [string, string] = ["manageRule", "id != ''"];
+
+  test("values bind as strings and null rules become empty", async () => {
+    await same(post([["name", "123"]]), 200);
+    await same(
+      post(
+        [
+          ["name", "cf_base"],
+          ["id", "cfbase000000001"],
+          ["indexes", "CREATE INDEX idx_cf_base ON cf_base (id)"],
+          ["system", "yes"],
+        ],
+        "?listRule=id%3D%27x%27",
+      ),
+      200,
+    );
+    await same(
+      post([
+        ["name", "cf_system"],
+        ["Created.Updated.system", "1"],
+      ]),
+      200,
+    );
+    await same(
+      send("PATCH", "/api/collections/cf_base", [["viewRule", "id != ''"]]),
+      200,
+    );
+    await same(
+      (t) =>
+        fetch(`${t.url}/api/collections`, {
+          method: "POST",
+          headers: {
+            authorization: t.superToken,
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: "name=cf_urlencoded&listRule=",
+        }),
+      200,
+    );
+  });
+
+  test("auth options use PB's one-level key prefixes", async () => {
+    await same(
+      post([
+        ["name", "cf_auth_blank"],
+        ["type", "auth"],
+      ]),
+      400,
+    );
+    await same(
+      post([
+        ["name", "cf_auth"],
+        ["type", "auth"],
+        manage,
+        ["otp.length", "0x8"],
+        ["otp.enabled", "true"],
+        ["authToken.duration", "1_000"],
+        ["mfa.duration", "077"],
+        ["mfa.rule", "id != ''"],
+        ["emailTemplate.subject", "S"],
+        ["mappedFields.enabled", "true"],
+        ["oauth2.enabled", "false"],
+        ["passwordAuth.identityFields", "email"],
+        ["verificationTemplate.body", "B {{.ACTION_URL}}"],
+        ["authAlert.enabled", "false"],
+      ]),
+      200,
+    );
+    await same(
+      post([
+        ["name", "cf_bad_int"],
+        ["otp.length", "1e3"],
+      ]),
+      400,
+    );
+    await same(
+      post([
+        ["name", "cf_bad_bool"],
+        ["Created.Updated.system", "yes"],
+      ]),
+      400,
+    );
+  });
+
+  test("@jsonPayload is applied after the form values", async () => {
+    await same(
+      post([
+        ["name", "cf_payload"],
+        ["@jsonPayload", '{"listRule":null}'],
+      ]),
+      200,
+    );
+    await same(
+      post([
+        ["@jsonPayload", '{"name":"cf_payload_auth","type":"auth"}'],
+        ["@jsonPayload", '{"manageRule":null}'],
+      ]),
+      200,
+    );
+    await same(
+      post([
+        ["name", "cf_view"],
+        ["type", "view"],
+      ]),
+      400,
+    );
+    for (const payload of ["{", "[1]", '{"name":5}', '{"listRule":5}'])
+      await same(
+        post([
+          ["name", "cf_bad"],
+          ["@jsonPayload", payload],
+        ]),
+        400,
+      );
+  });
+
+  test("a fields value is PB's 500", async () => {
+    await same(
+      post([
+        ["name", "cf_fields"],
+        ["fields", "x"],
+      ]),
+      500,
+    );
+    await same(post([["name", "cf_fields"]], "?fields=id"), 500);
+  });
+
+  test("quoted-printable parts are decoded", async () => {
+    const body = [
+      "--b",
+      'Content-Disposition: form-data; name="name"',
+      "Content-Transfer-Encoding: quoted-printable",
+      "",
+      "cf=5Fq=",
+      "p",
+      "--b--",
+      "",
+    ].join("\r\n");
+    await same(
+      (t) =>
+        fetch(`${t.url}/api/collections`, {
+          method: "POST",
+          headers: {
+            authorization: t.superToken,
+            "content-type": "multipart/form-data; boundary=b",
+          },
+          body,
+        }),
+      200,
+    );
+  });
+});

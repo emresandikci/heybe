@@ -5,7 +5,7 @@ import { FilterError } from "../filter/parse";
 import { RecordRequestEvent } from "../hooks/events";
 import { Hook } from "../hooks/hook";
 import { FieldError, NotFoundError, ValidationError } from "../util";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Route } from "../extend/route";
@@ -699,6 +699,124 @@ describe("RequestEvent parity", () => {
         a: { code: "c2", message: "M2." },
         b: { code: "validation_invalid_value", message: "Invalid value." },
       },
+    });
+  });
+});
+
+describe("request body", () => {
+  test("__proto__ form key stays a plain key", async () => {
+    const e = eventFor(
+      new Request("http://x/", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "__proto__=x&a=1&a=2",
+      }),
+    );
+    const body = await e.body();
+    expect(Object.getPrototypeOf(body)).toBeNull();
+    expect(Object.getOwnPropertyDescriptor(body, "__proto__")?.value).toBe("x");
+    expect(body.a).toEqual(["1", "2"]);
+  });
+
+  describe("multipart temp files", () => {
+    let dir = "";
+    const savedTmp = process.env.TMPDIR;
+    beforeAll(async () => {
+      dir = await mkdtemp(join(tmpdir(), "heybe-spill-"));
+      process.env.TMPDIR = dir;
+    });
+    afterAll(async () => {
+      process.env.TMPDIR = savedTmp;
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    const big = new Uint8Array(20 << 20);
+    const upload = () => {
+      const form = new FormData();
+      form.append("file", new File([big], "big.bin"));
+      return new Response(form);
+    };
+
+    async function run(
+      body: BodyInit,
+      contentType: string,
+      action: (e: RequestEvent) => unknown,
+    ) {
+      const router = new Router();
+      router.post("/up", action);
+      const req = new Request("http://x/up", {
+        method: "POST",
+        headers: { "content-type": contentType },
+        body,
+      });
+      const found = router.build().match("POST", "/up")!;
+      const e = createEvent(app, req, found.params);
+      try {
+        return await found.run(e);
+      } catch (err) {
+        return e.response ?? errorResponse(err);
+      }
+    }
+
+    test("are gone after success, after a 400 and after an aborted request", async () => {
+      const res = upload();
+      const type = res.headers.get("content-type")!;
+      const bytes = new Uint8Array(await res.arrayBuffer());
+
+      let spilled: string[] = [];
+      const ok = await run(bytes, type, async (e) => {
+        const file = (await e.body()).file as File;
+        spilled = await readdir(dir);
+        expect(file.size).toBe(big.length);
+        return new Response("ok");
+      });
+      expect(ok.status).toBe(200);
+      expect(spilled).toHaveLength(1);
+      expect(await readdir(dir)).toEqual([]);
+
+      const bad = await run(bytes, type, async (e) => {
+        await e.body();
+        throw new ApiError(400, "invalid");
+      });
+      expect(bad.status).toBe(400);
+      expect(await readdir(dir)).toEqual([]);
+
+      const part = bytes.subarray(0, 18 << 20);
+      const aborted = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(part);
+          controller.error(new Error("aborted"));
+        },
+      });
+      const gone = await run(aborted, type, async (e) => {
+        await e.body();
+        return new Response("ok");
+      });
+      expect(gone.status).toBe(400);
+      expect(await readdir(dir)).toEqual([]);
+    });
+
+    test("a part that spills after the request ended is removed at once", async () => {
+      const res = upload();
+      const type = res.headers.get("content-type")!;
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      let push = (_: Uint8Array | null) => {};
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes.subarray(0, 1 << 20));
+          push = (b) => (b ? controller.enqueue(b) : controller.close());
+        },
+      });
+      let pending: Promise<unknown> = Promise.resolve();
+      const ok = await run(stream, type, (e) => {
+        pending = e.body();
+        return new Response("ok");
+      });
+      expect(ok.status).toBe(200);
+      push(bytes.subarray(1 << 20));
+      push(null);
+      await pending.catch(() => {});
+      expect(await readdir(dir)).toEqual([]);
     });
   });
 });

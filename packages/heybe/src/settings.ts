@@ -596,8 +596,11 @@ export class Settings {
   }
 
   // The current settings with `patch` loaded into them, not saved (PB BindBody on a settings clone).
-  bind(patch: DeepPartial<SettingsData>): SettingsData {
-    return merge(SCHEMA, patch, this.get()) as SettingsData;
+  bind(
+    patch: DeepPartial<SettingsData>,
+    base: SettingsData = this.get(),
+  ): SettingsData {
+    return merge(SCHEMA, patch, base) as SettingsData;
   }
 
   update(patch: DeepPartial<SettingsData>): Promise<SettingsData> {

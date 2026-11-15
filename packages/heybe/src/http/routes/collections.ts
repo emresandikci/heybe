@@ -18,6 +18,14 @@ import { pickFields } from "../../records/serialize";
 import { ValidationError, newId } from "../../util";
 import { ApiError } from "../errors";
 import {
+  type FormField,
+  FormBindError,
+  bindForm,
+  formValues,
+  jsonPayloads,
+} from "../form-bind";
+import type { Form } from "../multipart";
+import {
   type RequestEvent,
   type Router,
   jsonResponse,
@@ -38,6 +46,73 @@ const COLLECTION_COLUMNS = [
   "system",
   "type",
 ];
+
+const TYPE_FAILED =
+  "Failed to load the collection type data due to invalid formatting.";
+const DATA_FAILED =
+  "Failed to load the submitted data due to invalid formatting.";
+
+const TOKENS = [
+  "authToken",
+  "passwordResetToken",
+  "emailChangeToken",
+  "verificationToken",
+  "fileToken",
+];
+const TEMPLATES = [
+  "verificationTemplate",
+  "resetPasswordTemplate",
+  "confirmEmailChangeTemplate",
+];
+
+// PB Collection form fields in struct order. The untagged Created and Updated structs leave
+// "Created.Updated" as the prefix of System, and the OAuth2 Enabled flag comes after MappedFields.
+const COLLECTION_FORM: FormField[] = [
+  ["id", "string", "id"],
+  ...["listRule", "viewRule", "createRule", "updateRule", "deleteRule"].map(
+    (rule): FormField => [rule, "rule", rule],
+  ),
+  ["name", "string", "name"],
+  ["type", "string", "type"],
+  ["fields", "interface"],
+  ["indexes", "strings", "indexes"],
+  ["Created.Updated.system", "bool", "system"],
+  ["authRule", "rule", "authRule"],
+  ["manageRule", "rule", "manageRule"],
+  ["authAlert.enabled", "bool", "authAlert.enabled"],
+  ...["subject", "body"].map((key): FormField => [
+    `emailTemplate.${key}`,
+    "string",
+    `authAlert.emailTemplate.${key}`,
+    `otp.emailTemplate.${key}`,
+  ]),
+  ...["id", "name", "username", "avatarURL"].map((key): FormField => [
+    `mappedFields.${key}`,
+    "string",
+    `oauth2.mappedFields.${key}`,
+  ]),
+  ["mappedFields.enabled", "bool", "oauth2.enabled"],
+  ["passwordAuth.enabled", "bool", "passwordAuth.enabled"],
+  ["passwordAuth.identityFields", "strings", "passwordAuth.identityFields"],
+  ["mfa.enabled", "bool", "mfa.enabled"],
+  ["mfa.duration", "int", "mfa.duration"],
+  ["mfa.rule", "string", "mfa.rule"],
+  ["otp.enabled", "bool", "otp.enabled"],
+  ["otp.duration", "int", "otp.duration"],
+  ["otp.length", "int", "otp.length"],
+  ...TOKENS.flatMap((t): FormField[] => [
+    [`${t}.secret`, "string", `${t}.secret`],
+    [`${t}.duration`, "int", `${t}.duration`],
+  ]),
+  ...TEMPLATES.flatMap((t): FormField[] => [
+    [`${t}.subject`, "string", `${t}.subject`],
+    [`${t}.body`, "string", `${t}.body`],
+  ]),
+  ["viewQuery", "string", "viewQuery"],
+];
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
 
 export function requireSuperuser(e: RequestEvent): void {
   if (!e.auth)
@@ -74,6 +149,75 @@ async function readBody(
   }
 }
 
+async function readForm(e: RequestEvent, message: string) {
+  try {
+    return await e.form();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 413) throw err;
+    throw new ApiError(400, message);
+  }
+}
+
+function payloadsOrFail(values: Map<string, string[]>, message: string) {
+  try {
+    return jsonPayloads(values);
+  } catch {
+    throw new ApiError(400, message);
+  }
+}
+
+// Port of PB BindBody of a form into a collection: the form values, then each `@jsonPayload`.
+function bindCollection(
+  base: Collection,
+  values: Map<string, string[]>,
+  payloads: unknown[],
+): Collection {
+  let patch: Record<string, unknown>;
+  try {
+    patch = bindForm(values, COLLECTION_FORM, base);
+  } catch (err) {
+    if (err instanceof FormBindError) throw new ApiError(400, DATA_FAILED);
+    throw err;
+  }
+  let out = decodeOrFail(base, patch);
+  for (const payload of payloads) {
+    if (payload === null) continue;
+    if (!isObject(payload)) throw new ApiError(400, DATA_FAILED);
+    out = decodeOrFail(out, payload);
+  }
+  return out;
+}
+
+// PB binds a create form twice: into its type and name, then into the scaffold of that type.
+function createFromForm(form: Form, query: URLSearchParams): Collection {
+  const values = formValues(form, query);
+  const payloads = payloadsOrFail(values, TYPE_FAILED);
+  const extract: Record<string, unknown> = {
+    type: values.get("type")?.[0],
+    name: values.get("name")?.[0],
+    id: values.get("id")?.[0],
+  };
+  for (const payload of payloads) {
+    if (payload === null) continue;
+    if (!isObject(payload)) throw new ApiError(400, TYPE_FAILED);
+    for (const key of ["type", "name", "id"]) {
+      if (!Object.hasOwn(payload, key)) continue;
+      const v = payload[key];
+      if (key !== "id" && v !== null && typeof v !== "string")
+        throw new ApiError(400, TYPE_FAILED);
+      extract[key] = v;
+    }
+  }
+  const blank = scaffold(
+    (extract.type || "base") as CollectionType,
+    (extract.name as string | null | undefined) ?? "",
+  );
+  const input = bindCollection(blank, values, payloads);
+  if (typeof extract.id !== "string" || extract.id === "")
+    delete (input as Partial<Collection>).id;
+  return input;
+}
+
 function decodeOrFail(
   base: Collection,
   body: Record<string, unknown>,
@@ -82,10 +226,7 @@ function decodeOrFail(
     return decodeCollection(base, body);
   } catch (err) {
     if (!(err instanceof DecodeError)) throw err;
-    throw new ApiError(
-      400,
-      "Failed to load the submitted data due to invalid formatting.",
-    );
+    throw new ApiError(400, DATA_FAILED);
   }
 }
 
@@ -209,17 +350,13 @@ function saveRequest(
 }
 
 async function create(e: RequestEvent): Promise<void> {
-  const body = await readBody(
-    e,
-    "Failed to load the collection type data due to invalid formatting.",
-  );
+  const form = await readForm(e, TYPE_FAILED);
+  if (form) return saveRequest(e, createFromForm(form, e.query), "create");
+  const body = await readBody(e, TYPE_FAILED);
   for (const key of ["type", "name"]) {
     const v = body[key];
     if (v !== undefined && v !== null && typeof v !== "string")
-      throw new ApiError(
-        400,
-        "Failed to load the collection type data due to invalid formatting.",
-      );
+      throw new ApiError(400, TYPE_FAILED);
   }
   const blank = scaffold(
     (body.type || "base") as CollectionType,
@@ -233,11 +370,16 @@ async function create(e: RequestEvent): Promise<void> {
 
 async function update(e: RequestEvent): Promise<void> {
   const existing = findOr404(e.app, e.params.collection!);
-  const body = await readBody(
-    e,
-    "Failed to load the submitted data due to invalid formatting.",
-  );
-  const input = decodeOrFail(existing, body);
+  const form = await readForm(e, DATA_FAILED);
+  let input: Collection;
+  if (form) {
+    const values = formValues(form, e.query);
+    input = bindCollection(
+      existing,
+      values,
+      payloadsOrFail(values, DATA_FAILED),
+    );
+  } else input = decodeOrFail(existing, await readBody(e, DATA_FAILED));
   if (input.id !== existing.id) throw new ApiError(404, "");
   await saveRequest(e, input, "update");
 }

@@ -313,14 +313,20 @@ describe("multipart create", () => {
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="big.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
     );
     const chunk = new Uint8Array(1 << 20);
+    // The head alone takes the body over the limit, so the unread rest stays under the 256 KB that
+    // Go drains after a response. A larger rest makes PB close the connection mid-upload and the
+    // client can retry the half-sent stream, which PB answered with a 400.
     const [pb, hb] = await both((t) => {
-      let sent = 0;
+      let left = MAX_BODY;
       const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(head);
+        },
         pull(controller) {
-          if (sent === 0) controller.enqueue(head);
-          if (sent > MAX_BODY + (2 << 20)) return controller.close();
-          controller.enqueue(chunk);
-          sent += chunk.length;
+          if (left === 0) return controller.close();
+          const n = Math.min(left, chunk.length);
+          controller.enqueue(chunk.subarray(0, n));
+          left -= n;
         },
       });
       return fetch(`${t.url}${records()}`, {
@@ -625,6 +631,55 @@ describe("download", () => {
       if (status === 416)
         expect(pb.headers["content-type"]).toBe("text/plain; charset=utf-8");
     });
+
+    const past = "Thu, 01 Jan 1970 00:00:01 GMT";
+    test.each([
+      [{ "if-match": "*" }, 200],
+      [{ "if-match": '"abc"' }, 412],
+      [{ "if-match": "garbage, *" }, 412],
+      [{ "if-match": '"abc", *' }, 200],
+      [{ "if-unmodified-since": future }, 200],
+      [{ "if-unmodified-since": past }, 412],
+      [{ "if-match": "*", "if-unmodified-since": past }, 200],
+      [{ "if-none-match": "*" }, 304],
+      [{ "if-none-match": '"abc", *' }, 304],
+      [{ "if-none-match": '"abc"' }, 200],
+      [{ "if-none-match": '"abc"', "if-modified-since": future }, 200],
+      [{ "if-range": '"abc"', range: "bytes=0-3" }, 200],
+      [{ range: "bytes=0-9223372036854775807" }, 206],
+      [{ range: "bytes=0-9223372036854775808" }, 416],
+      [{ range: "bytes=-9223372036854775808" }, 416],
+      [{ range: "bytes=0-1,0-1000" }, 200],
+    ])("preconditions %p", async (headers, status) => {
+      await same(get("png", headers), status, [
+        ...SERVED_HEADERS,
+        "content-length",
+      ]);
+    });
+
+    test.each(["GET", "HEAD"])(
+      "%s with several ranges is multipart/byteranges",
+      async (method) => {
+        const answer = async (t: Target) => {
+          const res = await fetch(fileUrl(t, "txt"), {
+            method,
+            headers: { range: "bytes=0-1,4-5, -2" },
+          });
+          const boundary = res.headers
+            .get("content-type")!
+            .replace("multipart/byteranges; boundary=", "");
+          return {
+            status: res.status,
+            boundary: boundary.length,
+            length: res.headers.get("content-length"),
+            body: (await res.text()).replaceAll(boundary, "B"),
+          };
+        };
+        const pb = await answer(targets.pb);
+        expect(pb.status).toBe(206);
+        expect(await answer(targets.hb)).toEqual(pb);
+      },
+    );
 
     test("If-Range with another date ignores the range", async () => {
       await same(
