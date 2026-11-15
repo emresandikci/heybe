@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { type App } from "../../app";
+import { newAuthToken } from "../../auth/tokens";
+import { internalRecords } from "../../records/internal";
+import { loadAuth } from "../middlewares";
 import * as model from "../../records/model";
 import { toApiError } from "../errors";
 import { createEvent } from "../router";
@@ -133,4 +136,95 @@ test("a hook that sets e.collection.listRule and saves the collection works and 
   await app.collections.save({ ...fresh, listRule: "title = 'a'" });
   const { items } = await get("/api/collections/posts/records");
   expect(items.map((r: any) => r.title)).toEqual(["a"]);
+});
+
+let seq = 0;
+
+async function viewAs(id: unknown, superuser = false) {
+  const headers: Record<string, string> = {};
+  if (superuser) {
+    const su = internalRecords(app, "_superusers");
+    const { id: suId } = await su.create({
+      email: `su${seq++}@example.com`,
+      password: "1234567890",
+    });
+    headers.authorization = await newAuthToken(
+      app,
+      app.collections.find("_superusers")!,
+      su.findRaw(suId as string),
+    );
+  }
+  const path = `/api/collections/posts/records/${id}`;
+  const req = new Request(new URL(path, "http://x"), { headers });
+  const found = createRouter().build().match("GET", path)!;
+  const e = createEvent(app, req, found.params);
+  e.auth = loadAuth(app, req);
+  try {
+    const res = await found.run(e);
+    return { status: res.status, body: (await res.json()) as any };
+  } catch (err) {
+    return { status: toApiError(err).status, body: null };
+  }
+}
+
+async function setViewRule(viewRule: string | null) {
+  await app.collections.save({ ...app.collections.find("posts")!, viewRule });
+}
+
+test("view runs one records query", async () => {
+  await setViewRule("title = 'published'");
+  const { id } = await app.records("posts").create({ title: "published" });
+  const query = spyOn(app.db, "query");
+  try {
+    expect((await viewAs(id)).status).toBe(200);
+    const selects = query.mock.calls.filter(([sql]) =>
+      sql.startsWith("SELECT DISTINCT"),
+    );
+    expect(selects).toHaveLength(1);
+  } finally {
+    query.mockRestore();
+  }
+});
+
+test("view rule edge cases keep their status", async () => {
+  const { id } = await app.records("posts").create({ title: "draft" });
+  const log = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await setViewRule("title = 'published'");
+    expect(await viewAs(id)).toEqual({ status: 404, body: null });
+    expect((await viewAs(id, true)).body.id).toBe(id);
+
+    // invalid rules are rejected on save, so it is written straight to _collections
+    await app.db.write(() =>
+      app.db.run(
+        "UPDATE _collections SET data = json_set(data, '$.viewRule', 'title = = 1') WHERE name = 'posts'",
+      ),
+    );
+    expect((await viewAs(id)).status).toBe(404);
+
+    await setViewRule(null);
+    expect((await viewAs(id)).status).toBe(403);
+    expect((await viewAs(id, true)).status).toBe(200);
+
+    await setViewRule("title = 'draft'");
+    expect((await viewAs(id)).body.title).toBe("draft");
+    expect((await viewAs("missing")).status).toBe(404);
+  } finally {
+    log.mockRestore();
+  }
+});
+
+test("view with an onRecordViewRequest hook answers 200 and 404", async () => {
+  await setViewRule("title = 'published'");
+  const { id } = await app.records("posts").create({ title: "published" });
+  const { id: draft } = await app.records("posts").create({ title: "draft" });
+  app.onRecordViewRequest((e) => {
+    e.record.withCustomData(true);
+    e.record.set("hooked", true);
+    return e.next();
+  });
+  const ok = await viewAs(id);
+  expect(ok.status).toBe(200);
+  expect(ok.body.hooked).toBe(true);
+  expect((await viewAs(draft)).status).toBe(404);
 });

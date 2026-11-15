@@ -1,4 +1,4 @@
-import { type ListResult, toAst } from "@heybe/query";
+import { type Expr, type ListResult, toAst } from "@heybe/query";
 import { verifyPassword } from "../../auth/password";
 import type { App } from "../../app";
 import type { Collection } from "../../collections/model";
@@ -206,8 +206,9 @@ async function serialize(
   c: Collection,
   info: RequestInfo,
   id: string,
+  rule: Expr | null,
 ) {
-  const items = findById(app, c, info, id, false);
+  const items = findById(app, c, info, id, false, rule);
   const [record] = await expandRecords(app, c, items, expandPaths(info), info);
   return pickFields(record!, info.query.fields);
 }
@@ -218,15 +219,25 @@ function findById(
   info: RequestInfo,
   id: string,
   raw: boolean,
+  rule: Expr | null,
 ): Values[] {
-  const { items } = internalRecords(app, c.name).query({
-    filter: toAst({ id }),
-    perPage: 1,
-    skipTotal: true,
-    request: info,
-    manageRule: manageRuleOf(c),
-    raw,
-  });
+  let items: Values[];
+  try {
+    items = internalRecords(app, c.name).query({
+      ruleFilter: rule,
+      filter: toAst({ id }),
+      perPage: 1,
+      skipTotal: true,
+      request: info,
+      manageRule: manageRuleOf(c),
+      raw,
+    }).items;
+  } catch (err) {
+    if (rule === null) throw err;
+    // like PB FindRecordById with a rule func: a rule that fails to run is a 404
+    logUnexpected(err);
+    throw new ApiError(404, "");
+  }
   if (items.length === 0) throw new ApiError(404, "");
   return items;
 }
@@ -573,10 +584,10 @@ async function view(e: RequestEvent): Promise<Response | void> {
   checkCollectionRateLimit(e, c, "view");
   const id = e.params.id!;
   const info = await requestInfo(e);
-  await checkRule(e.app, c, c.viewRule, "view", e, id);
+  const rule = ruleFilter(e.app, c, c.viewRule, "view", info);
   if (!hooked(e.app, e.app.hooks.onRecordViewRequest.length))
-    return jsonResponse(200, await serialize(e.app, c, info, id));
-  const [values] = findById(e.app, c, info, id, true);
+    return jsonResponse(200, await serialize(e.app, c, info, id, rule));
+  const [values] = findById(e.app, c, info, id, true, rule);
   const event = RecordRequestEvent.from(e, {
     collection: c,
     record: new RecordModel(c, values!, false),
