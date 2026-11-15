@@ -357,7 +357,7 @@ export function realIp(app: App, req: Request, remote: string): string {
 }
 
 export function checkSuperuserIp(app: App, req: Request, remote: string): void {
-  const { superuserIPs } = app.settings.get();
+  const { superuserIPs } = app.settings.current();
   if (
     superuserIPs.length > 0 &&
     !isIpInList(superuserIPs, realIp(app, req, remote))
