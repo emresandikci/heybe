@@ -404,3 +404,92 @@ describe("batch request hooks", () => {
     expect(titles()).toEqual(["a", "b"]);
   });
 });
+
+describe("batch edges", () => {
+  test("a failed upload answers the route's 400, not a 500", async () => {
+    spy(app.files, "write").mockRejectedValue(new Error("disk full"));
+    const res = await batch(
+      form([create("a"), create("b")], { "requests.1.file": "x" }),
+    );
+    expect(res.body.data.requests).toEqual({
+      "1": {
+        code: "batch_request_failed",
+        message: "Batch request failed.",
+        response: {
+          data: {},
+          message: "Failed to create record.",
+          status: 400,
+        },
+      },
+    });
+  });
+
+  test("a failed upload of an upsert reports update when an earlier request created the id", async () => {
+    await app.collections.save({
+      ...app.collections.find("notes")!,
+      updateRule: "",
+    });
+    spy(app.files, "write").mockRejectedValue(new Error("disk full"));
+    const id = "note00000000001";
+    const res = await batch(
+      form(
+        [
+          { ...create("a"), body: { id, title: "a" } },
+          {
+            method: "PUT",
+            url: "/api/collections/notes/records",
+            body: { id, title: "b" },
+          },
+        ],
+        { "requests.1.file": "x" },
+      ),
+    );
+    expect(res.body.data.requests[1].response).toEqual({
+      data: {},
+      message: "Failed to update record.",
+      status: 400,
+    });
+  });
+
+  test("a rule failing after an earlier write wins over a prepare error", async () => {
+    const token = await addMember();
+    await app.collections.save({
+      ...app.collections.find("members")!,
+      updateRule: 'id = @request.auth.id && name != "locked"',
+    });
+    const original = RecordServiceImpl.prototype.prepare;
+    let calls = 0;
+    spy(RecordServiceImpl.prototype, "prepare").mockImplementation(function (
+      this: RecordServiceImpl<any>,
+      ...args: [any, any]
+    ) {
+      if (++calls === 2) return Promise.reject(new Error("disk full"));
+      return original.apply(this, args);
+    });
+    const url = "/api/collections/members/records/member000000001";
+    const res = await batch(
+      {
+        requests: [
+          { method: "PATCH", url, body: { name: "locked" } },
+          { method: "PATCH", url, body: { name: "b" } },
+        ],
+      },
+      token,
+    );
+    expect(res.body.data.requests[1].response.status).toBe(404);
+  });
+
+  test("a URL fragment is not part of the query values", async () => {
+    const res = await batch({
+      requests: [
+        {
+          method: "POST",
+          url: "/api/collections/notes/records?fields=id,title#frag",
+          body: { title: "f" },
+        },
+      ],
+    });
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body[0].body)).toEqual(["id", "title"]);
+  });
+});

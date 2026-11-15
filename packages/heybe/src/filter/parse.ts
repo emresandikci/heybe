@@ -1,4 +1,4 @@
-import { filterSyntaxError, readText } from "./fexpr";
+import { filterSyntaxError, textReader } from "./fexpr";
 import type { Expr, Op, Operand } from "@heybe/query";
 
 export class FilterError extends Error {}
@@ -35,6 +35,7 @@ const FIELD = new RegExp(`${WORD.source}$`);
 
 function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
+  const readText = textReader(input);
   let i = 0;
   while (i < input.length) {
     const char = input[i]!;
@@ -45,7 +46,7 @@ function tokenize(input: string): Token[] {
       const end = input.indexOf("\n", i);
       i = end === -1 ? input.length : end + 1;
     } else if (char === '"' || char === "'") {
-      const [value, next] = readText(input, i);
+      const [value, next] = readText(i);
       tokens.push({ type: "string", value });
       i = next;
     } else if (rest.startsWith("&&")) {

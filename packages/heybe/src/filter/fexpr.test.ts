@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filterSyntaxError } from "./fexpr";
+import { filterSyntaxError, textReader } from "./fexpr";
 
 describe("filterSyntaxError", () => {
   test.each([
@@ -41,5 +41,23 @@ describe("filterSyntaxError", () => {
     "@request.auth.id != ''",
   ])("accepts %s", (input) => {
     expect(filterSyntaxError(input)).toBeNull();
+  });
+});
+
+describe("textReader", () => {
+  test("reads each quoted text of one expression by its UTF-16 index", () => {
+    const input = `a = "😀\\"x" && b = 'y😀' && c = "\\n"`;
+    const read = textReader(input);
+    const first = input.indexOf('"');
+    const [one, afterOne] = read(first);
+    expect(one).toBe('😀"x');
+    expect(input.slice(afterOne)).toBe(" && b = 'y😀' && c = \"\\n\"");
+    const [two, afterTwo] = read(input.indexOf("'"));
+    expect(two).toBe("y😀");
+    expect(input.slice(afterTwo)).toBe(' && c = "\\n"');
+    expect(read(input.lastIndexOf('"', input.length - 2))).toEqual([
+      "\n",
+      input.length,
+    ]);
   });
 });

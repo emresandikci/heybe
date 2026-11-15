@@ -1,6 +1,9 @@
 import { sqlType } from "../collections/ddl";
+import type { Field } from "../collections/model";
+import type { Db } from "../db";
 import {
   type FieldDef,
+  type FieldError,
   fail,
   required,
   runeLength,
@@ -39,6 +42,32 @@ const RESERVED_PKS = [
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((n) => [`COM${n}`, `LPT${n}`]),
 ];
 
+// PB's case-insensitive duplicate check of a custom-pattern id (field validation). The save runs
+// it again inside its write as the race guard. The PK lookup comes first; the NOCASE
+// scan is needed only when the id has ASCII letters.
+export function pkTaken(
+  db: Db,
+  table: string,
+  field: Field,
+  id: string,
+): FieldError | null {
+  if (field.pattern === DEFAULT_LOWERCASE_ID_PATTERN) return null;
+  const exists =
+    db.get(`SELECT 1 FROM \`${table}\` WHERE id = ? LIMIT 1`, [id]) ??
+    (/[A-Za-z]/.test(id)
+      ? db.get(
+          `SELECT 1 FROM \`${table}\` WHERE id = ? COLLATE NOCASE LIMIT 1`,
+          [id],
+        )
+      : null);
+  return exists
+    ? fail(
+        "validation_pk_invalid",
+        "The record primary key is invalid or already exists.",
+      )
+    : null;
+}
+
 export const text: FieldDef = {
   sqlType: sqlType("text"),
   normalize: (value) => toStr(value),
@@ -58,16 +87,9 @@ export const text: FieldDef = {
             "The record primary key cannot be changed.",
           );
         if (old !== "" && old !== undefined) return null;
-      } else if (customPkPattern) {
-        const exists = ctx.db.get(
-          `SELECT 1 FROM \`${ctx.collection.name}\` WHERE id = ? COLLATE NOCASE LIMIT 1`,
-          [value],
-        );
-        if (exists)
-          return fail(
-            "validation_pk_invalid",
-            "The record primary key is invalid or already exists.",
-          );
+      } else {
+        const taken = pkTaken(ctx.db, ctx.collection.name, field, value);
+        if (taken) return taken;
       }
     }
 

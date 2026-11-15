@@ -95,6 +95,32 @@ describe("expandRecords", () => {
     expect(list[999]!.id).toBe("c00000000000999");
   });
 
+  test("a multi back-relation lists a record once when raw SQL repeats the parent id", async () => {
+    await app.collections.save({
+      name: "links",
+      viewRule: "",
+      fields: [
+        { name: "posts", type: "relation", collectionId: posts, maxSelect: 5 },
+      ],
+    } as any);
+    const post = await app.records("posts").create({ title: "p" });
+    app.db.tx(() => {
+      app.db.run("INSERT INTO links (id, posts) VALUES (?, ?)", [
+        "l1",
+        JSON.stringify([post.id, post.id]),
+      ]);
+      app.db.run("INSERT INTO links (id, posts) VALUES (?, ?)", [
+        "l2",
+        JSON.stringify([post.id]),
+      ]);
+    });
+    const out = (await expandOne(post, ["links_via_posts"])) as any;
+    expect(out.expand.links_via_posts.map((l: any) => l.id)).toEqual([
+      "l1",
+      "l2",
+    ]);
+  });
+
   test("a guest gets no expand for a superuser-only collection", async () => {
     const secret = await app.records("secrets").create({ name: "s" });
     const post = await app.records("posts").create({ secret: secret.id });

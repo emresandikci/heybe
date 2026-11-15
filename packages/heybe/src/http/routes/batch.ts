@@ -14,7 +14,9 @@ import { requestFiles } from "../multipart";
 import { RequestEvent, type Router } from "../router";
 import { BatchRequestEvent, type InternalRequest } from "../../hooks/events";
 import {
+  CREATE_FAILED,
   type OldPassword,
+  UPDATE_FAILED,
   batchCreate,
   batchDelete,
   batchUpdate,
@@ -179,7 +181,8 @@ function plan(e: RequestEvent, r: InternalRequest): Item {
     const groups = re.exec(full)?.groups;
     if (!groups) continue;
     info.query = {};
-    for (const [k, v] of new URLSearchParams(groups.q ?? ""))
+    // PB parses the url, so a fragment never reaches the query
+    for (const [k, v] of new URLSearchParams((groups.q ?? "").split("#")[0]))
       info.query[k] ??= v;
     const { c, id = "" } = groups;
     return {
@@ -466,6 +469,18 @@ async function run(
   e.json(200, results);
 }
 
+// The route's answer to a failed prepare; an upsert's create or update is decided as the
+// transaction stands, so a record created earlier in the batch makes it an update (PB)
+function prepareError(app: App, item: Item): unknown {
+  const err = item.error;
+  if (item.action === "delete" || isApiLike(err)) return err;
+  const c = writable(app, item.collection);
+  const update =
+    item.action === "update" || upsertTarget(app, c, item) !== null;
+  logUnexpected(err);
+  return new ApiError(400, update ? UPDATE_FAILED : CREATE_FAILED);
+}
+
 // One request inside the transaction: its checks come before its prepare error, like the route.
 async function runItem(
   e: RequestEvent,
@@ -482,7 +497,7 @@ async function runItem(
       if (halted()) return null;
     }
   }
-  if (item.error) throw item.error;
+  if (item.error) throw prepareError(app, item);
   return write(e, item, next);
 }
 

@@ -81,6 +81,18 @@ const EMPTY_REQUEST: RequestInfo = {
   context: "",
 };
 
+// Go's rawErr[:500]: its JSON encoding then turns each byte of a split rune into U+FFFD
+function cutBytes(text: string, max: number): string {
+  const bytes = new TextEncoder().encode(text);
+  if (bytes.length <= max) return text;
+  let end = max;
+  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
+  return (
+    new TextDecoder().decode(bytes.subarray(0, end)) +
+    "\uFFFD".repeat(max - end)
+  );
+}
+
 const NAME_PATTERN = /^\w+$/;
 const ID_PATTERN = /^[^@#$&|.,'"\\/\s]+$/;
 const RESERVED_AUTH_NAMES = ["passwordConfirm", "oldPassword"];
@@ -733,7 +745,7 @@ export class CollectionStore {
         ["viewQuery"],
         [
           "validation_invalid_view_query",
-          `Invalid query - ${(e as Error).message.slice(0, 500)}`,
+          `Invalid query - ${cutBytes((e as Error).message, 500)}`,
         ],
       );
     }

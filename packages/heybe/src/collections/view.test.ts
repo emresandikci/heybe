@@ -425,6 +425,28 @@ describe("view collections", () => {
   });
 });
 
+describe("view edges seen on PB", () => {
+  const queryError = async (viewQuery: string) => {
+    try {
+      await app.collections.save({ name: "bad", type: "view", viewQuery });
+    } catch (e) {
+      return ((e as ValidationError).data.viewQuery as any).message as string;
+    }
+    throw new Error("expected a ValidationError");
+  };
+
+  test("the query error is cut at 500 bytes, a split rune becomes U+FFFD per byte", async () => {
+    const message = await queryError(`SELECT id FROM ab${"€".repeat(200)}`);
+    expect(message.endsWith("€€€\uFFFD\uFFFD")).toBe(true);
+    expect(
+      new TextEncoder().encode(message.replace(/\uFFFD/g, "?")).length,
+    ).toBe("Invalid query - ".length + 500);
+    expect(await queryError(`SELECT id FROM a${"€".repeat(200)}`)).toEndWith(
+      "€€€",
+    );
+  });
+});
+
 test("findRecordByViewFile resolves the source record through nested views", async () => {
   const demo1 = app.collections.find("demo1")!;
   app.db.tx(() =>

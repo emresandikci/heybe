@@ -168,8 +168,20 @@ class Scanner {
     return { type: "number", literal };
   }
 
-  get offset(): number {
-    return this.data.slice(0, this.pos).join("").length;
+  // UTF-16 offset of each code point position, the input length last
+  offsets(): number[] {
+    const out = [0];
+    for (const ch of this.data) out.push(out.at(-1)! + ch.length);
+    return out;
+  }
+
+  seek(pos: number) {
+    this.pos = pos;
+    this.lastRead = false;
+  }
+
+  get position(): number {
+    return this.pos;
   }
 
   text(preserveQuotes: boolean): Token {
@@ -413,11 +425,17 @@ const isOperand = (t: Token) =>
 
 type Step = "beforeSign" | "sign" | "afterSign" | "join";
 
-// Reads the quoted text at input[start] with fexpr's unescaping; returns the value and the index after it.
-export function readText(input: string, start: number): [string, number] {
-  const scanner = new Scanner(input.slice(start));
-  const { literal } = scanner.text(false);
-  return [literal, start + scanner.offset];
+// One scanner per expression: reads the quoted text at UTF-16 index `start` with fexpr's
+// unescaping and returns the value and the index after it.
+export function textReader(input: string): (start: number) => [string, number] {
+  const scanner = new Scanner(input);
+  const offsets = scanner.offsets();
+  const positions = new Map(offsets.map((offset, pos) => [offset, pos]));
+  return (start) => {
+    scanner.seek(positions.get(start)!);
+    const { literal } = scanner.text(false);
+    return [literal, offsets[scanner.position]!];
+  };
 }
 
 // Mirrors the syntax errors of github.com/ganigeorgiev/fexpr, which PocketBase reports in rule validation.

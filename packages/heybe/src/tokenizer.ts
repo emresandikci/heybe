@@ -20,9 +20,13 @@ export class Tokenizer {
     this.trim = WHITESPACE.filter((c) => !opts.separators.includes(c));
   }
 
-  // null at the end of the input
+  // null at the end of the input; PB reads NUL as its eof rune
   scan(): string | null {
     while (this.pos < this.chars.length) {
+      if (this.chars[this.pos] === "\0") {
+        this.pos++;
+        return null;
+      }
       const token = this.readToken();
       if (token !== "") return token;
     }
@@ -43,6 +47,7 @@ export class Tokenizer {
     let prev = "";
     while (this.pos < this.chars.length) {
       const ch = this.chars[this.pos++]!;
+      if (ch === "\0") break;
       if (prev !== "\\") {
         if (!ignoreParenthesis && ch === "(" && quote === "") parens++;
         else if (!ignoreParenthesis && ch === ")" && parens > 0 && quote === "")

@@ -233,8 +233,10 @@ function backRelationIds(
     ? `${table}, ${jsonEach(column)} ${quote("__je")}`
     : table;
   const order = from.type === "view" ? "" : `ORDER BY ${table}._rowid_`;
+  // a raw-SQL value may repeat the parent id; PB matches with EXISTS, once per record
+  const group = multiple ? `GROUP BY ${table}.id, ${parent}` : "";
   const rows = app.db.query<{ id: string; parent: string }>(
-    `SELECT id, parent FROM (SELECT ${table}.id AS id, ${parent} AS parent, ROW_NUMBER() OVER (PARTITION BY ${parent} ${order}) AS n FROM ${source} WHERE ${parent} IN (SELECT value FROM json_each(?1))) WHERE n <= ?2 ORDER BY n`,
+    `SELECT id, parent FROM (SELECT ${table}.id AS id, ${parent} AS parent, ROW_NUMBER() OVER (PARTITION BY ${parent} ${order}) AS n FROM ${source} WHERE ${parent} IN (SELECT value FROM json_each(?1)) ${group}) WHERE n <= ?2 ORDER BY n`,
     [JSON.stringify(parents.map((p) => p.id)), BACK_RELATION_LIMIT],
   );
   const ids = new Map<string, string[]>();

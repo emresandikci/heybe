@@ -112,6 +112,101 @@ describe("create and findOne", () => {
       id: { code: "validation_not_unique", message: "Value must be unique." },
     });
   });
+
+  const addCodes = () =>
+    app.collections.save({
+      name: "codes",
+      fields: [
+        {
+          name: "id",
+          type: "text",
+          primaryKey: true,
+          required: true,
+          pattern: "^[\\w-]+$",
+        },
+      ] as any,
+    });
+  // whether each case-insensitive id check ran inside a write
+  const nocaseChecks = () => {
+    const original = app.db.get.bind(app.db);
+    const checks: boolean[] = [];
+    spyOn(app.db, "get").mockImplementation((sql, params) => {
+      if (sql.includes("COLLATE NOCASE")) checks.push(app.db.inWrite());
+      return original(sql, params);
+    });
+    return checks;
+  };
+
+  test("concurrent creates of a custom id differing in case: one wins", async () => {
+    await addCodes();
+    const results = await Promise.allSettled([
+      app.records("codes").create({ id: "ABC" }),
+      app.records("codes").create({ id: "abc" }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    const e = (
+      results.find((r) => r.status === "rejected") as PromiseRejectedResult
+    ).reason as ValidationError;
+    expect(e.message).toBe("Failed to create record.");
+    expect(e.data).toEqual({
+      id: {
+        code: "validation_pk_invalid",
+        message: "The record primary key is invalid or already exists.",
+      },
+    });
+  });
+
+  test("a custom id is checked in validation and again inside the write", async () => {
+    await addCodes();
+    const checks = nocaseChecks();
+    await app.records("codes").create({ id: "ABC" });
+    expect(checks).toEqual([false, true]);
+  });
+
+  test("an id clash is reported with the other field errors", async () => {
+    await app.collections.save({
+      name: "codes",
+      fields: [
+        {
+          name: "id",
+          type: "text",
+          primaryKey: true,
+          required: true,
+          pattern: "^[\\w-]+$",
+        },
+        { name: "title", type: "text", required: true },
+      ] as any,
+    });
+    await app.records("codes").create({ id: "ABC", title: "a" });
+    const e = await failure(app.records("codes").create({ id: "abc" }));
+    expect(Object.keys(e.data).sort()).toEqual(["id", "title"]);
+    expect((e.data.id as any).code).toBe("validation_pk_invalid");
+  });
+
+  test("an id without ASCII letters needs no case-insensitive scan", async () => {
+    await addCodes();
+    const checks = nocaseChecks();
+    await app.records("codes").create({ id: "123" });
+    const e = await failure(app.records("codes").create({ id: "123" }));
+    expect((e.data.id as any).code).toBe("validation_pk_invalid");
+    expect(checks).toEqual([]);
+  });
+
+  test("an unvalidated save skips the id check like PB SaveNoValidate", async () => {
+    await addCodes();
+    await app.records("codes").create({ id: "ABC" });
+    const checks = nocaseChecks();
+    const service = internalRecords(app, "codes") as any;
+    const p = await service.prepare({ id: "abc" });
+    await service.commit(p, () =>
+      service.save(p, service.draft(p, { id: "abc" }), false),
+    );
+    expect(checks).toEqual([]);
+    expect(service.findRaw("abc").id).toBe("abc");
+  });
 });
 
 describe("findMany", () => {

@@ -58,8 +58,8 @@ type Finalizer = (record: RecordModel) => Promise<void>;
 type Access = "default" | "manager" | "superuser";
 
 const SUPERUSER_ONLY_FIELDS = ["@collection.", "@request."];
-const CREATE_FAILED = "Failed to create record.";
-const UPDATE_FAILED = "Failed to update record.";
+export const CREATE_FAILED = "Failed to create record.";
+export const UPDATE_FAILED = "Failed to update record.";
 const DELETE_FAILED =
   "Failed to delete record. Make sure that the record is not part of a required relation reference.";
 

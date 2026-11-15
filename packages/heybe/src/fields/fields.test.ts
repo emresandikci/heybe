@@ -3,6 +3,7 @@ import { tempDb } from "../test-db";
 import type { Collection, Field, FieldType } from "../collections/model";
 import { type FieldCtx, PasswordValue, fields } from "./index";
 import { UploadedFile } from "./file";
+import { pkTaken } from "./text";
 import type { PrepareCtx } from "./shared";
 
 const db = tempDb();
@@ -129,8 +130,16 @@ describe("text", () => {
       expect(code("text", pk, "abc", over)).toBeNull();
     });
     test("duplicate with custom pattern is case-insensitive", () => {
+      const pkField = field("text", open);
+      expect(pkTaken(db, "posts", pkField, "taken")?.code).toBe(
+        "validation_pk_invalid",
+      );
+      expect(pkTaken(db, "posts", pkField, "Taken")?.code).toBe(
+        "validation_pk_invalid",
+      );
+      expect(pkTaken(db, "posts", pkField, "free")).toBeNull();
+      expect(pkTaken(db, "posts", field("text", pk), "Taken")).toBeNull();
       expect(code("text", open, "taken")).toBe("validation_pk_invalid");
-      expect(code("text", open, "free")).toBeNull();
     });
     test("forbidden character and reserved names with custom pattern", () => {
       expect(check("text", { ...open, pattern: ".*" }, "a b")).toEqual({

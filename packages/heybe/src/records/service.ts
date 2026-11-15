@@ -18,6 +18,7 @@ import type { Db } from "../db";
 import { PasswordValue, fields } from "../fields";
 import type { FieldCtx } from "../fields";
 import { fileItems } from "../fields/file";
+import { pkTaken } from "../fields/text";
 import { type PrepareCtx, toStr, uniqueStrings } from "../fields/shared";
 import { type Filesystem, fileKey } from "../files/storage";
 import { QueryCompiler, type RequestInfo } from "../filter/compile";
@@ -439,7 +440,7 @@ export class RecordServiceImpl<T> {
   ): Promise<void> {
     preparing.set(record, p);
     await saveModel(this.app, record, record.isNew(), validate, () =>
-      this.execute(p, record, tokenKey),
+      this.execute(p, record, validate, tokenKey),
     );
   }
 
@@ -448,6 +449,7 @@ export class RecordServiceImpl<T> {
   private async execute(
     p: PreparedWrite,
     record: RecordModel,
+    validate: boolean,
     tokenKey?: string,
   ): Promise<void> {
     const c = record.collection;
@@ -456,6 +458,11 @@ export class RecordServiceImpl<T> {
     await db.write(() => {
       const values = valuesOf(record);
       if (record.isNew()) {
+        // race guard for the validated id check: concurrent creates cannot both pass
+        const idField = c.fields.find((f) => f.name === "id");
+        const taken =
+          validate && idField && pkTaken(db, c.name, idField, toStr(values.id));
+        if (taken) throw new ValidationError(CREATE_FAILED, { id: taken });
         db.run(
           insertSql(
             c,
