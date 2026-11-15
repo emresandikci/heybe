@@ -216,7 +216,7 @@ export function requireSameCollectionContextAuth(
         throw e.unauthorizedError(
           "The request requires valid record authorization token.",
         );
-      const collection = e.app.collections.find(e.params[param] ?? "");
+      const collection = e.app.collections.findCached(e.params[param] ?? "");
       if (!collection || collection.id !== e.auth.collection.id)
         throw e.forbiddenError(
           `The request requires auth record from ${e.auth.collection.name} collection.`,

@@ -156,7 +156,7 @@ export function collectionPathRateLimit(
     id: RATE_LIMIT_ID,
     priority: RATE_LIMIT_PRIORITY,
     fn: (e) => {
-      const c = e.app.collections.find(e.params[param] ?? "");
+      const c = e.app.collections.findCached(e.params[param] ?? "");
       if (!c) throw e.notFoundError("Missing or invalid collection context.");
       checkCollectionRateLimit(e, c, ...tags);
       return e.next();

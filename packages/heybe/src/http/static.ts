@@ -82,7 +82,10 @@ async function isDirectory(
 }
 
 const COMPRESSIBLE = /^(text\/|application\/(javascript|json|xml)|image\/svg)/;
-const gzipped = new Map<string, Uint8Array<ArrayBuffer>>();
+const gzipped = new Map<
+  string,
+  { stamp: string; body: Uint8Array<ArrayBuffer> }
+>();
 
 async function sendFile(
   e: RequestEvent,
@@ -101,6 +104,7 @@ async function sendFile(
     if (path !== root && !path.startsWith(root + sep)) return notFound();
     try {
       if ((await stat(path)).isDirectory()) path = join(path, INDEX);
+      if (!(await stat(path)).isFile()) return notFound();
     } catch {
       return notFound();
     }
@@ -116,14 +120,18 @@ async function sendFile(
   }
   const file = Bun.file(path);
   const type = Bun.file(name).type;
-  if (!COMPRESSIBLE.test(type)) return e.file(path, name);
-  const key = `${path}\0${file.size}\0${file.lastModified}`;
-  let body = gzipped.get(key);
-  if (!body) {
-    body = gzipSync(await file.bytes()) as Uint8Array<ArrayBuffer>;
-    gzipped.set(key, body);
+  if (!COMPRESSIBLE.test(type) || e.req.headers.has("range"))
+    return e.file(path, name);
+  const stamp = `${file.size}\0${file.lastModified}`;
+  let entry = gzipped.get(path);
+  if (entry?.stamp !== stamp) {
+    entry = {
+      stamp,
+      body: gzipSync(await file.bytes()) as Uint8Array<ArrayBuffer>,
+    };
+    gzipped.set(path, entry);
   }
-  const res = e.blob(200, type, body);
+  const res = e.blob(200, type, entry.body);
   res.headers.set("content-encoding", "gzip");
   return res;
 }

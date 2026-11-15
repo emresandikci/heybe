@@ -135,6 +135,26 @@ describe.each(["dir", "map"] as const)("dashboard from a %s", (kind) => {
     expect(await plain.text()).toBe("console.log(1)");
   });
 
+  test("gzip responses carry the plain headers and skip ranges", async () => {
+    const url = `${await start()}/_/assets/app.js`;
+    const raw = (headers: Record<string, string>) =>
+      fetch(url, { headers, decompress: false });
+    const zipped = await raw({ "accept-encoding": "gzip" });
+    const plain = await raw({ "accept-encoding": "identity" });
+    const keys = (r: Response) => [...r.headers.keys()].sort();
+    expect(keys(zipped)).toEqual([...keys(plain), "content-encoding"].sort());
+    const ranged = await raw({ "accept-encoding": "gzip", range: "bytes=0-3" });
+    expect(ranged.headers.get("content-encoding")).toBeNull();
+  });
+
+  test("a directory without index.html is a 404 with gzip accepted", async () => {
+    const res = await fetch(`${await start()}/_/assets/`, {
+      headers: { "accept-encoding": "gzip" },
+      redirect: "manual",
+    });
+    expect(res.status).toBe(404);
+  });
+
   test("GET /_ redirects to /_/", async () => {
     const res = await get(`${await start()}/_`);
     expect(res.status).toBe(301);

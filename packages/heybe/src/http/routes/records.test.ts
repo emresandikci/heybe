@@ -8,6 +8,7 @@ import { toApiError } from "../errors";
 import { createEvent } from "../router";
 import { createRouter } from "../server";
 import { testApp } from "../../test-app";
+import { startFakeS3 } from "../../files/test-s3";
 
 let app: App;
 
@@ -227,4 +228,41 @@ test("view with an onRecordViewRequest hook answers 200 and 404", async () => {
   expect(ok.status).toBe(200);
   expect(ok.body.hooked).toBe(true);
   expect((await viewAs(draft)).status).toBe(404);
+});
+
+test("a create file spilled over the 16 MiB memory budget is stored in full on S3", async () => {
+  const s3 = await startFakeS3();
+  try {
+    await app.settings.update({
+      s3: {
+        enabled: true,
+        bucket: "hb",
+        region: "us-east-1",
+        endpoint: s3.endpoint,
+        accessKey: "key",
+        secret: "secret",
+        forcePathStyle: true,
+      },
+    });
+    await app.collections.save({
+      name: "docs",
+      createRule: "",
+      fields: [{ name: "file", type: "file", maxSelect: 1, maxSize: 32 << 20 }],
+    } as any);
+    const bytes = new Uint8Array(17 << 20);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31 + 7) & 255;
+    const form = new FormData();
+    form.append("file", new File([bytes], "big.bin"));
+    const path = "/api/collections/docs/records";
+    const found = createRouter().build().match("POST", path)!;
+    const req = new Request(`http://x${path}`, { method: "POST", body: form });
+    const res = await found.run(createEvent(app, req, found.params));
+    expect(res.status).toBe(200);
+    const { id, file } = (await res.json()) as any;
+    const key = `${app.collections.find("docs")!.id}/${id}/${file}`;
+    const stored = s3.objects("hb").get(key)!.body;
+    expect(Buffer.from(stored).equals(bytes)).toBe(true);
+  } finally {
+    await s3.stop();
+  }
 });

@@ -7,7 +7,13 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type App } from "../../app";
@@ -157,6 +163,35 @@ const titles = () =>
     .items.map((r) => r.title);
 
 describe("batch transaction", () => {
+  test("a file spilled over the 16 MiB memory budget is stored in full", async () => {
+    await app.collections.save({
+      name: "big",
+      createRule: "",
+      fields: [{ name: "file", type: "file", maxSelect: 1, maxSize: 32 << 20 }],
+    } as any);
+    const bytes = new Uint8Array(17 << 20);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 31 + 7) & 255;
+    const data = new FormData();
+    data.append(
+      "@jsonPayload",
+      JSON.stringify({
+        requests: [{ method: "POST", url: "/api/collections/big/records" }],
+      }),
+    );
+    data.append("requests.0.file", new File([bytes], "big.bin"));
+    const res = await batch(data);
+    expect(res.status).toBe(200);
+    const { id, file } = res.body[0].body;
+    const path = join(
+      dir,
+      "storage",
+      app.collections.find("big")!.id,
+      id,
+      file,
+    );
+    expect(readFileSync(path).equals(bytes)).toBe(true);
+  });
+
   test("writes every request and keeps the uploads", async () => {
     const res = await batch(
       form([create("a"), create("b")], { "requests.0.file": "x" }),

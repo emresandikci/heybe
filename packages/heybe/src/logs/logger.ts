@@ -236,7 +236,8 @@ export function createLogger(app: App): Logger & { close(): void } {
       return;
     }
     for (const entry of entries) backlog.push(logRow(app, entry, maxDataSize));
-    draining ??= drain();
+    // outside the caller's db.write context, where exclusive would throw
+    draining ??= app.auxDb.committed(drain);
   };
 
   const log = (

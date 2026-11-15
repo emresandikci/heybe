@@ -387,6 +387,16 @@ describe("app logger", () => {
     });
   });
 
+  test("entries logged inside auxDb.write are written after it", async () => {
+    await app.auxDb.write(() => {
+      for (let i = 0; i < 200; i++) app.logger.info("inside");
+      app.logger.info("timer");
+    });
+    clock.advance(3000);
+    await app.logger.flush();
+    expect(rows()).toHaveLength(201);
+  });
+
   test("release then log again writes through a new worker", async () => {
     app.logger.info("a");
     await app.logger.release();

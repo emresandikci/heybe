@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { App } from "../app";
 import { newAuthToken } from "../auth/tokens";
 import { internalRecords } from "../records/internal";
@@ -6,8 +6,8 @@ import type { RateLimitRule } from "../settings";
 import { testApp } from "../test-app";
 import { fakeClock } from "../test-clock";
 import { errorResponse } from "./errors";
-import { loadAuth } from "./middlewares";
-import { rateLimiters } from "./rate-limit";
+import { loadAuth, requireSameCollectionContextAuth } from "./middlewares";
+import { collectionPathRateLimit, rateLimiters } from "./rate-limit";
 import { createEvent } from "./router";
 import { createRouter } from "./server";
 
@@ -356,4 +356,26 @@ describe("randomized list throttle", () => {
     );
     expect(clock.pending()).toBe(0);
   });
+});
+
+test("collection path middlewares run no _collections query once the cache is warm", async () => {
+  const token = await tokenFor("users");
+  const req = new Request("http://x", { headers: { authorization: token } });
+  const e = createEvent(app, req, { collection: "users" });
+  e.auth = loadAuth(app, req);
+  const middlewares = [
+    collectionPathRateLimit("collection", "authRefresh"),
+    requireSameCollectionContextAuth(),
+  ];
+  for (const m of middlewares) await m.fn(e);
+  const get = spyOn(app.db, "get");
+  const query = spyOn(app.db, "query");
+  try {
+    for (const m of middlewares) await m.fn(e);
+    const sql = [...get.mock.calls, ...query.mock.calls].map(([s]) => s);
+    expect(sql.filter((s) => s.includes("_collections"))).toEqual([]);
+  } finally {
+    get.mockRestore();
+    query.mockRestore();
+  }
 });
