@@ -17,6 +17,8 @@ export interface Logger {
   flush(): Promise<void>;
   // flush, then stop the worker; the next write starts a new one
   release(): Promise<void>;
+  // closes the worker's auxiliary.db connection, the next batch opens it again; call holding exclusive(app.auxDb)
+  closeConnection(): Promise<void>;
 }
 
 interface Entry {
@@ -27,7 +29,8 @@ interface Entry {
 }
 
 const BATCH_SIZE = 200;
-const MAX_BATCHES_IN_FLIGHT = 20;
+// rows waiting for the worker; above this they are dropped like a failed write
+const MAX_BACKLOG_ROWS = 50_000;
 const FLUSH_DELAY_MS = 3000;
 const MAX_MESSAGE_BYTES = 8000;
 const DEFAULT_MAX_DATA_SIZE = 16 << 10;
@@ -129,7 +132,8 @@ export function createLogger(app: App): Logger & { close(): void } {
   let timer: unknown = null;
   let stopped = false;
   let closed = false;
-  const writing = new Set<Promise<void>>();
+  let backlog: unknown[][] = [];
+  let draining: Promise<void> | null = null;
   // Bun's Worker has ref/unref, the DOM type in scope does not
   let worker: (Worker & { ref(): void; unref(): void }) | null = null;
   let lastId = 0;
@@ -168,37 +172,46 @@ export function createLogger(app: App): Logger & { close(): void } {
     return w;
   };
 
-  const insert = (rows: unknown[][]) =>
+  const post = (w: NonNullable<typeof worker>, msg: object) =>
     new Promise<void>((resolve, reject) => {
-      if (closed) throw new Error("the app is closed");
-      worker ??= startWorker();
       const id = ++lastId;
       pending.set(id, { resolve, reject });
-      worker.ref();
-      worker.postMessage({
-        id,
-        path: join(app.dataDir, "auxiliary.db"),
-        busyTimeoutMs: BUSY_TIMEOUT_MS,
-        rows,
-      });
+      w.ref();
+      w.postMessage({ id, ...msg });
     });
+
+  const insert = (rows: unknown[][]) => {
+    if (closed) return Promise.reject(new Error("the app is closed"));
+    worker ??= startWorker();
+    return post(worker, {
+      path: join(app.dataDir, "auxiliary.db"),
+      busyTimeoutMs: BUSY_TIMEOUT_MS,
+      rows,
+    });
+  };
 
   const clearTimer = () => {
     if (timer !== null) app.timers.clearTimeout(timer);
     timer = null;
   };
 
-  // like PB, a batch is dropped when logs are disabled or its write fails
-  const write = async (entries: Entry[]) => {
-    const { maxDays, maxDataSize } = app.settings.current().logs;
-    if (maxDays <= 0) return;
-    const rows = entries.map((entry) => logRow(app, entry, maxDataSize));
-    try {
-      // the aux write mutex orders batches with main-thread aux writes and keeps them out of a restore's file swap
-      await exclusive(app.auxDb, () => insert(rows));
-    } catch (err) {
-      console.error("Failed to write log", err);
+  // One worker transaction at a time, taking every row backlogged meanwhile. Like PB, rows are
+  // dropped when logs are disabled or their write fails.
+  const drain = async () => {
+    while (backlog.length > 0) {
+      const rows = backlog;
+      backlog = [];
+      try {
+        // the aux write mutex orders batches with main-thread aux writes and keeps them out of a restore's file swap
+        await exclusive(app.auxDb, () =>
+          app.settings.current().logs.maxDays > 0 ? insert(rows) : undefined,
+        );
+      } catch (err) {
+        console.error("Failed to write log", err);
+      }
     }
+    draining = null;
+    warnedBehind = false;
   };
 
   const stop = () => {
@@ -209,24 +222,21 @@ export function createLogger(app: App): Logger & { close(): void } {
   const writeQueued = () => {
     clearTimer();
     if (queue.length === 0) return;
-    // the worker is behind: drop the batch like a failed write
-    if (writing.size >= MAX_BATCHES_IN_FLIGHT) {
+    const entries = queue;
+    queue = [];
+    const { maxDays, maxDataSize } = app.settings.current().logs;
+    if (maxDays <= 0) return;
+    if (backlog.length + entries.length > MAX_BACKLOG_ROWS) {
       if (!warnedBehind)
         console.error(
           "Failed to write log",
-          new Error("too many log batches in flight, dropping"),
+          new Error("the log worker is behind, dropping"),
         );
       warnedBehind = true;
-      queue = [];
       return;
     }
-    const p = write(queue);
-    queue = [];
-    writing.add(p);
-    void p.then(() => {
-      writing.delete(p);
-      if (writing.size === 0) warnedBehind = false;
-    });
+    for (const entry of entries) backlog.push(logRow(app, entry, maxDataSize));
+    draining ??= drain();
   };
 
   const log = (
@@ -257,11 +267,18 @@ export function createLogger(app: App): Logger & { close(): void } {
     log,
     flush: async () => {
       writeQueued();
-      await Promise.all(writing);
+      await draining;
     },
     release: async () => {
       await logger.flush();
-      await exclusive(app.auxDb, () => stopWorker());
+      await exclusive(app.auxDb, async () => {
+        await logger.closeConnection();
+        stopWorker();
+      });
+    },
+    closeConnection: async () => {
+      // a rejection means the worker is gone, and its connection with it
+      if (worker) await post(worker, { close: true }).catch(() => {});
     },
     close: () => {
       closed = true;

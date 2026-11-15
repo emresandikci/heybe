@@ -14,7 +14,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 class FakeWorker {
   static all: FakeWorker[] = [];
-  posted: { id: number }[] = [];
+  posted: { id: number; rows: unknown[][] }[] = [];
   terminated = false;
   onmessage: ((e: { data: unknown }) => void) | null = null;
   onerror: unknown = null;
@@ -24,7 +24,10 @@ class FakeWorker {
   }
   ref() {}
   unref() {}
-  postMessage(m: { id: number }) {
+  answer() {
+    this.onmessage!({ data: { id: this.posted.at(-1)!.id } });
+  }
+  postMessage(m: { id: number; rows: unknown[][] }) {
     this.posted.push(m);
   }
   addEventListener(_: string, fn: () => void) {
@@ -349,16 +352,14 @@ describe("app logger", () => {
     }
   });
 
-  test("batches over the in-flight cap are dropped with one error", async () => {
+  test("batches over the backlog cap are dropped with one error", async () => {
     const err = spyOn(console, "error").mockImplementation(() => {});
     try {
       await withFakeWorker(async () => {
-        for (let i = 0; i < 22 * 200; i++) app.logger.info("m");
+        // one batch in flight, 250 backlogged, the next two dropped
+        for (let i = 0; i < 253 * 200; i++) app.logger.info("m");
         expect(err.mock.calls.map((c) => [c[0], String(c[1])])).toEqual([
-          [
-            "Failed to write log",
-            "Error: too many log batches in flight, dropping",
-          ],
+          ["Failed to write log", "Error: the log worker is behind, dropping"],
         ]);
         (app.logger as ReturnType<typeof createLogger>).close();
         await app.logger.flush();
@@ -366,6 +367,24 @@ describe("app logger", () => {
     } finally {
       err.mockRestore();
     }
+  });
+
+  test("rows backlogged while a batch is in flight go in one transaction", async () => {
+    await withFakeWorker(async () => {
+      for (let i = 0; i < 600; i++) app.logger.info("m");
+      while (FakeWorker.all[0]?.posted.length !== 1) await tick();
+      const worker = FakeWorker.all[0]!;
+      const posts = () => worker.posted.length;
+      worker.answer();
+      while (posts() !== 2) await tick();
+      worker.answer();
+      app.logger.info("last");
+      const flushed = app.logger.flush();
+      while (posts() !== 3) await tick();
+      worker.answer();
+      await flushed;
+      expect(worker.posted.map((m) => m.rows.length)).toEqual([200, 400, 1]);
+    });
   });
 
   test("release then log again writes through a new worker", async () => {

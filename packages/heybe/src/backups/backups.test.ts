@@ -363,6 +363,45 @@ describe("restoreBackup", () => {
     expect(await readdir(join(dir, "backups"))).toEqual(["b1.zip"]);
   });
 
+  test("the log worker's connection is closed and acknowledged before the swap", async () => {
+    await app.createBackup("b1.zip");
+    const aux = join(dir, "auxiliary.db");
+    const ino = () => fsModule.statSync(aux).ino;
+    const before = ino();
+    const seen: [string, boolean][] = [];
+    class AckingWorker {
+      onmessage: ((e: { data: unknown }) => void) | null = null;
+      onerror: unknown = null;
+      ref() {}
+      unref() {}
+      terminate() {}
+      addEventListener() {}
+      postMessage(m: { id: number; close?: boolean }) {
+        const kind = m.close ? "close" : "insert";
+        seen.push([`${kind} posted`, ino() === before]);
+        setImmediate(() => {
+          seen.push([`${kind} acked`, ino() === before]);
+          this.onmessage!({ data: { id: m.id } });
+        });
+      }
+    }
+    const real = globalThis.Worker;
+    globalThis.Worker = AckingWorker as unknown as typeof Worker;
+    try {
+      app.logger.warn("before restore");
+      await app.restoreBackup("b1.zip");
+    } finally {
+      globalThis.Worker = real;
+    }
+    expect(seen).toEqual([
+      ["insert posted", true],
+      ["insert acked", true],
+      ["close posted", true],
+      ["close acked", true],
+    ]);
+    expect(ino()).not.toBe(before);
+  });
+
   describe("an invalid backup leaves the data dir untouched", () => {
     const cases: [string, () => Promise<string>, string][] = [
       [

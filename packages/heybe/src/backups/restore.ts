@@ -72,7 +72,13 @@ const reopenDbs = (app: App) => {
 
 // both write mutexes are held while the data dir content is swapped
 const swap = (app: App, fn: () => void) =>
-  exclusive(app.db, () => exclusive(app.auxDb, fn));
+  exclusive(app.db, () =>
+    exclusive(app.auxDb, async () => {
+      // the log worker's connection would checkpoint into the moved file's -wal by path later
+      await app.logger.closeConnection();
+      fn();
+    }),
+  );
 
 export async function restoreBackup(
   app: App,
