@@ -363,6 +363,8 @@ test("collectionsVersion bumps after a committed write touching _collections", a
   expect(db.collectionsVersion()).toBe(v + 1);
   db.tx(() => db.run("DELETE FROM _collections"));
   expect(db.collectionsVersion()).toBe(v + 2);
+  db.tx(() => db.run("INSERT INTO _Collections VALUES ('b')"));
+  expect(db.collectionsVersion()).toBe(v + 3);
   db.close();
 });
 
