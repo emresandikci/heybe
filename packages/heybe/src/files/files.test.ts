@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
@@ -11,7 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../app";
+import { createEvent } from "../http/router";
+import { createRouter } from "../http/server";
 import { testApp } from "../test-app";
+import * as mime from "./mime";
 import { mimeExtension, sniffMime } from "./mime";
 import { normalizeFilename } from "./name";
 import { appFilesystem, fileKey, localFilesystem } from "./storage";
@@ -498,5 +501,58 @@ describe("app.files", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("sniffMime text decoding", () => {
+  const png = Bun.file(join(import.meta.dir, "fixtures", "a.png")).bytes();
+
+  test("does not decode text for a PNG", async () => {
+    const decode = spyOn(TextDecoder.prototype, "decode");
+    expect(await sniffMime(await png)).toBe("image/png");
+    expect(decode).not.toHaveBeenCalled();
+    decode.mockRestore();
+  });
+
+  test("binary bytes containing <svg stay application/octet-stream", async () => {
+    const bytes = new Uint8Array([0, 1, ...new TextEncoder().encode("<svg>")]);
+    expect(await sniffMime(bytes)).toBe("application/octet-stream");
+  });
+});
+
+describe("download sniffs once", () => {
+  let app: ReturnType<typeof testApp>;
+
+  beforeEach(() => {
+    app = testApp();
+  });
+  afterEach(() => app.close());
+
+  test.each(["", "?thumb=100x100"])("query %p", async (query) => {
+    await app.collections.save({
+      name: "docs",
+      viewRule: "",
+      fields: [
+        {
+          name: "doc",
+          type: "file",
+          maxSelect: 1,
+          maxSize: 1000,
+          thumbs: ["100x100"],
+        },
+      ],
+    } as any);
+    const r = await app.records("docs").create({
+      doc: new File(["hello"], "a.txt"),
+    });
+    const sniff = spyOn(mime, "sniffMime");
+    const url = new URL(`/api/files/docs/${r.id}/${r.doc}${query}`, "http://x");
+    const found = createRouter().build().match("GET", url.pathname)!;
+    const res = await found.run(
+      createEvent(app, new Request(url), found.params),
+    );
+    expect(await res.text()).toBe("hello");
+    expect(sniff).toHaveBeenCalledTimes(1);
+    sniff.mockRestore();
   });
 });

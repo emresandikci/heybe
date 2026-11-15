@@ -74,6 +74,7 @@ async function realPathOf(path: string): Promise<string> {
 
 export function localFilesystem(root: string): Filesystem {
   const base = resolve(root);
+  let realBase: Promise<string> | undefined;
 
   const pathOf = async (key: string): Promise<string> => {
     const trimmed = key.replace(/\/+$/, "");
@@ -90,7 +91,9 @@ export function localFilesystem(root: string): Filesystem {
     const path = resolve(base, trimmed);
     if (
       !path.startsWith(base + sep) ||
-      !(await realPathOf(path)).startsWith((await realPathOf(base)) + sep)
+      !(await realPathOf(path)).startsWith(
+        (await (realBase ??= realPathOf(base))) + sep,
+      )
     ) {
       throw new Error(`file key ${JSON.stringify(key)} escapes storage root`);
     }

@@ -16,6 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
 import type { App, AppOptions } from "../app";
 import type { UIExtension } from "../hooks/events";
 import { testApp } from "../test-app";
@@ -101,7 +102,9 @@ describe.each(["dir", "map"] as const)("dashboard from a %s", (kind) => {
   });
 
   test("GET /_/assets/app.js is cached outside dev mode", async () => {
-    const res = await get(`${await start()}/_/assets/app.js`);
+    const res = await fetch(`${await start()}/_/assets/app.js`, {
+      headers: { "accept-encoding": "identity" },
+    });
     expect(await res.text()).toBe("console.log(1)");
     expect(res.headers.get("content-length")).toBe("14");
     expect(res.headers.get("content-type")).toStartWith("text/javascript");
@@ -112,6 +115,24 @@ describe.each(["dir", "map"] as const)("dashboard from a %s", (kind) => {
     const dev = await get(`${await start({ dev: true })}/_/assets/app.js`);
     expect(dev.status).toBe(200);
     expect(dev.headers.get("cache-control")).toBeNull();
+  });
+
+  test("serves gzip when accepted and plain otherwise", async () => {
+    const url = `${await start()}/_/assets/app.js`;
+    const raw = (encoding: string) =>
+      fetch(url, {
+        headers: { "accept-encoding": encoding },
+        decompress: false,
+      });
+    const zipped = await raw("gzip");
+    expect(zipped.headers.get("content-encoding")).toBe("gzip");
+    expect(zipped.headers.get("vary")).toContain("Accept-Encoding");
+    expect(gunzipSync(await zipped.bytes()).toString()).toBe("console.log(1)");
+
+    const plain = await raw("identity");
+    expect(plain.headers.get("content-encoding")).toBeNull();
+    expect(plain.headers.get("vary")).toContain("Accept-Encoding");
+    expect(await plain.text()).toBe("console.log(1)");
   });
 
   test("GET /_ redirects to /_/", async () => {

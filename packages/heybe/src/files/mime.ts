@@ -187,14 +187,16 @@ export async function sniffMime(data: Blob | Uint8Array): Promise<string> {
     data instanceof Blob
       ? new Uint8Array(await data.slice(0, HEAD_SIZE).arrayBuffer())
       : data.subarray(0, HEAD_SIZE);
-  const text = new TextDecoder("utf-8").decode(head);
+  let decoded: string | undefined;
+  const text = () => (decoded ??= new TextDecoder("utf-8").decode(head));
 
   const type = await fileTypeFromBuffer(head);
   if (type && type.mime !== "application/xml") return type.mime;
-  if (isSvg(text)) return "image/svg+xml";
+  if (Buffer.from(head).includes("<svg") && isSvg(text()))
+    return "image/svg+xml";
 
   if (!bomOf(head) && hasBinaryByte(head)) return "application/octet-stream";
-  if (isJson(text, head.length >= HEAD_SIZE)) return "application/json";
+  if (isJson(text(), head.length >= HEAD_SIZE)) return "application/json";
   // mimetype looks for the charset in the first 1024 bytes only
   const start = head.subarray(0, 1024);
   if (isHtml(head)) return withCharset("text/html", htmlCharset(start));

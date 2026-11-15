@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
-import { join, posix } from "node:path";
+import { join, posix, resolve, sep } from "node:path";
+import { gzipSync } from "node:zlib";
 import type { App } from "../app";
 import { ApiError } from "./errors";
 import {
@@ -23,13 +24,16 @@ export type StaticSource = string | ReadonlyMap<string, string>;
 export function serveStatic(
   source: StaticSource,
   indexFallback = false,
+  gzip = false,
 ): RouteAction {
   return async (e) => {
     if (e.get(SKIP_SUCCESS_ACTIVITY_LOG_KEY) === undefined)
       e.set(SKIP_SUCCESS_ACTIVITY_LOG_KEY, true);
     const filename = cleanPath((e.params.path ?? "").replace(/^\//, ""));
     const fallback = () =>
-      indexFallback && filename !== INDEX ? sendFile(e, source, INDEX) : null;
+      indexFallback && filename !== INDEX
+        ? sendFile(e, source, INDEX, gzip)
+        : null;
 
     // Go fs.FS rejects rooted names and names leaving the root
     if (/^\.\.([/\\]|$)/.test(filename) || filename.startsWith("/"))
@@ -49,7 +53,7 @@ export function serveStatic(
     }
 
     try {
-      return await sendFile(e, source, filename);
+      return await sendFile(e, source, filename, gzip);
     } catch (err) {
       const index =
         err instanceof ApiError && err.status === 404 ? fallback() : null;
@@ -77,19 +81,55 @@ async function isDirectory(
   return null;
 }
 
+const COMPRESSIBLE = /^(text\/|application\/(javascript|json|xml)|image\/svg)/;
+const gzipped = new Map<string, Uint8Array<ArrayBuffer>>();
+
 async function sendFile(
   e: RequestEvent,
   source: StaticSource,
   filename: string,
+  gzip: boolean,
 ): Promise<Response> {
-  if (typeof source === "string") return e.fileFS(source, filename);
-  const key = (await isDirectory(source, filename))
-    ? posix.join(filename, INDEX)
-    : filename;
-  const path = source.get(key);
-  if (path === undefined) return notFound();
-  return e.file(path, key);
+  if (gzip) e.responseHeaders.append("vary", "Accept-Encoding");
+  let path: string;
+  let name: string;
+  if (typeof source === "string") {
+    const root = resolve(source);
+    path = resolve(root, `.${sep}${filename}`);
+    name = path;
+    if (!gzip || !acceptsGzip(e)) return e.fileFS(source, filename);
+    if (path !== root && !path.startsWith(root + sep)) return notFound();
+    try {
+      if ((await stat(path)).isDirectory()) path = join(path, INDEX);
+    } catch {
+      return notFound();
+    }
+    name = path;
+  } else {
+    name = (await isDirectory(source, filename))
+      ? posix.join(filename, INDEX)
+      : filename;
+    const mapped = source.get(name);
+    if (mapped === undefined) return notFound();
+    path = mapped;
+    if (!gzip || !acceptsGzip(e)) return e.file(path, name);
+  }
+  const file = Bun.file(path);
+  const type = Bun.file(name).type;
+  if (!COMPRESSIBLE.test(type)) return e.file(path, name);
+  const key = `${path}\0${file.size}\0${file.lastModified}`;
+  let body = gzipped.get(key);
+  if (!body) {
+    body = gzipSync(await file.bytes()) as Uint8Array<ArrayBuffer>;
+    gzipped.set(key, body);
+  }
+  const res = e.blob(200, type, body);
+  res.headers.set("content-encoding", "gzip");
+  return res;
 }
+
+const acceptsGzip = (e: RequestEvent) =>
+  (e.req.headers.get("accept-encoding") ?? "").includes("gzip");
 
 const notFound = (): never => {
   throw new ApiError(404, "File not found");
@@ -127,7 +167,10 @@ function dashboardHeaders(cacheRoot: boolean) {
 export function registerDashboard(app: App, router: Router): void {
   if (!hasDashboard(app)) return;
   router
-    .get("/_/{path...}", serveStatic(app.dashboardFiles ?? app.dashboardDir))
+    .get(
+      "/_/{path...}",
+      serveStatic(app.dashboardFiles ?? app.dashboardDir, false, true),
+    )
     .use(dashboardHeaders(false));
 }
 

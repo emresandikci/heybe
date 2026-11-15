@@ -155,6 +155,7 @@ async function download(e: RequestEvent): Promise<void> {
     thumbError: null as Error | null,
   };
 
+  let originalType: string | undefined;
   const thumb = e.query.get("thumb") ?? "";
   const thumbsOf = Array.isArray(field.thumbs) ? field.thumbs : [];
   if (
@@ -163,7 +164,8 @@ async function download(e: RequestEvent): Promise<void> {
   ) {
     const original = await readFile(e, originalKey);
     if (!original) throw new ApiError(404, "");
-    if (THUMB_TYPES.has(await sniffMime(original.blob))) {
+    originalType = await sniffMime(original.blob);
+    if (THUMB_TYPES.has(originalType)) {
       served.servedName = `${thumb}_${filename}`;
       served.servedPath = fileKey(
         base.collectionId,
@@ -204,22 +206,25 @@ async function download(e: RequestEvent): Promise<void> {
 
   e.responseHeaders.delete("x-frame-options");
   const hook = e.app.hooks.onFileDownloadRequest;
-  if (hook.length === 0) return serve(e, served);
+  const serveOne = (fe: RequestEvent, s: typeof served) =>
+    serve(fe, s, s.servedPath === originalKey ? originalType : undefined);
+  if (hook.length === 0) return serveOne(e, served);
   const event = FileDownloadRequestEvent.from(e, {
     collection: c,
     record: new RecordModel(c, record, false),
     fileField: field,
     ...served,
   });
-  await hook.trigger(event, (fe) => serve(fe, fe));
+  await hook.trigger(event, (fe) => serveOne(fe, fe));
 }
 
 async function serve(
   e: RequestEvent,
   { servedPath, servedName }: { servedPath: string; servedName: string },
+  type?: string,
 ): Promise<void> {
   try {
-    await serveStoredFile(e, e.app.files, servedPath, servedName);
+    await serveStoredFile(e, e.app.files, servedPath, servedName, type);
   } catch {
     throw new ApiError(404, "");
   }
@@ -231,10 +236,11 @@ export async function serveStoredFile(
   fs: Filesystem,
   key: string,
   name: string,
+  sniffed?: string,
 ): Promise<void> {
   const file = await fs.file(key);
   if (!file) throw new NotFoundError();
-  const type = await sniffMime(file.blob);
+  const type = sniffed ?? (await sniffMime(file.blob));
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
   const headers = new Headers({
