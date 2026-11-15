@@ -177,7 +177,7 @@ export class Resolver {
   findCollection(nameOrId: string): Collection | null {
     const base = this.ctx.collection;
     if (nameOrId === base.name || nameOrId === base.id) return base;
-    return this.ctx.store.find(nameOrId);
+    return this.ctx.store.findCached(nameOrId);
   }
 
   loadCollection(nameOrId: string, message: string): Collection {
@@ -211,7 +211,7 @@ export class Resolver {
   authCollection(): Collection | null {
     const req = this.ctx.request;
     return req?.auth && req.authCollection
-      ? this.ctx.store.find(req.authCollection)
+      ? this.ctx.store.findCached(req.authCollection)
       : null;
   }
 

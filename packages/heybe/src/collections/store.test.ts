@@ -360,3 +360,64 @@ describe("validation parity with PocketBase", () => {
     expect(c.fields.find((f) => f.name === "email")?.type).toBe("email");
   });
 });
+
+describe("findCached", () => {
+  test("returns the same object until _collections changes", async () => {
+    await store.save({ name: "posts", fields: postFields });
+    const first = store.findCached("posts")!;
+    expect(store.findCached("posts")).toBe(first);
+    expect(store.findCached(first.id)).toBe(first);
+    await store.save({ name: "tags", fields: postFields });
+    expect(store.findCached("posts")).not.toBe(first);
+    expect(store.findCached("posts")).toEqual(first);
+  });
+
+  test("sees a create, update, delete and import at once", async () => {
+    expect(store.findCached("posts")).toBeNull();
+    const c = await store.save({ name: "posts", fields: postFields });
+    expect(store.findCached("posts")!.id).toBe(c.id);
+    await store.save({ ...store.find("posts")!, listRule: "id != ''" });
+    expect(store.findCached("posts")!.listRule).toBe("id != ''");
+    await store.delete("posts");
+    expect(store.findCached("posts")).toBeNull();
+    await store.import(
+      [{ name: "tags", type: "base", fields: postFields }],
+      false,
+    );
+    expect(store.findCached("tags")!.name).toBe("tags");
+  });
+
+  test("sees a raw SQL update to _collections", async () => {
+    const c = await store.save({ name: "posts", fields: postFields });
+    expect(store.findCached("posts")).not.toBeNull();
+    await db.write(() =>
+      db.run("UPDATE _collections SET name = 'renamed' WHERE id = ?", [c.id]),
+    );
+    expect(store.findCached("posts")).toBeNull();
+    expect(store.findCached("renamed")!.id).toBe(c.id);
+  });
+
+  test("never sees a change that was rolled back", async () => {
+    expect(store.findCached("posts")).toBeNull();
+    await expect(
+      db.write(async () => {
+        await store.save({ name: "posts", fields: postFields });
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+    expect(store.findCached("posts")).toBeNull();
+  });
+
+  test("inside db.write sees the uncommitted collection", async () => {
+    store.findCached("posts");
+    await db.write(async () => {
+      await store.save({ name: "posts", fields: postFields });
+      expect(store.findCached("posts")!.name).toBe("posts");
+    });
+  });
+
+  test("matches names case-insensitively", async () => {
+    const c = await store.save({ name: "posts", fields: postFields });
+    expect(store.findCached("POSTS")!.id).toBe(c.id);
+  });
+});

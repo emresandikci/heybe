@@ -60,7 +60,7 @@ export function authFromToken(
   const { id, collectionId } = claims;
   if (typeof id !== "string" || typeof collectionId !== "string") return null;
 
-  const collection = app.collections.find(collectionId);
+  const collection = app.collections.findCached(collectionId);
   if (!collection || collection.type !== "auth") return null;
 
   let record: Record<string, unknown>;

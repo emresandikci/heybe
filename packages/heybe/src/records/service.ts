@@ -628,7 +628,7 @@ export class RecordServiceImpl<T> {
   }
 
   private collection(): Collection {
-    const c = this.deps.store.find(this.name);
+    const c = this.deps.store.findCached(this.name);
     if (!c) throw new NotFoundError();
     return c;
   }
@@ -761,7 +761,7 @@ export class RecordServiceImpl<T> {
       original: original ?? undefined,
       isNew: original === null,
       now,
-      findCollection: (idOrName) => store.find(idOrName),
+      findCollection: (idOrName) => store.findCached(idOrName),
     };
     const errors: Errors = {};
     for (const f of c.fields) {

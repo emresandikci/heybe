@@ -112,3 +112,25 @@ test("serveContent sends Last-Modified and 304 from StoredFile.modified", async 
   });
   expect(cached.status).toBe(304);
 });
+
+test("a hook that sets e.collection.listRule and saves the collection works and the next request uses the new rule", async () => {
+  await app.records("posts").create({ title: "a" });
+  await app.records("posts").create({ title: "x" });
+  app.onRecordsListRequest(async (e) => {
+    if (e.collection.listRule === "") {
+      e.collection.listRule = "title = 'x'";
+      await app.collections.save(e.collection);
+    }
+    return e.next();
+  });
+  // like PB, the rule is applied before the hook runs
+  expect((await get("/api/collections/posts/records")).items).toHaveLength(2);
+  expect(app.collections.find("posts")!.listRule).toBe("title = 'x'");
+  const { items: next } = await get("/api/collections/posts/records");
+  expect(next.map((r: any) => r.title)).toEqual(["x"]);
+
+  const fresh = app.collections.find("posts")!;
+  await app.collections.save({ ...fresh, listRule: "title = 'a'" });
+  const { items } = await get("/api/collections/posts/records");
+  expect(items.map((r: any) => r.title)).toEqual(["a"]);
+});

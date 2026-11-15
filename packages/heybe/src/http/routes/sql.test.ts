@@ -269,3 +269,11 @@ describe("POST /api/sql", () => {
     expect((await call({ query: "SELECT 1" }, "users")).status).toBe(403);
   });
 });
+
+test("a write to _collections through the SQL API is seen by findCached at once", async () => {
+  expect(app.collections.findCached("_superusers")!.listRule).toBeNull();
+  await run(
+    "UPDATE _collections SET data = json_set(data, '$.listRule', 'id != ''''') WHERE name = '_superusers'",
+  );
+  expect(app.collections.findCached("_superusers")!.listRule).toBe("id != ''");
+});

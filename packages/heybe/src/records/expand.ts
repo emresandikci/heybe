@@ -194,7 +194,7 @@ function relation(
 ): { target: Collection; multiple: boolean; idsOf: (n: Node) => string[] } {
   const back = BACK_RELATION.exec(name);
   if (back) {
-    const from = app.collections.find(back[1]!);
+    const from = app.collections.findCached(back[1]!);
     const field = from?.fields.find((f) => f.name === back[2]);
     if (!from || field?.type !== "relation" || field.collectionId !== c.id)
       throw new PathError(`invalid back-relation "${name}"`);
@@ -208,7 +208,7 @@ function relation(
   const field = c.fields.find((f) => f.name === name);
   const target =
     field?.type === "relation"
-      ? app.collections.find(field.collectionId as string)
+      ? app.collections.findCached(field.collectionId as string)
       : null;
   if (!field || !target) throw new PathError(`invalid relation "${name}"`);
   return {

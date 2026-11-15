@@ -107,7 +107,7 @@ const readFile = (e: RequestEvent, key: string) =>
   e.app.files.file(key).catch(() => null);
 
 async function download(e: RequestEvent): Promise<void> {
-  const c = e.app.collections.find(e.params.collection!);
+  const c = e.app.collections.findCached(e.params.collection!);
   if (!c) throw new ApiError(404, "Missing or invalid collection context.");
 
   let record: Record<string, unknown>;

@@ -9,11 +9,15 @@ export interface Db {
   write<T>(fn: () => T | Promise<T>): Promise<T>;
   onComplete(fn: (err: unknown) => unknown): void;
   committed<T>(fn: () => T): T;
+  // changes when a write that may have touched _collections ends, and after exclusive or reopen
+  collectionsVersion(): number;
+  inWrite(): boolean;
   close(): void;
 }
 
 const CACHE_LIMIT = 200;
 const UNCACHED = /^\s*(CREATE|DROP|ALTER|PRAGMA)\b/i;
+const SELECT = /^\s*SELECT\b/i;
 const OUTSIDE_WRITE =
   "heybe: db write outside db.write while a write transaction is open";
 const RUN_OUTSIDE_WRITE =
@@ -142,6 +146,8 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
   const als = new AsyncLocalStorage<Context>();
   let syncDepth = 0;
   let savepoints = 0;
+  let version = 0;
+  let collectionsTouched = false;
 
   // a write that ended hands its late callers to the nearest open ancestor
   const active = () => {
@@ -151,6 +157,17 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
   };
   const onWriter = () => active() !== null || syncDepth > 0;
   const bind = (params?: unknown[]) => (params ?? []) as SQLQueryBindings[];
+  const onWriterTracked = (sql: string) => {
+    if (!onWriter()) return false;
+    if (!collectionsTouched && /_collections/i.test(sql) && !SELECT.test(sql))
+      collectionsTouched = true;
+    return true;
+  };
+  // called when a root transaction ends, committed or rolled back
+  const endRoot = () => {
+    if (collectionsTouched) version++;
+    collectionsTouched = false;
+  };
   const exec = (sql: string) => writer.sqlite.run(sql);
 
   const newContext = (parent: Context | null): Context => ({
@@ -234,6 +251,7 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
       error = e;
       if (writer.sqlite.inTransaction) exec("ROLLBACK");
     } finally {
+      endRoot();
       root.open = false;
       mutex.release();
     }
@@ -254,17 +272,17 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
 
   const db: Db = {
     query: <T>(sql: string, params?: unknown[]) =>
-      (onWriter() ? writer : reader).withStmt(
+      (onWriterTracked(sql) ? writer : reader).withStmt(
         sql,
         (s) => s.all(...bind(params)) as T[],
       ),
     get: <T>(sql: string, params?: unknown[]) =>
-      (onWriter() ? writer : reader).withStmt(
+      (onWriterTracked(sql) ? writer : reader).withStmt(
         sql,
         (s) => (s.get(...bind(params)) as T | null) ?? null,
       ),
     run: (sql, params) => {
-      if (!onWriter()) throw new Error(RUN_OUTSIDE_WRITE);
+      if (!onWriterTracked(sql)) throw new Error(RUN_OUTSIDE_WRITE);
       return writer.withStmt(sql, (s) => ({
         changes: s.run(...bind(params)).changes,
       }));
@@ -287,6 +305,7 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
         throw e;
       } finally {
         syncDepth--;
+        if (!name) endRoot();
       }
     },
     write,
@@ -304,6 +323,8 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
         syncDepth = depth;
       }
     },
+    collectionsVersion: () => version,
+    inWrite: onWriter,
     close: () => {
       reader.close();
       writer.close();
@@ -315,6 +336,7 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
     writer.close();
     writer = connection(path, false, busyTimeoutMs);
     reader = connection(path, true, busyTimeoutMs);
+    version++;
   });
   exclusives.set(db, async (fn) => {
     if (onWriter()) throw new Error("heybe: exclusive inside db.write");
@@ -322,6 +344,7 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
     try {
       return await fn(writer.sqlite);
     } finally {
+      version++;
       mutex.release();
     }
   });

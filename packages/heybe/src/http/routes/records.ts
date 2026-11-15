@@ -64,7 +64,7 @@ const DELETE_FAILED =
   "Failed to delete record. Make sure that the record is not part of a required relation reference.";
 
 function findCollection(e: RequestEvent): Collection {
-  const c = e.app.collections.find(e.params.collection!);
+  const c = e.app.collections.findCached(e.params.collection!);
   if (!c) throw new ApiError(404, "Missing collection context.");
   return c;
 }
@@ -77,7 +77,7 @@ export function writable(
   name: string,
   message = "Missing collection context.",
 ): Collection {
-  const c = app.collections.find(name);
+  const c = app.collections.findCached(name);
   if (!c) throw new ApiError(404, message);
   if (c.type === "view")
     throw new ApiError(400, "Unsupported collection type.");
@@ -236,7 +236,7 @@ const collectionBodyLimit: Middleware = {
   id: BODY_LIMIT_ID,
   priority: BODY_LIMIT_PRIORITY,
   fn: (e) => {
-    const c = e.app.collections.find(e.params.collection ?? "");
+    const c = e.app.collections.findCached(e.params.collection ?? "");
     if (!c) throw new ApiError(404, "Missing or invalid collection context.");
     applyBodyLimit(
       e,

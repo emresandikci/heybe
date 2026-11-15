@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { exclusive, statementCacheSize } from "./db";
+import { exclusive, reopen, statementCacheSize } from "./db";
 import { tempDb } from "./test-db";
 
 const deferred = () => Promise.withResolvers<void>();
@@ -352,5 +352,55 @@ test("exclusive waits for an open write and runs outside a transaction", async (
   await write;
   expect(await done).toEqual([1]);
   expect(order).toEqual(["write", "exclusive"]);
+  db.close();
+});
+
+test("collectionsVersion bumps after a committed write touching _collections", async () => {
+  const db = tempDb();
+  db.tx(() => db.run("CREATE TABLE _collections (id TEXT)"));
+  const v = db.collectionsVersion();
+  await db.write(() => db.run("INSERT INTO _collections VALUES ('a')"));
+  expect(db.collectionsVersion()).toBe(v + 1);
+  db.tx(() => db.run("DELETE FROM _collections"));
+  expect(db.collectionsVersion()).toBe(v + 2);
+  db.close();
+});
+
+test("collectionsVersion bumps after a rolled back write touching _collections", async () => {
+  const db = tempDb();
+  db.tx(() => db.run("CREATE TABLE _collections (id TEXT)"));
+  const v = db.collectionsVersion();
+  await expect(
+    db.write(() => {
+      db.run("INSERT INTO _collections VALUES ('a')");
+      throw new Error("boom");
+    }),
+  ).rejects.toThrow("boom");
+  expect(db.collectionsVersion()).toBe(v + 1);
+  db.close();
+});
+
+test("collectionsVersion does not bump after a write to another table or a read of _collections", async () => {
+  const db = tempDb();
+  db.tx(() => {
+    db.run("CREATE TABLE _collections (id TEXT)");
+    db.run("CREATE TABLE posts (id TEXT)");
+  });
+  const v = db.collectionsVersion();
+  await db.write(() => {
+    db.query("SELECT * FROM _collections");
+    db.run("INSERT INTO posts VALUES ('a')");
+  });
+  expect(db.collectionsVersion()).toBe(v);
+  db.close();
+});
+
+test("collectionsVersion bumps after exclusive and reopen", async () => {
+  const db = tempDb();
+  const v = db.collectionsVersion();
+  await exclusive(db, () => {});
+  expect(db.collectionsVersion()).toBe(v + 1);
+  reopen(db);
+  expect(db.collectionsVersion()).toBe(v + 2);
   db.close();
 });

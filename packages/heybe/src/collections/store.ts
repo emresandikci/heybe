@@ -213,6 +213,11 @@ export class CollectionStore {
   // ids of the collections being created, and of those deleted without integrity checks
   private readonly creating = new Set<string>();
   private readonly unchecked = new Set<string>();
+  private cache: {
+    version: number;
+    byId: Map<string, Collection>;
+    byName: Map<string, Collection>;
+  } | null = null;
 
   constructor(
     private readonly db: Db,
@@ -268,6 +273,26 @@ export class CollectionStore {
       [nameOrId],
     );
     return row ? fromRow(row) : null;
+  }
+
+  // PB FindCachedCollectionByNameOrId: returned objects are shared, callers must not mutate them
+  findCached(nameOrId: string): Collection | null {
+    if (this.db.inWrite()) return this.find(nameOrId);
+    const version = this.db.collectionsVersion();
+    if (this.cache?.version !== version) {
+      const byId = new Map<string, Collection>();
+      const byName = new Map<string, Collection>();
+      for (const c of this.all()) {
+        byId.set(c.id, c);
+        byName.set(c.name.toLowerCase(), c);
+      }
+      this.cache = { version, byId, byName };
+    }
+    return (
+      this.cache.byId.get(nameOrId) ??
+      this.cache.byName.get(nameOrId.toLowerCase()) ??
+      null
+    );
   }
 
   async save(input: SaveInput, isNew = false): Promise<Collection> {
