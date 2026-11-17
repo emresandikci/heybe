@@ -188,6 +188,7 @@ function IndexDialog({
             <CodeArea
               label="Index SQL"
               language="sql"
+              sqlSchema={{ [table]: columns }}
               rows={4}
               value={field.state.value}
               onChange={field.handleChange}

@@ -16,6 +16,7 @@
   --cm-punctuation: #475569;
   --cm-focus: #2563eb;
   --cm-selection: #bfdbfe;
+  --cm-tooltip: #ffffff;
   color-scheme: light;
 }
 
@@ -32,6 +33,7 @@
   --cm-punctuation: #cbd5e1;
   --cm-focus: #60a5fa;
   --cm-selection: #1e3a8a;
+  --cm-tooltip: #1e293b;
   color-scheme: dark;
 }
 

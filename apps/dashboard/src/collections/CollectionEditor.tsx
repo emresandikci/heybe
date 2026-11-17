@@ -12,7 +12,7 @@ import {
   responseData,
   useFieldError,
 } from "../app/errors";
-import { keys } from "../app/queries";
+import { keys, useSqlSchema } from "../app/queries";
 import { Button } from "../ui/Button";
 import { CodeArea } from "../ui/CodeArea";
 import { useConfirm } from "../ui/Confirm";
@@ -423,6 +423,7 @@ function ViewQuery({
   draft: CollectionDraft;
 }) {
   const error = useFieldError("viewQuery");
+  const schema = useSqlSchema();
   return (
     <div className="flex flex-col gap-3">
       <form.Field name="viewQuery">
@@ -430,6 +431,7 @@ function ViewQuery({
           <CodeArea
             label="Select query"
             language="sql"
+            sqlSchema={schema}
             rows={8}
             value={field.state.value ?? ""}
             error={error}

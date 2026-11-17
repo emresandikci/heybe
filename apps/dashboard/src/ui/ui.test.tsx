@@ -1,11 +1,18 @@
-import { describe, expect, test } from "bun:test";
-import { render, screen } from "@testing-library/react";
+import { describe, expect, setSystemTime, test } from "bun:test";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  acceptCompletion,
+  currentCompletions,
+  startCompletion,
+} from "@codemirror/autocomplete";
+import { EditorView } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { Dialog } from "./Dialog";
 import { ConfirmProvider, useConfirm } from "./Confirm";
 import { TextField } from "./TextField";
 import { Tabs } from "./Tabs";
+import { CodeArea } from "./CodeArea";
 
 describe("ui", () => {
   test("Dialog opens with showModal, Esc closes and focus returns to the opener", async () => {
@@ -189,4 +196,74 @@ test("a second confirm resolves the pending one with false", async () => {
   ask.click();
   await user.click(screen.getByRole("button", { name: "Go" }));
   expect(results).toEqual([false, true]);
+});
+
+async function suggestions(el: HTMLElement, text: string) {
+  const view = EditorView.findFromDOM(el)!;
+  act(() => {
+    view.dispatch({
+      changes: { from: 0, insert: text },
+      selection: { anchor: text.length },
+    });
+    startCompletion(view);
+  });
+  let labels: string[] = [];
+  await waitFor(() => {
+    labels = currentCompletions(view.state).map((c) => c.label);
+    expect(labels.length).toBeGreaterThan(0);
+  });
+  return labels;
+}
+
+test("CodeArea suggests the given completions", async () => {
+  render(
+    <CodeArea
+      label="Rule"
+      value=""
+      onChange={() => {}}
+      completions={["@request.auth.id", "title"]}
+    />,
+  );
+  expect(await suggestions(screen.getByLabelText("Rule"), "@req")).toEqual([
+    "@request.auth.id",
+  ]);
+});
+
+test("CodeArea suggests sql tables from the schema", async () => {
+  render(
+    <CodeArea
+      label="SQL"
+      language="sql"
+      value=""
+      onChange={() => {}}
+      sqlSchema={{ posts: ["title"], _superusers: ["email"] }}
+    />,
+  );
+  expect(
+    await suggestions(screen.getByLabelText("SQL"), "SELECT * FROM pos"),
+  ).toContain("posts");
+});
+
+test("CodeArea completes sql names that start with an underscore", async () => {
+  render(
+    <CodeArea
+      label="SQL"
+      language="sql"
+      value=""
+      onChange={() => {}}
+      sqlSchema={{ _superusers: ["email"] }}
+    />,
+  );
+  const el = screen.getByLabelText("SQL");
+  expect(await suggestions(el, "SELECT * FROM _su")).toContain("_superusers");
+  const view = EditorView.findFromDOM(el)!;
+  setSystemTime(new Date(Date.now() + 1000));
+  try {
+    act(() => {
+      acceptCompletion(view);
+    });
+  } finally {
+    setSystemTime();
+  }
+  expect(view.state.doc.toString()).toBe("SELECT * FROM _superusers");
 });

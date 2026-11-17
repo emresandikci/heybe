@@ -18,6 +18,12 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import {
+  autocompletion,
+  completionKeymap,
+  type CompletionContext,
+  type CompletionSource,
+} from "@codemirror/autocomplete";
+import {
   defaultKeymap,
   history,
   historyKeymap,
@@ -30,7 +36,7 @@ import {
 } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { json } from "@codemirror/lang-json";
-import { sql } from "@codemirror/lang-sql";
+import { SQLite, schemaCompletionSource, sql } from "@codemirror/lang-sql";
 import { html } from "@codemirror/lang-html";
 import { useFieldIds, type FieldProps } from "./field";
 import { FieldShell } from "./FieldShell";
@@ -44,6 +50,8 @@ interface CodeAreaProps extends FieldProps {
   disabled?: boolean;
   onRun?: () => void;
   language?: Language;
+  completions?: string[];
+  sqlSchema?: Record<string, string[]>;
 }
 
 export interface CodeAreaHandle {
@@ -51,7 +59,38 @@ export interface CodeAreaHandle {
   focus(): void;
 }
 
-const languages: Record<Language, () => Extension> = { json, sql, html };
+// lang-sql does not tokenize a leading "_", so "_su" would complete to "__superusers".
+const withLeadingUnderscores =
+  (source: CompletionSource): CompletionSource =>
+  async (context) => {
+    const result = await source(context);
+    if (!result) return result;
+    let from = result.from;
+    while (from > 0 && context.state.sliceDoc(from - 1, from) === "_") from--;
+    return { ...result, from };
+  };
+
+const sqlExtension = (schema?: Record<string, string[]>): Extension => {
+  const support = sql({ dialect: SQLite });
+  return [
+    support,
+    support.language.data.of({
+      autocomplete: withLeadingUnderscores(
+        schemaCompletionSource({ dialect: SQLite, schema }),
+      ),
+    }),
+  ];
+};
+
+const languageExtension = (
+  language?: Language,
+  sqlSchema?: Record<string, string[]>,
+): Extension => {
+  if (language === "sql") return sqlExtension(sqlSchema);
+  if (language === "json") return json();
+  if (language === "html") return html();
+  return [];
+};
 
 const highlight = HighlightStyle.define([
   { tag: [tags.keyword, tags.operatorKeyword], color: "var(--cm-keyword)" },
@@ -86,6 +125,14 @@ const theme = EditorView.theme({
   },
   ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "transparent" },
   ".cm-selectionBackground": { backgroundColor: "var(--cm-selection)" },
+  ".cm-tooltip": {
+    backgroundColor: "var(--cm-tooltip)",
+    border: "1px solid var(--cm-punctuation)",
+  },
+  ".cm-tooltip-autocomplete ul li[aria-selected]": {
+    backgroundColor: "var(--cm-selection)",
+    color: "inherit",
+  },
 });
 
 const external = Annotation.define<boolean>();
@@ -104,14 +151,17 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
       disabled,
       onRun,
       language,
+      completions,
+      sqlSchema,
     },
     ref,
   ) {
     const ids = useFieldIds({ error, hint });
     const host = useRef<HTMLDivElement>(null);
     const view = useRef<EditorView | null>(null);
-    const latest = useRef({ onChange, onRun });
-    latest.current = { onChange, onRun };
+    const latest = useRef({ onChange, onRun, completions });
+    latest.current = { onChange, onRun, completions };
+    const schemaKey = JSON.stringify(sqlSchema);
     const compartments = useRef({
       language: new Compartment(),
       editable: new Compartment(),
@@ -131,6 +181,21 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
           ),
         ) as Record<string, string>,
       );
+    const words = (context: CompletionContext) => {
+      const list = latest.current.completions;
+      const word = context.matchBefore(/[\w@.]*/);
+      if (
+        !list?.length ||
+        !word ||
+        (word.from === word.to && !context.explicit)
+      )
+        return null;
+      return {
+        from: word.from,
+        options: list.map((label) => ({ label, type: "variable" })),
+        validFor: /^[\w@.]*$/,
+      };
+    };
     const height = () =>
       EditorView.theme({
         ".cm-content, .cm-gutter": {
@@ -150,6 +215,8 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
             drawSelection(),
             highlightActiveLine(),
             bracketMatching(),
+            autocompletion(),
+            EditorState.languageData.of(() => [{ autocomplete: words }]),
             syntaxHighlighting(highlight),
             EditorView.lineWrapping,
             theme,
@@ -162,11 +229,12 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
                   return true;
                 },
               },
+              ...completionKeymap,
               indentWithTab,
               ...defaultKeymap,
               ...historyKeymap,
             ]),
-            c.language.of(language ? languages[language]() : []),
+            c.language.of(languageExtension(language, sqlSchema)),
             c.editable.of(editable(disabled)),
             c.attributes.of(attributes()),
             c.height.of(height()),
@@ -201,7 +269,7 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
       const c = compartments.current;
       view.current?.dispatch({
         effects: [
-          c.language.reconfigure(language ? languages[language]() : []),
+          c.language.reconfigure(languageExtension(language, sqlSchema)),
           c.editable.reconfigure(editable(disabled)),
           c.attributes.reconfigure(attributes()),
           c.height.reconfigure(height()),
@@ -210,6 +278,7 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       language,
+      schemaKey,
       disabled,
       rows,
       label,

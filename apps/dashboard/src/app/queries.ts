@@ -13,6 +13,13 @@ export const keys = {
   fileToken: ["fileToken"] as const,
 };
 
+export function useSqlSchema(): Record<string, string[]> {
+  const { data } = useCollections();
+  return Object.fromEntries(
+    (data ?? []).map((c) => [c.name, c.fields.map((f) => String(f.name))]),
+  );
+}
+
 export async function listAll<T>(
   page: (n: number) => Promise<ListResult<T>>,
 ): Promise<T[]> {

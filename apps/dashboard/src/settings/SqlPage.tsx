@@ -3,6 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
+import { useSqlSchema } from "../app/queries";
 import { Button } from "../ui/Button";
 import { CodeArea } from "../ui/CodeArea";
 import { Table, Td, Th } from "../ui/Table";
@@ -11,6 +12,7 @@ export function SqlPage() {
   const client = useClient();
   const [result, setResult] = useState<SqlResult | null>(null);
   const [error, setError] = useState("");
+  const schema = useSqlSchema();
 
   const form = useForm({
     defaultValues: { query: "" },
@@ -43,6 +45,7 @@ export function SqlPage() {
           <CodeArea
             label="SQL query"
             language="sql"
+            sqlSchema={schema}
             rows={8}
             value={field.state.value}
             onChange={field.handleChange}

@@ -38,6 +38,7 @@ export function RuleInput({
         ref={area}
         label={label}
         rows={3}
+        completions={chips}
         value={value ?? ""}
         disabled={value === null}
         error={error}
