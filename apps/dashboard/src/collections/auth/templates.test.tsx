@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 import { screen, waitFor, within } from "@testing-library/react";
 import { fakeServer } from "../../test/fake-server";
-import { echoPatch, openEditor, serveCollections } from "../../test/editor";
+import {
+  codeValue,
+  echoPatch,
+  openEditor,
+  serveCollections,
+  setCode,
+} from "../../test/editor";
 import { collectionsFixture, scaffoldsFixture } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 import { readSource, stripSource, withSource } from "./mjml";
@@ -45,33 +51,17 @@ const withMjml = {
   },
 };
 
-async function paste(
-  user: Awaited<ReturnType<typeof openTemplates>>["user"],
-  area: HTMLElement,
-  text: string,
-) {
-  await user.clear(area);
-  area.focus();
-  await user.paste(text);
-}
-
 test("a body with the MJML marker opens in MJML mode with its source", async () => {
   await openTemplates(withMjml);
   expect(
-    (
-      group("Verification email").getByLabelText(
-        "Body (MJML)",
-      ) as HTMLTextAreaElement
-    ).value,
+    codeValue(group("Verification email").getByLabelText("Body (MJML)")),
   ).toBe(SOURCE);
 });
 
 test("a body without the marker opens as HTML and Convert to MJML starts from the starter", async () => {
   const { user, saved } = await openTemplates();
   const reset = group("Password reset email");
-  expect(
-    (reset.getByLabelText("Body (HTML)") as HTMLTextAreaElement).value,
-  ).toBe("<p>Reset</p>");
+  expect(codeValue(reset.getByLabelText("Body (HTML)"))).toBe("<p>Reset</p>");
   await user.click(reset.getByRole("button", { name: "Convert to MJML" }));
   await user.click(
     within(screen.getByRole("dialog", { name: "Convert to MJML" })).getByRole(
@@ -80,9 +70,7 @@ test("a body without the marker opens as HTML and Convert to MJML starts from th
     ),
   );
   const starter = mjmlStarter("resetPassword", false);
-  expect(
-    (reset.getByLabelText("Body (MJML)") as HTMLTextAreaElement).value,
-  ).toBe(starter);
+  expect(codeValue(reset.getByLabelText("Body (MJML)"))).toBe(starter);
   const body = (await saved()).resetPasswordTemplate!.body;
   expect(readSource(body)).toBe(starter);
   expect(stripSource(body)).toContain(
@@ -93,11 +81,7 @@ test("a body without the marker opens as HTML and Convert to MJML starts from th
 test("editing MJML saves the compiled HTML with its source", async () => {
   const { user, saved } = await openTemplates(withMjml);
   const source = SOURCE.replace("Saved {APP_NAME}", "Hello {RECORD:name}");
-  await paste(
-    user,
-    group("Verification email").getByLabelText("Body (MJML)"),
-    source,
-  );
+  setCode(group("Verification email").getByLabelText("Body (MJML)"), source);
   const body = (await saved()).verificationTemplate!.body;
   expect(readSource(body)).toBe(source);
   expect(stripSource(body)).toContain("Hello {RECORD:name}");
@@ -108,7 +92,7 @@ test("MJML errors show next to the body and block saving", async () => {
   const { user, dialog, saveButton } = await openTemplates(withMjml);
   const verify = group("Verification email");
   const area = verify.getByLabelText("Body (MJML)");
-  await paste(user, area, SOURCE.replace("<mj-text>", '<mj-text foo="1">'));
+  setCode(area, SOURCE.replace("<mj-text>", '<mj-text foo="1">'));
   await verify.findByText("Line 1: Attribute foo is illegal");
   expect(area.getAttribute("aria-invalid")).toBe("true");
   expect(saveButton.disabled).toBe(true);
@@ -164,11 +148,7 @@ test("new auth collections start their templates in MJML", async () => {
   await user.click(dialog.getByRole("tab", { name: "Options" }));
   const starter = mjmlStarter("verification", false);
   expect(
-    (
-      group("Verification email").getByLabelText(
-        "Body (MJML)",
-      ) as HTMLTextAreaElement
-    ).value,
+    codeValue(group("Verification email").getByLabelText("Body (MJML)")),
   ).toBe(starter);
   const create = dialog.getByRole("button", {
     name: "Create",
@@ -200,9 +180,9 @@ test("_superusers templates convert to the superuser starters", async () => {
       { name: "Convert" },
     ),
   );
-  expect(
-    (reset.getByLabelText("Body (MJML)") as HTMLTextAreaElement).value,
-  ).toBe(mjmlStarter("resetPassword", true));
+  expect(codeValue(reset.getByLabelText("Body (MJML)"))).toBe(
+    mjmlStarter("resetPassword", true),
+  );
 });
 
 test("Edit as HTML asks first and Convert to MJML restores the saved source", async () => {
@@ -215,16 +195,14 @@ test("Edit as HTML asks first and Convert to MJML restores the saved source", as
   expect(verify.getByLabelText("Body (MJML)")).toBeTruthy();
   await user.click(verify.getByRole("button", { name: "Edit as HTML" }));
   await user.click(ask().getByRole("button", { name: "Edit as HTML" }));
-  expect(
-    (verify.getByLabelText("Body (HTML)") as HTMLTextAreaElement).value,
-  ).toBe("<p>compiled</p>");
+  expect(codeValue(verify.getByLabelText("Body (HTML)"))).toBe(
+    "<p>compiled</p>",
+  );
   await user.click(verify.getByRole("button", { name: "Convert to MJML" }));
   expect(
     screen.queryAllByRole("dialog", { name: "Convert to MJML" }).length,
   ).toBe(0);
-  expect(
-    (verify.getByLabelText("Body (MJML)") as HTMLTextAreaElement).value,
-  ).toBe(SOURCE);
+  expect(codeValue(verify.getByLabelText("Body (MJML)"))).toBe(SOURCE);
 });
 
 test("the body hint lists {OTP_ID}", async () => {

@@ -42,6 +42,7 @@ export function SqlPage() {
         {(field) => (
           <CodeArea
             label="SQL query"
+            language="sql"
             rows={8}
             value={field.state.value}
             onChange={field.handleChange}

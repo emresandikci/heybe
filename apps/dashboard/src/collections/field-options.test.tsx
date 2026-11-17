@@ -7,6 +7,7 @@ import {
   openEditor,
   patchedFields,
   paste,
+  setCode,
 } from "../test/editor";
 import { collectionsFixture } from "../test/fixtures";
 
@@ -299,8 +300,7 @@ test("view collection sends viewQuery and no fields edits", async () => {
     within(dialog).queryByRole("button", { name: "Add index" }),
   ).toBeNull();
   const query = within(dialog).getByLabelText("Select query");
-  await user.clear(query);
-  await paste(user, query, "SELECT id FROM posts");
+  setCode(query, "SELECT id FROM posts");
   await save();
   await screen.findByText("Collection saved.");
   const [patch] = server.find("PATCH", "/api/collections/pbc_stats");

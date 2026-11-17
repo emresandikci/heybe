@@ -16,6 +16,7 @@ export function JsonInput({
   return (
     <CodeArea
       label={name}
+      language="json"
       value={value}
       error={error}
       disabled={disabled}

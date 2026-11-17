@@ -6,7 +6,8 @@ import {
   fieldGroup,
   openEditor,
   serveCollections,
-  paste,
+  codeValue,
+  setCode,
 } from "../test/editor";
 import { collectionsFixture, scaffoldsFixture } from "../test/fixtures";
 import { renderApp } from "../test/render";
@@ -23,9 +24,7 @@ async function addIndex(
   for (const column of columns)
     await user.click(within(dialog).getByLabelText(column));
   if (unique) await user.click(within(dialog).getByLabelText("Unique"));
-  const sql = (
-    within(dialog).getByLabelText("Index SQL") as HTMLTextAreaElement
-  ).value;
+  const sql = codeValue(within(dialog).getByLabelText("Index SQL"));
   await user.click(within(dialog).getByRole("button", { name: "Save index" }));
   return sql;
 }
@@ -59,8 +58,7 @@ test("index SQL can be edited by hand and removed", async () => {
   );
   const dialog = screen.getByRole("dialog", { name: "Edit index" });
   const area = within(dialog).getByLabelText("Index SQL");
-  await user.clear(area);
-  await paste(user, area, "CREATE INDEX idx_t ON posts (title DESC)");
+  setCode(area, "CREATE INDEX idx_t ON posts (title DESC)");
   await user.click(within(dialog).getByRole("button", { name: "Save index" }));
   await user.click(
     within(indexRows()[1]!).getByRole("button", { name: "Remove index" }),

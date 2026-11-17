@@ -429,6 +429,7 @@ function ViewQuery({
         {(field) => (
           <CodeArea
             label="Select query"
+            language="sql"
             rows={8}
             value={field.state.value ?? ""}
             error={error}

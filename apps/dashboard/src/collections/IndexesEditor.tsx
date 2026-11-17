@@ -187,6 +187,7 @@ function IndexDialog({
           {(field) => (
             <CodeArea
               label="Index SQL"
+              language="sql"
               rows={4}
               value={field.state.value}
               onChange={field.handleChange}

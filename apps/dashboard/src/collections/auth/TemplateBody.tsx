@@ -117,6 +117,7 @@ export function TemplateBody({
       {state.mode === "mjml" ? (
         <CodeArea
           label="Body (MJML)"
+          language="html"
           rows={12}
           value={state.source}
           error={serverError ?? state.error ?? undefined}
@@ -126,6 +127,7 @@ export function TemplateBody({
       ) : (
         <CodeArea
           label="Body (HTML)"
+          language="html"
           rows={8}
           value={html}
           error={serverError}

@@ -1,4 +1,5 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
+import { EditorView } from "@codemirror/view";
 import type { UserEvent } from "@testing-library/user-event";
 import type { CollectionModel } from "@heybe/client";
 import { fakeServer, type FakeServer } from "./fake-server";
@@ -46,8 +47,33 @@ export function echoPatch(server: FakeServer, base: CollectionModel) {
   }));
 }
 
+function codeView(el: HTMLElement) {
+  return el.classList.contains("cm-content")
+    ? EditorView.findFromDOM(el)
+    : null;
+}
+
+export function setCode(el: HTMLElement, text: string) {
+  const view = codeView(el)!;
+  act(() =>
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+    }),
+  );
+}
+
+export function codeValue(el: HTMLElement) {
+  return codeView(el)!.state.doc.toString();
+}
+
 // Pastes at the end of the input: long values typed key by key re-render the whole editor per key.
 export async function paste(user: UserEvent, el: HTMLElement, text: string) {
+  const view = codeView(el);
+  if (view) {
+    const end = view.state.doc.length;
+    act(() => view.dispatch({ changes: { from: end, insert: text } }));
+    return;
+  }
   el.focus();
   const input = el as HTMLInputElement;
   try {

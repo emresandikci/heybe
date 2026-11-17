@@ -4,10 +4,26 @@
 
 :root {
   --accent: #2563eb;
+  --cm-keyword: #7c3aed;
+  --cm-string: #047857;
+  --cm-number: #b45309;
+  --cm-name: #1d4ed8;
+  --cm-tag: #be123c;
+  --cm-comment: #64748b;
+  --cm-focus: #2563eb;
+  --cm-selection: #bfdbfe;
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
+  --cm-keyword: #c4b5fd;
+  --cm-string: #6ee7b7;
+  --cm-number: #fcd34d;
+  --cm-name: #93c5fd;
+  --cm-tag: #fda4af;
+  --cm-comment: #94a3b8;
+  --cm-focus: #60a5fa;
+  --cm-selection: #1e3a8a;
   color-scheme: dark;
 }
 

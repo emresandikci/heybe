@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { screen } from "@testing-library/react";
 import { fakeServer } from "../test/fake-server";
+import { setCode } from "../test/editor";
 import { renderApp } from "../test/render";
 
 const result = {
@@ -34,10 +35,7 @@ test("shows the warning", async () => {
 
 test("SQL Run posts the query and renders columns, rows and NULL", async () => {
   const { user, server } = await openSql();
-  await user.type(
-    screen.getByLabelText("SQL query"),
-    "SELECT id, title FROM posts",
-  );
+  setCode(screen.getByLabelText("SQL query"), "SELECT id, title FROM posts");
   await user.click(screen.getByRole("button", { name: "Run" }));
   expect(await screen.findByText("2 rows, 0 affected, 3 ms")).toBeTruthy();
   expect(server.find("POST", "/api/sql")[0]!.body).toEqual({
@@ -55,17 +53,17 @@ test("a write shows affectedRows", async () => {
     columns: [],
     rows: [],
   });
-  await user.type(screen.getByLabelText("SQL query"), "DELETE FROM posts");
+  setCode(screen.getByLabelText("SQL query"), "DELETE FROM posts");
   await user.click(screen.getByRole("button", { name: "Run" }));
   expect(await screen.findByText("0 rows, 5 affected, 1 ms")).toBeTruthy();
 });
 
 test("Ctrl+Enter runs the query", async () => {
   const { user, server } = await openSql();
-  await user.type(
-    screen.getByLabelText("SQL query"),
-    "SELECT 1{Control>}{Enter}{/Control}",
-  );
+  const sql = screen.getByLabelText("SQL query");
+  setCode(sql, "SELECT 1");
+  sql.focus();
+  await user.keyboard("{Control>}{Enter}{/Control}");
   await screen.findByText("2 rows, 0 affected, 3 ms");
   expect(server.find("POST", "/api/sql")).toHaveLength(1);
 });
@@ -75,7 +73,7 @@ test("an SQL error shows the server message", async () => {
     { status: 400, message: "SQL logic error: no such table: x (1)", data: {} },
     400,
   );
-  await user.type(screen.getByLabelText("SQL query"), "SELECT * FROM x");
+  setCode(screen.getByLabelText("SQL query"), "SELECT * FROM x");
   await user.click(screen.getByRole("button", { name: "Run" }));
   expect(
     await screen.findByText("SQL logic error: no such table: x (1)"),

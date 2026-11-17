@@ -20,6 +20,7 @@ export function EditorInput({
     <div className="flex flex-col gap-2">
       <CodeArea
         label={name}
+        language="html"
         value={value}
         error={error}
         disabled={disabled}

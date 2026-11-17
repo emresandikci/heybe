@@ -140,6 +140,7 @@ export function ImportPage() {
         {(field) => (
           <CodeArea
             label="Collections JSON"
+            language="json"
             rows={16}
             value={field.state.value}
             onChange={(value) => {

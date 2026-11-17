@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { screen, waitFor, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../test/fake-server";
+import { setCode } from "../test/editor";
 import { renderApp } from "../test/render";
 
 const saved = (extra: object = {}) => ({
@@ -131,8 +132,7 @@ test('invalid JSON blocks submit with "Invalid JSON." under the input and sends 
   const { user } = open("r1", server);
   const d = await dialog("Edit record");
   const meta = await d.findByLabelText("meta");
-  await user.clear(meta);
-  await user.type(meta, "{{oops");
+  setCode(meta, "{oops");
   await user.click(d.getByRole("button", { name: "Save" }));
   const message = await d.findByText("Invalid JSON.");
   expect(meta.getAttribute("aria-describedby")).toBe(message.id);
@@ -452,8 +452,7 @@ test("a local JSON error replaces a stale server error", async () => {
   await user.click(d.getByRole("button", { name: "Save" }));
   await d.findByText("Too long.");
   const meta = d.getByLabelText("meta");
-  await user.clear(meta);
-  await user.type(meta, "{{oops");
+  setCode(meta, "{oops");
   await user.click(d.getByRole("button", { name: "Save" }));
   await d.findByText("Invalid JSON.");
   expect(d.queryByText("Too long.")).toBeNull();

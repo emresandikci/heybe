@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useFieldError } from "../../app/errors";
 import { Button } from "../../ui/Button";
 import { Checkbox } from "../../ui/Checkbox";
-import { CodeArea } from "../../ui/CodeArea";
+import { CodeArea, type CodeAreaHandle } from "../../ui/CodeArea";
 
 export function RuleInput({
   label,
@@ -22,29 +22,14 @@ export function RuleInput({
   lockable?: boolean;
 }) {
   const error = useFieldError(errorPath);
-  const area = useRef<HTMLTextAreaElement>(null);
-  const cursor = useRef<number | null>(null);
+  const area = useRef<CodeAreaHandle>(null);
   const last = useRef(value ?? "");
 
   useEffect(() => {
     if (value !== null) last.current = value;
   }, [value]);
 
-  useLayoutEffect(() => {
-    const el = area.current;
-    if (cursor.current === null || !el) return;
-    el.focus();
-    el.setSelectionRange(cursor.current, cursor.current);
-    cursor.current = null;
-  }, [value]);
-
-  const insert = (chip: string) => {
-    const text = value ?? "";
-    const start = area.current?.selectionStart ?? text.length;
-    const end = area.current?.selectionEnd ?? text.length;
-    cursor.current = start + chip.length;
-    onChange(text.slice(0, start) + chip + text.slice(end));
-  };
+  const insert = (chip: string) => area.current?.insert(chip);
 
   return (
     <fieldset className="flex flex-col gap-2 rounded border border-slate-200 p-3 dark:border-slate-700">

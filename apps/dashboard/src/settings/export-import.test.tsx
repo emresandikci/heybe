@@ -1,6 +1,6 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { screen, within } from "@testing-library/react";
-import { paste } from "../test/editor";
+import { screen, waitFor, within } from "@testing-library/react";
+import { codeValue, paste } from "../test/editor";
 import { fakeServer } from "../test/fake-server";
 import { collectionsFixture, settingsFixture } from "../test/fixtures";
 import { renderApp } from "../test/render";
@@ -104,7 +104,11 @@ test("Load from file fills the JSON", async () => {
     type: "application/json",
   });
   await user.upload(screen.getByLabelText("Collections file"), file);
-  expect(await screen.findByDisplayValue('[{"name":"tags"}]')).toBeTruthy();
+  await waitFor(() =>
+    expect(codeValue(screen.getByLabelText("Collections JSON"))).toBe(
+      '[{"name":"tags"}]',
+    ),
+  );
 });
 
 test("Import PUTs collections without deleteMissing after the review", async () => {

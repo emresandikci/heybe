@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
+import { EditorView } from "@codemirror/view";
 import { fakeServer } from "../../test/fake-server";
-import { echoPatch, openEditor } from "../../test/editor";
+import { codeValue, echoPatch, openEditor, setCode } from "../../test/editor";
 import { collectionsFixture } from "../../test/fixtures";
 import { RuleInput } from "./RuleInput";
 
@@ -32,14 +33,14 @@ test('locked rule is sent as null and an unlocked empty rule as ""', async () =>
   const server = echoPatch(fakeServer(), posts);
   const { user, save } = await openRules("posts", server);
   const list = rule("List/Search rule");
-  const area = list.getByLabelText("List/Search rule") as HTMLTextAreaElement;
-  expect(area.disabled).toBe(true);
+  const area = list.getByLabelText("List/Search rule");
+  expect(area.getAttribute("contenteditable")).toBe("false");
   await user.click(list.getByLabelText("Superusers only"));
-  expect(area.disabled).toBe(false);
-  expect(area.value).toBe("");
+  expect(area.getAttribute("contenteditable")).toBe("true");
+  expect(codeValue(area)).toBe("");
   expect(list.getByText("Empty rule: everyone, guests included.")).toBeTruthy();
   await user.click(rule("View rule").getByLabelText("Superusers only"));
-  await user.type(rule("View rule").getByLabelText("View rule"), "id != ''");
+  setCode(rule("View rule").getByLabelText("View rule"), "id != ''");
   await save();
   await user.click(
     within(screen.getByRole("dialog", { name: "Confirm changes" })).getByRole(
@@ -73,13 +74,13 @@ test("a chip inserts at the cursor", async () => {
     );
   }
   render(<Host />);
-  const area = screen.getByLabelText("List/Search rule") as HTMLTextAreaElement;
-  area.focus();
-  area.setSelectionRange(2, 2);
+  const area = screen.getByLabelText("List/Search rule");
+  const view = EditorView.findFromDOM(area)!;
+  act(() => view.dispatch({ selection: { anchor: 2 } }));
   await user.click(screen.getByRole("button", { name: "@now" }));
-  expect(area.value).toBe("a @now b");
+  expect(codeValue(area)).toBe("a @now b");
   expect(document.activeElement).toBe(area);
-  expect([area.selectionStart, area.selectionEnd]).toEqual([6, 6]);
+  expect(view.state.selection.main.head).toBe(6);
 });
 
 test("view collections show only list and view rules", async () => {
@@ -128,15 +129,11 @@ test("lock then unlock restores the typed rule", async () => {
   const { user } = await openRules("posts");
   const list = rule("List/Search rule");
   await user.click(list.getByLabelText("Superusers only"));
-  await user.type(list.getByLabelText("List/Search rule"), "id != ''");
+  setCode(list.getByLabelText("List/Search rule"), "id != ''");
   await user.click(list.getByLabelText("Superusers only"));
-  expect(
-    (list.getByLabelText("List/Search rule") as HTMLTextAreaElement).value,
-  ).toBe("");
+  expect(codeValue(list.getByLabelText("List/Search rule"))).toBe("");
   await user.click(list.getByLabelText("Superusers only"));
-  expect(
-    (list.getByLabelText("List/Search rule") as HTMLTextAreaElement).value,
-  ).toBe("id != ''");
+  expect(codeValue(list.getByLabelText("List/Search rule"))).toBe("id != ''");
 });
 
 test("auth and manage rules explain their own empty value", async () => {
