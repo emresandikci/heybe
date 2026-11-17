@@ -60,6 +60,19 @@ const highlight = HighlightStyle.define([
   { tag: [tags.propertyName, tags.attributeName], color: "var(--cm-name)" },
   { tag: [tags.tagName, tags.typeName], color: "var(--cm-tag)" },
   { tag: [tags.comment, tags.meta], color: "var(--cm-comment)" },
+  { tag: [tags.name, tags.variableName], color: "var(--cm-variable)" },
+  {
+    tag: [tags.function(tags.variableName), tags.standard(tags.name)],
+    color: "var(--cm-function)",
+  },
+  {
+    tag: [tags.operator, tags.compareOperator, tags.logicOperator],
+    color: "var(--cm-operator)",
+  },
+  {
+    tag: [tags.bracket, tags.punctuation, tags.angleBracket],
+    color: "var(--cm-punctuation)",
+  },
 ]);
 
 const theme = EditorView.theme({

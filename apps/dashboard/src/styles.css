@@ -10,6 +10,10 @@
   --cm-name: #1d4ed8;
   --cm-tag: #be123c;
   --cm-comment: #64748b;
+  --cm-variable: #0e7490;
+  --cm-function: #a21caf;
+  --cm-operator: #c2410c;
+  --cm-punctuation: #475569;
   --cm-focus: #2563eb;
   --cm-selection: #bfdbfe;
   color-scheme: light;
@@ -22,6 +26,10 @@
   --cm-name: #93c5fd;
   --cm-tag: #fda4af;
   --cm-comment: #94a3b8;
+  --cm-variable: #67e8f9;
+  --cm-function: #f0abfc;
+  --cm-operator: #fdba74;
+  --cm-punctuation: #cbd5e1;
   --cm-focus: #60a5fa;
   --cm-selection: #1e3a8a;
   color-scheme: dark;
