@@ -1,10 +1,7 @@
 import { useForm, useStore } from "@tanstack/react-form";
 import { useId, useState } from "react";
 import { useFieldError } from "../app/errors";
-import { Button } from "../ui/Button";
-import { Checkbox } from "../ui/Checkbox";
-import { CodeArea } from "../ui/CodeArea";
-import { Dialog } from "../ui/Dialog";
+import { Button, Checkbox, CodeArea, Dialog } from "@heybe/ui";
 import {
   activeFields,
   finalIndexes,

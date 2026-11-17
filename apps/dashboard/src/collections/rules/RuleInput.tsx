@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useFieldError } from "../../app/errors";
-import { Button } from "../../ui/Button";
-import { Checkbox } from "../../ui/Checkbox";
-import { CodeArea, type CodeAreaHandle } from "../../ui/CodeArea";
+import { Button, Checkbox, CodeArea, type CodeAreaHandle } from "@heybe/ui";
 
 export function RuleInput({
   label,

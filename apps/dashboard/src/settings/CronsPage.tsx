@@ -2,9 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { keys } from "../app/queries";
-import { Button } from "../ui/Button";
-import { Table, Td, Th } from "../ui/Table";
-import { useToast } from "../ui/Toasts";
+import { Button, Table, Td, Th, useToast } from "@heybe/ui";
 
 export function CronsPage() {
   const client = useClient();

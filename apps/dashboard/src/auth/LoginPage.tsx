@@ -5,7 +5,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, errorMessage } from "../app/errors";
-import { Button } from "../ui/Button";
+import { Button } from "@heybe/ui";
 import { AuthCard, Field } from "./AuthCard";
 import { safeRedirect } from "./session";
 

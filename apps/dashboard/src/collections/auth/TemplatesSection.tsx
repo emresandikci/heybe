@@ -1,12 +1,11 @@
 import type { CollectionModel } from "@heybe/client";
 import { useState } from "react";
-import { Button } from "../../ui/Button";
+import { Button, Section } from "@heybe/ui";
 import type { TemplateKind } from "./mjml-starters";
 import { TemplateBody } from "./TemplateBody";
 import { TestEmailDialog } from "./TestEmailDialog";
 import { TextOpt, getIn, groupClass, type OptCtx, type OptPath } from "./opts";
 import type { EmailTemplate } from "../editor-state";
-import { Section } from "../../ui/Section";
 
 const TEMPLATES: {
   path: OptPath<EmailTemplate>;

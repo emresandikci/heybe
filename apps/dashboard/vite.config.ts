@@ -10,10 +10,11 @@ export default defineConfig({
   base: "/_/",
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: {
-      "@heybe/client": src("client"),
-      "@heybe/query": src("query"),
-    },
+    alias: [
+      { find: "@heybe/client", replacement: src("client") },
+      { find: "@heybe/query", replacement: src("query") },
+      { find: /^@heybe\/ui$/, replacement: src("ui") },
+    ],
   },
   build: {
     outDir: "../../packages/heybe/ui/dist",

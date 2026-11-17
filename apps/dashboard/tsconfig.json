@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "paths": {
       "@heybe/client": ["../../packages/client/src/index.ts"],
-      "@heybe/query": ["../../packages/query/src/index.ts"]
+      "@heybe/query": ["../../packages/query/src/index.ts"],
+      "@heybe/ui": ["../../packages/ui/src/index.ts"]
     }
   },
   "include": ["src", "e2e", "vite.config.ts", "playwright.config.ts"]

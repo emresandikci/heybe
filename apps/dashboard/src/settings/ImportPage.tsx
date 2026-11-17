@@ -5,13 +5,15 @@ import { useId, useRef, useState, type ChangeEvent } from "react";
 import { useClient } from "../app/context";
 import { errorMessage, flattenErrors, responseData } from "../app/errors";
 import { keys, useCollections } from "../app/queries";
-import { Button } from "../ui/Button";
-import { Checkbox } from "../ui/Checkbox";
-import { CodeArea } from "../ui/CodeArea";
-import { useConfirm } from "../ui/Confirm";
-import { Dialog } from "../ui/Dialog";
-import { EmptyState } from "../ui/EmptyState";
-import { useToast } from "../ui/Toasts";
+import {
+  Button,
+  Checkbox,
+  CodeArea,
+  Dialog,
+  EmptyState,
+  useConfirm,
+  useToast,
+} from "@heybe/ui";
 import {
   diffImport,
   parseImport,

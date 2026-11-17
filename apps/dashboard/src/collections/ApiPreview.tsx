@@ -1,7 +1,5 @@
 import type { CollectionModel } from "@heybe/client";
-import { CopyButton } from "../ui/CopyButton";
-import { Dialog } from "../ui/Dialog";
-import { Table, Td, Th } from "../ui/Table";
+import { CopyButton, Dialog, Table, Td, Th } from "@heybe/ui";
 
 function ruleText(rule: unknown): string {
   if (rule === null || rule === undefined) return "Superusers only";

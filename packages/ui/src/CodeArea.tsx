@@ -38,8 +38,8 @@ import { tags } from "@lezer/highlight";
 import { json } from "@codemirror/lang-json";
 import { SQLite, schemaCompletionSource, sql } from "@codemirror/lang-sql";
 import { html } from "@codemirror/lang-html";
-import { useFieldIds, type FieldProps } from "./field";
-import { FieldShell } from "./FieldShell";
+import { useFieldIds, type FieldProps } from "./field.js";
+import { FieldShell } from "./FieldShell.js";
 
 type Language = "json" | "sql" | "html";
 

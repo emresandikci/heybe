@@ -13,14 +13,16 @@ import {
   useFieldError,
 } from "../app/errors";
 import { keys, useSqlSchema } from "../app/queries";
-import { Button } from "../ui/Button";
-import { CodeArea } from "../ui/CodeArea";
-import { useConfirm } from "../ui/Confirm";
-import { Dialog } from "../ui/Dialog";
-import { Select } from "../ui/Select";
-import { Tabs } from "../ui/Tabs";
-import { TextField } from "../ui/TextField";
-import { useToast } from "../ui/Toasts";
+import {
+  Button,
+  CodeArea,
+  Dialog,
+  Select,
+  Tabs,
+  TextField,
+  useConfirm,
+  useToast,
+} from "@heybe/ui";
 import { ChangesDialog } from "./ChangesDialog";
 import {
   diffCollection,

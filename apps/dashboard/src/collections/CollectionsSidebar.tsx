@@ -3,8 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { createContext, useContext, useState } from "react";
 import { useCollections } from "../app/queries";
 import { useHideControls } from "../settings/use-settings";
-import { Button } from "../ui/Button";
-import { TextField } from "../ui/TextField";
+import { Button, TextField } from "@heybe/ui";
 import { OverviewDialog } from "./OverviewDialog";
 
 export const EditorContext = createContext<

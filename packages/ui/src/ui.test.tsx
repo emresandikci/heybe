@@ -8,11 +8,11 @@ import {
 import { EditorView } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { Dialog } from "./Dialog";
-import { ConfirmProvider, useConfirm } from "./Confirm";
-import { TextField } from "./TextField";
-import { Tabs } from "./Tabs";
-import { CodeArea } from "./CodeArea";
+import { Dialog } from "./Dialog.js";
+import { ConfirmProvider, useConfirm } from "./Confirm.js";
+import { TextField } from "./TextField.js";
+import { Tabs } from "./Tabs.js";
+import { CodeArea } from "./CodeArea.js";
 
 describe("ui", () => {
   test("Dialog opens with showModal, Esc closes and focus returns to the opener", async () => {

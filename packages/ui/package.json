@@ -1,0 +1,64 @@
+{
+  "name": "@heybe/ui",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css",
+    "./theme.css": "./src/theme.css"
+  },
+  "files": [
+    "dist",
+    "src/theme.css"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "author": "emresandikci",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emresandikci/heybe.git",
+    "directory": "packages/ui"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tailwindcss -i src/style.css -o dist/style.css --minify",
+    "prepack": "pnpm build",
+    "release": "semantic-release -e semantic-release-monorepo",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@heybe/configs": "workspace:*",
+    "@tailwindcss/cli": "^4.3.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.9",
+    "@types/bun": "catalog:",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "happy-dom": "^21.0.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "catalog:"
+  }
+}

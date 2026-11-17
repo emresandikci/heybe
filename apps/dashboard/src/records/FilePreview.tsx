@@ -1,4 +1,4 @@
-import { Dialog } from "../ui/Dialog";
+import { Dialog } from "@heybe/ui";
 
 export function FilePreview({
   name,

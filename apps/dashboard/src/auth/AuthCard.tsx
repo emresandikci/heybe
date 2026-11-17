@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useFieldError } from "../app/errors";
-import { TextField } from "../ui/TextField";
+import { TextField } from "@heybe/ui";
 
 export function AuthCard({
   title,

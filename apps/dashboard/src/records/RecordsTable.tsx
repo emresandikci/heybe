@@ -1,4 +1,4 @@
-import { Table, Td, Th } from "../ui/Table";
+import { Table, Td, Th } from "@heybe/ui";
 import { CellValue, type CellField } from "./cell";
 
 type Row = Record<string, unknown> & { id: string };

@@ -1,6 +1,6 @@
 import type { SelectHTMLAttributes } from "react";
-import { inputClass, useFieldIds, type FieldProps } from "./field";
-import { FieldShell } from "./FieldShell";
+import { inputClass, useFieldIds, type FieldProps } from "./field.js";
+import { FieldShell } from "./FieldShell.js";
 
 export function Select({
   label,

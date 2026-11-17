@@ -48,6 +48,10 @@ const check = (name: string) => {
   } else {
     required.push("package/dist/index.js", "package/dist/index.d.ts");
   }
+  if (name === "@heybe/ui") {
+    required.push("package/dist/style.css", "package/src/theme.css");
+    forbidden.push(/\.test\./);
+  }
 
   for (const file of required) {
     if (!entries.includes(file)) throw new Error(`${name}: missing ${file}`);
@@ -66,6 +70,13 @@ const check = (name: string) => {
       throw new Error(
         `${name}: @heybe/query peer is ${actual}, expected ${expected}`,
       );
+    }
+  }
+  if (name === "@heybe/ui") {
+    for (const dep of ["react", "react-dom"]) {
+      if (!manifest.peerDependencies?.[dep]) {
+        throw new Error(`${name}: missing ${dep} peer dependency`);
+      }
     }
   }
   console.log(`OK ${name} (${entries.length} files)`);
@@ -125,7 +136,8 @@ const smokeInstalled = async () => {
 };
 
 try {
-  for (const name of ["@heybe/query", "@heybe/client", "heybe"]) check(name);
+  for (const name of ["@heybe/query", "@heybe/client", "@heybe/ui", "heybe"])
+    check(name);
   await smokeInstalled();
 } catch (err) {
   console.error(`FAIL ${err instanceof Error ? err.message : err}`);

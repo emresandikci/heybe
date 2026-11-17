@@ -1,9 +1,8 @@
 import { ErrorScope, UnclaimedErrors } from "../app/errors";
-import { Button } from "../ui/Button";
+import { Button, Section } from "@heybe/ui";
 import { S3Fields, TestS3Button } from "./S3Fields";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
-import { Section } from "../ui/Section";
 
 export function StoragePage() {
   const settings = useSettings();

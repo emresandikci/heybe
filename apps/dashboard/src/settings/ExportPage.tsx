@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useCollections } from "../app/queries";
-import { Button } from "../ui/Button";
-import { Checkbox } from "../ui/Checkbox";
-import { CopyButton } from "../ui/CopyButton";
+import { Button, Checkbox, CopyButton } from "@heybe/ui";
 import { exportJson } from "./import-diff";
 
 export function ExportPage() {

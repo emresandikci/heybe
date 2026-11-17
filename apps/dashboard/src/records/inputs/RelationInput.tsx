@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { useCollections } from "../../app/queries";
-import { Button } from "../../ui/Button";
+import { Button } from "@heybe/ui";
 import { expandedRecords, presentableLabel, type CellField } from "../cell";
 import { isMulti } from "../record-form";
 import { RelationPicker } from "../RelationPicker";

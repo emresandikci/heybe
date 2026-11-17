@@ -6,9 +6,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Button } from "./Button";
-import { Dialog } from "./Dialog";
-import { TextField } from "./TextField";
+import { Button } from "./Button.js";
+import { Dialog } from "./Dialog.js";
+import { TextField } from "./TextField.js";
 
 export interface ConfirmOptions {
   title: string;

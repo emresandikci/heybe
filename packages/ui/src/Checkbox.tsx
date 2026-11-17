@@ -1,5 +1,5 @@
 import type { InputHTMLAttributes } from "react";
-import { useFieldIds, type FieldProps } from "./field";
+import { useFieldIds, type FieldProps } from "./field.js";
 
 export function Checkbox({
   label,

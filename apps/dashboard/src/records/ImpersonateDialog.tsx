@@ -3,11 +3,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button } from "../ui/Button";
-import { CopyButton } from "../ui/CopyButton";
-import { Dialog } from "../ui/Dialog";
-import { NumberField } from "../ui/NumberField";
-import { TextField } from "../ui/TextField";
+import { Button, CopyButton, Dialog, NumberField, TextField } from "@heybe/ui";
 
 export function ImpersonateDialog({
   collection,

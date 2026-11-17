@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Button } from "../ui/Button";
-import { Checkbox } from "../ui/Checkbox";
+import { Button, Checkbox } from "@heybe/ui";
 
 export function ColumnsMenu({
   names,

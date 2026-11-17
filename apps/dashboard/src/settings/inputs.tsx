@@ -1,9 +1,6 @@
 import { useState, type ChangeEvent, type InputHTMLAttributes } from "react";
 import { useErrorsUnder, useFieldError } from "../app/errors";
-import { Checkbox } from "../ui/Checkbox";
-import { CodeArea } from "../ui/CodeArea";
-import { NumberField } from "../ui/NumberField";
-import { TextField } from "../ui/TextField";
+import { Checkbox, CodeArea, NumberField, TextField } from "@heybe/ui";
 
 export interface FieldLike<T> {
   state: { value: T };

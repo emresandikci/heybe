@@ -2,12 +2,14 @@ import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../../app/errors";
-import { Button } from "../../ui/Button";
-import { CodeArea } from "../../ui/CodeArea";
-import { Dialog } from "../../ui/Dialog";
-import { NumberField } from "../../ui/NumberField";
-import { Select } from "../../ui/Select";
-import { TextField } from "../../ui/TextField";
+import {
+  Button,
+  CodeArea,
+  Dialog,
+  NumberField,
+  Select,
+  TextField,
+} from "@heybe/ui";
 import type { Provider } from "../editor-state";
 import { OAUTH2_PROVIDERS } from "../oauth2-providers";
 import { groupClass } from "./opts";

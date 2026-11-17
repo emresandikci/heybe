@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Button } from "../ui/Button";
-import { TextField } from "../ui/TextField";
+import { Button, TextField } from "@heybe/ui";
 import { readList, writeList } from "./storage";
 
 const HISTORY_KEY = "heybe_filter_history";

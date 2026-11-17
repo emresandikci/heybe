@@ -1,6 +1,5 @@
 import type { CollectionModel } from "@heybe/client";
-import { Dialog } from "../ui/Dialog";
-import { Table, Td, Th } from "../ui/Table";
+import { Dialog, Table, Td, Th } from "@heybe/ui";
 
 export function OverviewDialog({
   collections,

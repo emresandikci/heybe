@@ -3,15 +3,17 @@ import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { useCollections } from "../app/queries";
-import { Button } from "../ui/Button";
-import { Dialog } from "../ui/Dialog";
-import { Select } from "../ui/Select";
-import { TextField } from "../ui/TextField";
-import { useToast } from "../ui/Toasts";
+import {
+  Button,
+  Dialog,
+  Section,
+  Select,
+  TextField,
+  useToast,
+} from "@heybe/ui";
 import { CheckInput, NumberInput, SecretInput, TextInput } from "./inputs";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
-import { Section } from "../ui/Section";
 
 export function MailPage() {
   const settings = useSettings();

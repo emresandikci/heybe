@@ -1,5 +1,5 @@
-import { useToast } from "./Toasts";
-import { Button } from "./Button";
+import { useToast } from "./Toasts.js";
+import { Button } from "./Button.js";
 
 export function CopyButton({
   text,

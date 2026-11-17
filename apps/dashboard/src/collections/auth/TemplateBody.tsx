@@ -1,8 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useFieldError } from "../../app/errors";
-import { Button } from "../../ui/Button";
-import { CodeArea } from "../../ui/CodeArea";
-import { useConfirm } from "../../ui/Confirm";
+import { Button, CodeArea, useConfirm } from "@heybe/ui";
 import { compileMjml, readSource, stripSource, withSource } from "./mjml";
 import { mjmlStarter, type TemplateKind } from "./mjml-starters";
 import type { EmailTemplate } from "../editor-state";

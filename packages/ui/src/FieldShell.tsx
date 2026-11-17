@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { FieldProps } from "./field";
+import type { FieldProps } from "./field.js";
 
 export function FieldShell({
   id,

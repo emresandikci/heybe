@@ -1,41 +1,6 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
-
-:root {
-  --accent: #2563eb;
-  --cm-keyword: #7c3aed;
-  --cm-string: #047857;
-  --cm-number: #b45309;
-  --cm-name: #1d4ed8;
-  --cm-tag: #be123c;
-  --cm-comment: #64748b;
-  --cm-variable: #0e7490;
-  --cm-function: #a21caf;
-  --cm-operator: #c2410c;
-  --cm-punctuation: #475569;
-  --cm-focus: #2563eb;
-  --cm-selection: #bfdbfe;
-  --cm-tooltip: #ffffff;
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  --cm-keyword: #c4b5fd;
-  --cm-string: #6ee7b7;
-  --cm-number: #fcd34d;
-  --cm-name: #93c5fd;
-  --cm-tag: #fda4af;
-  --cm-comment: #94a3b8;
-  --cm-variable: #67e8f9;
-  --cm-function: #f0abfc;
-  --cm-operator: #fdba74;
-  --cm-punctuation: #cbd5e1;
-  --cm-focus: #60a5fa;
-  --cm-selection: #1e3a8a;
-  --cm-tooltip: #1e293b;
-  color-scheme: dark;
-}
+@import "@heybe/ui/theme.css";
 
 body {
   @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100;

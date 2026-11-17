@@ -2,9 +2,7 @@ import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { CheckInput, NumberInput } from "../settings/inputs";
 import type { SettingsModel } from "../settings/use-settings";
 import { useSettingsForm } from "../settings/use-settings-form";
-import { Button } from "../ui/Button";
-import { Dialog } from "../ui/Dialog";
-import { Select } from "../ui/Select";
+import { Button, Dialog, Select } from "@heybe/ui";
 import { levelName } from "./level";
 
 export function LogsSettingsDialog({

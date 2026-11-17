@@ -1,9 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button } from "../ui/Button";
-import { Dialog } from "../ui/Dialog";
-import { CopyButton } from "../ui/CopyButton";
+import { Button, CopyButton, Dialog } from "@heybe/ui";
 import { levelName } from "./level";
 
 const text = (value: unknown) =>

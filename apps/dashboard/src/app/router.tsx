@@ -4,7 +4,7 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { signOutOnUnauthorized } from "../auth/session";
-import { EmptyState } from "../ui/EmptyState";
+import { EmptyState } from "@heybe/ui";
 import type { AppContext } from "./context";
 import { routeTree } from "./routes";
 

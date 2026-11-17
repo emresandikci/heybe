@@ -3,8 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button } from "../ui/Button";
-import { useToast } from "../ui/Toasts";
+import { Button, useToast } from "@heybe/ui";
 import { ImpersonateDialog } from "./ImpersonateDialog";
 
 export function AuthActions({

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useClient, useExtensions } from "../app/context";
-import { EmptyState } from "../ui/EmptyState";
+import { EmptyState } from "@heybe/ui";
 
 export function ExtensionPage() {
   const path = useParams({ strict: false })._splat ?? "";

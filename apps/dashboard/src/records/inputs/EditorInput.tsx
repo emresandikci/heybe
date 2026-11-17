@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Button } from "../../ui/Button";
-import { CodeArea } from "../../ui/CodeArea";
+import { Button, CodeArea } from "@heybe/ui";
 
 export function EditorInput({
   name,

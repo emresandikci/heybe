@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useFieldError } from "../../app/errors";
-import { Checkbox } from "../../ui/Checkbox";
-import { TextField } from "../../ui/TextField";
+import { Checkbox, TextField } from "@heybe/ui";
 
 export function PasswordInputs({
   isNew,

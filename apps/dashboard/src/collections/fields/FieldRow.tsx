@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
-import { Button } from "../../ui/Button";
-import { Checkbox } from "../../ui/Checkbox";
-import { TextField } from "../../ui/TextField";
+import { Button, Checkbox, TextField } from "@heybe/ui";
 import type { FieldModel } from "../editor-state";
 import { fieldTypeLabel } from "../field-types";
 import { FieldOptions } from "./FieldOptions";

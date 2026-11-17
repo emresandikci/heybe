@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
-import { Button } from "../ui/Button";
+import { Button, Section } from "@heybe/ui";
 import {
   CheckInput,
   IntInput,
@@ -14,7 +14,6 @@ import {
   type SettingsModel,
 } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
-import { Section } from "../ui/Section";
 
 export function ApplicationPage() {
   const settings = useSettings();

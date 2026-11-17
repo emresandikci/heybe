@@ -2,9 +2,7 @@ import type { CollectionModel } from "@heybe/client";
 import { useState } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { useCollections } from "../../app/queries";
-import { Button } from "../../ui/Button";
-import { Checkbox } from "../../ui/Checkbox";
-import { Select } from "../../ui/Select";
+import { Button, Checkbox, Section, Select } from "@heybe/ui";
 import {
   activeFields,
   finalIndexes,
@@ -20,7 +18,6 @@ import { ProviderDialog } from "./ProviderDialog";
 import { TemplatesSection } from "./TemplatesSection";
 import { TokenOptions } from "./TokenOptions";
 import { BoolOpt, NumOpt, groupClass, type OptCtx } from "./opts";
-import { Section } from "../../ui/Section";
 
 export function AuthOptions({
   form,

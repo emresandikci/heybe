@@ -3,9 +3,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button } from "../ui/Button";
-import { Dialog } from "../ui/Dialog";
-import { TextField } from "../ui/TextField";
+import { Button, Dialog, TextField } from "@heybe/ui";
 import { presentableLabel } from "./cell";
 import { normalizeSearchFilter } from "./search-filter";
 

@@ -25,7 +25,7 @@
     "release": "pnpm -r --sequential release",
     "prepare": "node .husky/install.mjs",
     "test:contract": "pnpm --filter heybe test:contract",
-    "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/heybe --filter ./packages/client --filter ./apps/dashboard exec tsc -p .",
+    "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/heybe --filter ./packages/client --filter ./packages/ui --filter ./apps/dashboard exec tsc -p .",
     "test:e2e": "pnpm --filter @heybe/dashboard e2e",
     "bench": "pnpm --filter heybe bench",
     "check:pack": "bun scripts/check-pack.ts",

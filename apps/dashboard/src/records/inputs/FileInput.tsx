@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { useClient } from "../../app/context";
-import { Button } from "../../ui/Button";
+import { Button } from "@heybe/ui";
 import { IMAGE, list, useFileToken, type CellField } from "../cell";
 import { FilePreview } from "../FilePreview";
 import { isMulti, type FileValue } from "../record-form";

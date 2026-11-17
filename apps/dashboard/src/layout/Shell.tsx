@@ -5,8 +5,7 @@ import { signOut } from "../auth/session";
 import { useClient } from "../app/context";
 import { useSettings } from "../settings/use-settings";
 import { useTheme, type ThemeChoice } from "../app/theme";
-import { Button } from "../ui/Button";
-import { Select } from "../ui/Select";
+import { Button, Select } from "@heybe/ui";
 import { Sidebar } from "./Sidebar";
 
 interface Meta {

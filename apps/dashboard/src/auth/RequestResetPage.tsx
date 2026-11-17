@@ -2,8 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
-import { Button } from "../ui/Button";
-import { TextField } from "../ui/TextField";
+import { Button, TextField } from "@heybe/ui";
 import { AuthCard } from "./AuthCard";
 
 export function RequestResetPage() {

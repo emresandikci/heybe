@@ -1,7 +1,6 @@
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button } from "../ui/Button";
-import { useToast } from "../ui/Toasts";
+import { Button, useToast } from "@heybe/ui";
 import { CheckInput, SecretInput, TextInput } from "./inputs";
 import type { SettingsForm } from "./use-settings-form";
 

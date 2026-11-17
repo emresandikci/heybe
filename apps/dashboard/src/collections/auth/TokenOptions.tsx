@@ -1,7 +1,6 @@
-import { Button } from "../../ui/Button";
+import { Button, Section } from "@heybe/ui";
 import { randomSecret } from "../oauth2-providers";
 import { NumOpt, groupClass, type OptCtx } from "./opts";
-import { Section } from "../../ui/Section";
 
 const TOKENS = [
   ["authToken", "Auth token"],

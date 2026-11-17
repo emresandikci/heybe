@@ -1,6 +1,6 @@
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useToast } from "../ui/Toasts";
+import { useToast } from "@heybe/ui";
 import {
   changedSections,
   useSaveSettings,

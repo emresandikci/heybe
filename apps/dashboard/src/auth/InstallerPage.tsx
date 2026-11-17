@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors } from "../app/errors";
-import { Button } from "../ui/Button";
+import { Button } from "@heybe/ui";
 import { AuthCard, Field } from "./AuthCard";
 
 export function InstallerPage() {

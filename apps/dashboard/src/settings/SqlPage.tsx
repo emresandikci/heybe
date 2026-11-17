@@ -4,10 +4,7 @@ import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { useSqlSchema } from "../app/queries";
-import { Button } from "../ui/Button";
-import { CodeArea } from "../ui/CodeArea";
-import { useConfirm } from "../ui/Confirm";
-import { Table, Td, Th } from "../ui/Table";
+import { Button, CodeArea, Table, Td, Th, useConfirm } from "@heybe/ui";
 
 const CODE_ONLY =
   /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?\*\//g;

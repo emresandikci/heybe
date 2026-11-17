@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useCollections } from "../app/queries";
 import { useHideControls } from "../settings/use-settings";
 import { RecordsPage } from "../records/RecordsPage";
-import { Button } from "../ui/Button";
-import { EmptyState } from "../ui/EmptyState";
+import { Button, EmptyState } from "@heybe/ui";
 import { ApiPreview } from "./ApiPreview";
 import { CollectionEditor } from "./CollectionEditor";
 import {

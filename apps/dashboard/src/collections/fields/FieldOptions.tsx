@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { useCollections } from "../../app/queries";
-import { Button } from "../../ui/Button";
-import { Checkbox } from "../../ui/Checkbox";
-import { CodeArea } from "../../ui/CodeArea";
-import { NumberField } from "../../ui/NumberField";
-import { Select } from "../../ui/Select";
-import { TextField } from "../../ui/TextField";
+import {
+  Button,
+  Checkbox,
+  CodeArea,
+  NumberField,
+  Select,
+  TextField,
+} from "@heybe/ui";
 import type { FieldModel } from "../editor-state";
 
 export interface OptionsProps {
