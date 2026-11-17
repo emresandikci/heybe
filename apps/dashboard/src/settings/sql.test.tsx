@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { fakeServer } from "../test/fake-server";
 import { setCode } from "../test/editor";
 import { renderApp } from "../test/render";
+import { changesRows } from "./SqlPage";
 
 const result = {
   execTime: 3,
@@ -55,7 +56,34 @@ test("a write shows affectedRows", async () => {
   });
   setCode(screen.getByLabelText("SQL query"), "DELETE FROM posts");
   await user.click(screen.getByRole("button", { name: "Run" }));
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Run query" }),
+  );
+  await user.click(dialog.getByRole("button", { name: "Run" }));
   expect(await screen.findByText("0 rows, 5 affected, 1 ms")).toBeTruthy();
+});
+
+test("cancelling the confirm does not run a delete or update", async () => {
+  const { user, server } = await openSql();
+  setCode(screen.getByLabelText("SQL query"), "UPDATE posts SET title = 'x'");
+  await user.click(screen.getByRole("button", { name: "Run" }));
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Run query" }),
+  );
+  await user.click(dialog.getByRole("button", { name: "Cancel" }));
+  expect(server.find("POST", "/api/sql")).toEqual([]);
+});
+
+test("changesRows finds delete and update anywhere but not in strings or comments", () => {
+  expect(changesRows("delete from posts")).toBe(true);
+  expect(
+    changesRows("WITH x AS (SELECT id FROM posts) UPDATE posts SET a = 1"),
+  ).toBe(true);
+  expect(changesRows("SELECT 1;\nDELETE FROM posts")).toBe(true);
+  expect(changesRows("SELECT * FROM posts")).toBe(false);
+  expect(changesRows("SELECT 'delete' AS a, \"update\" FROM t")).toBe(false);
+  expect(changesRows("SELECT 1 -- delete later")).toBe(false);
+  expect(changesRows("SELECT updated, deleted_at FROM posts")).toBe(false);
 });
 
 test("Ctrl+Enter runs the query", async () => {

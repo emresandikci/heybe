@@ -6,18 +6,38 @@ import { errorMessage } from "../app/errors";
 import { useSqlSchema } from "../app/queries";
 import { Button } from "../ui/Button";
 import { CodeArea } from "../ui/CodeArea";
+import { useConfirm } from "../ui/Confirm";
 import { Table, Td, Th } from "../ui/Table";
+
+const CODE_ONLY =
+  /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?\*\//g;
+
+export function changesRows(query: string): boolean {
+  return /\b(delete|update)\b/i.test(query.replace(CODE_ONLY, " "));
+}
 
 export function SqlPage() {
   const client = useClient();
   const [result, setResult] = useState<SqlResult | null>(null);
   const [error, setError] = useState("");
+  const confirm = useConfirm();
   const schema = useSqlSchema();
 
   const form = useForm({
     defaultValues: { query: "" },
     onSubmit: async ({ value }) => {
       if (!value.query.trim()) return;
+      if (
+        changesRows(value.query) &&
+        !(await confirm({
+          title: "Run query",
+          message:
+            "This query deletes or updates rows. It cannot be undone. Run it?",
+          confirmLabel: "Run",
+          danger: true,
+        }))
+      )
+        return;
       setError("");
       try {
         setResult(await client.sql.run(value.query));
