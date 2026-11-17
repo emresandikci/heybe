@@ -166,6 +166,24 @@ window.heybe.dashboard.addPage({
 });
 ```
 
+An extension can build its page with the dashboard components from `@heybe/ui`. Install `react`, `react-dom` and `@heybe/ui` in the extension, bundle it, and render with your own root:
+
+```tsx
+import { createRoot } from "react-dom/client";
+import { Button } from "@heybe/ui";
+import "@heybe/ui/style.css";
+
+window.heybe.dashboard.addPage({
+  path: "demo",
+  title: "Demo",
+  mount(el) {
+    const root = createRoot(el);
+    root.render(<Button>Hello</Button>);
+    return () => root.unmount();
+  },
+});
+```
+
 ## License
 
 [MIT](LICENSE)
