@@ -550,7 +550,7 @@ async function authWithOtp(e: RequestEvent): Promise<void> {
 
   // OTPs are short digit strings, so an extra limit guards against enumeration (PB)
   try {
-    checkRateLimit(e, `@pb_otp_${record.id}`, OTP_ATTEMPTS);
+    checkRateLimit(e, `@hb_otp_${record.id}`, OTP_ATTEMPTS);
   } catch {
     throw new ApiError(
       429,

@@ -47,8 +47,8 @@ afterEach(() => db.close());
 
 describe("collectionId", () => {
   test("matches PocketBase", () => {
-    expect(collectionId("base", "posts")).toBe("pbc_1125843985");
-    expect(collectionId("auth", "_superusers")).toBe("pbc_3142635823");
+    expect(collectionId("base", "posts")).toBe("hbc_1125843985");
+    expect(collectionId("auth", "_superusers")).toBe("hbc_3142635823");
   });
 });
 
@@ -57,7 +57,7 @@ describe("bootstrap", () => {
     const su = store.find("_superusers");
     expect(su?.system).toBe(true);
     expect(su?.type).toBe("auth");
-    expect(su?.id).toBe("pbc_3142635823");
+    expect(su?.id).toBe("hbc_3142635823");
     expect(columns("_superusers")).toEqual([
       "id",
       "password",
@@ -79,7 +79,7 @@ describe("bootstrap", () => {
       "_superusers",
       "users",
     ]);
-    expect(store.find("users")?.id).toBe("_pb_users_auth_");
+    expect(store.find("users")?.id).toBe("_hb_users_auth_");
   });
 
   test("is idempotent", () => {
@@ -91,7 +91,7 @@ describe("bootstrap", () => {
 describe("save", () => {
   test("creates the table with id, fields, created, updated", async () => {
     const c = await store.save({ name: "posts", fields: postFields });
-    expect(c.id).toBe("pbc_1125843985");
+    expect(c.id).toBe("hbc_1125843985");
     expect(c.created).toBe("2026-01-01 00:00:00.000Z");
     expect(columns("posts")).toEqual(["id", "title", "created", "updated"]);
     expect(store.find("posts")).toEqual(c);

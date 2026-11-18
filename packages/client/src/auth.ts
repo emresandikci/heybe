@@ -1,5 +1,5 @@
 import { toExpand, type Expand } from "@heybe/query";
-import type { AuthRecord } from "./auth-store.js";
+import { type AuthRecord, SUPERUSER_IDS } from "./auth-store.js";
 import type { HeybeClient } from "./client.js";
 import { tokenPayload } from "./jwt.js";
 import { authWithOAuth2, type OAuth2Config } from "./oauth2.js";
@@ -88,7 +88,7 @@ export interface AuthDeps {
   realtime(): Realtime;
 }
 
-const SUPERUSERS = ["_superusers", "pbc_3142635823"];
+const SUPERUSERS = ["_superusers", ...SUPERUSER_IDS];
 
 export function createAuth<T>(
   client: HeybeClient,

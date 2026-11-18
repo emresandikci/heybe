@@ -185,7 +185,7 @@ const POSTS_JSON = `{
       },
       ${TITLE_FIELD}
     ],
-    "id": "pbc_1125843985",
+    "id": "hbc_1125843985",
     "indexes": [],
     "listRule": null,
     "name": "posts",
@@ -214,7 +214,7 @@ export default migrate(async (app) => {
 
   await app.collections.save(collection, true);
 }, async (app) => {
-  await app.collections.delete("pbc_1125843985");
+  await app.collections.delete("hbc_1125843985");
 });
 `,
     );
@@ -234,7 +234,7 @@ export default migrate(async (app) => {
       `import { migrate, newCollection } from "heybe";
 
 export default migrate(async (app) => {
-  await app.collections.delete("pbc_1125843985");
+  await app.collections.delete("hbc_1125843985");
 }, async (app) => {
   const collection = newCollection(${POSTS_JSON});
 
@@ -325,7 +325,7 @@ const COUNT_PROPS = (max: string) => `"help": "",
 const UPDATE_FILE = `import { addFieldAt, mergeCollection, migrate, removeFieldById } from "heybe";
 
 export default migrate(async (app) => {
-  const collection = app.collections.require("pbc_1125843985");
+  const collection = app.collections.require("hbc_1125843985");
 
   // update collection data
   mergeCollection(collection, {
@@ -343,7 +343,7 @@ export default migrate(async (app) => {
 
   await app.collections.save(collection);
 }, async (app) => {
-  const collection = app.collections.require("pbc_1125843985");
+  const collection = app.collections.require("hbc_1125843985");
 
   // update collection data
   mergeCollection(collection, {

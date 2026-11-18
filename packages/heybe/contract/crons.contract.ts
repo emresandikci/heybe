@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { type Target, both, expectSame, startTargets } from "./harness";
+import { type Target, both, expectSame, own, startTargets } from "./harness";
 
 const PASSWORD = "12345678";
 
@@ -54,7 +54,7 @@ async function same(
 ) {
   const [pb, hb] = await both(
     (t) =>
-      fetch(`${t.url}${path}`, {
+      fetch(`${t.url}${own(t, path)}`, {
         method,
         headers:
           auth === "superuser"
@@ -78,14 +78,16 @@ describe("crons api", () => {
         headers: { authorization: t.superToken },
       });
       const jobs = (await res.json()) as { id: string; expression: string }[];
-      expect(jobs.map((j) => j.id)).toEqual([
-        "alpha",
-        "zeta",
-        "__pbDBOptimize__",
-        "__pbMFACleanup__",
-        "__pbOTPCleanup__",
-        "__pbLogsCleanup__",
-      ]);
+      expect(jobs.map((j) => j.id)).toEqual(
+        [
+          "alpha",
+          "zeta",
+          "__pbDBOptimize__",
+          "__pbMFACleanup__",
+          "__pbOTPCleanup__",
+          "__pbLogsCleanup__",
+        ].map((id) => own(t, id)),
+      );
       expect(jobs[0]!.expression).toBe("0 * * * *");
     }
   });

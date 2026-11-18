@@ -212,7 +212,7 @@ function testRecord(collection: Collection, email: string) {
           ? 0
           : field.type === "date" || field.type === "autodate"
             ? ""
-            : `__pb_test_${field.name}__`;
+            : `__hb_test_${field.name}__`;
   }
   record.tokenKey = randomSecret(50);
   record.email = email;
@@ -293,7 +293,7 @@ async function testS3(e: RequestEvent): Promise<Response> {
   if (!config.enabled) throw fail("S3 storage filesystem is not enabled");
 
   const fs = s3Filesystem(config, e.app.timers);
-  const prefix = `pb_settings_test_${randomSecret(5)}/`;
+  const prefix = `hb_settings_test_${randomSecret(5)}/`;
   try {
     await fs.write(`${prefix}test.txt`, new TextEncoder().encode("test"));
   } catch (err) {

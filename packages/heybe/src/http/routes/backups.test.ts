@@ -186,7 +186,7 @@ describe("POST /api/backups", () => {
 
   test("without a body the name is generated", async () => {
     expect((await call("POST", "/api/backups")).status).toBe(204);
-    expect(await backupKeys()).toEqual(["pb_backup_acme_20260101000000.zip"]);
+    expect(await backupKeys()).toEqual(["hb_backup_acme_20260101000000.zip"]);
   });
 
   test("name validation", async () => {

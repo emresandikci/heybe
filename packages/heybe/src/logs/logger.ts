@@ -74,7 +74,7 @@ function exportData(data: Record<string, unknown>, maxSize: number): string {
     if (end > maxSize) break;
     kept.push(entry);
   }
-  kept.push('"__pb_truncated__":true');
+  kept.push('"__hb_truncated__":true');
   return `{${kept.join(",")}}`;
 }
 
@@ -300,7 +300,7 @@ export function createLogger(app: App): Logger & { close(): void } {
       stop();
       return e.next();
     },
-    { id: "__pbAppLoggerFlushBeforeStop__", priority: -999 },
+    { id: "__hbAppLoggerFlushBeforeStop__", priority: -999 },
   );
 
   app.onSettingsReload(
@@ -324,7 +324,7 @@ export function createLogger(app: App): Logger & { close(): void } {
         app.logger.debug("Failed to VACUUM aux database", { error });
       }
     },
-    { id: "__pbAppLoggerOnSettingsReload__", priority: -999 },
+    { id: "__hbAppLoggerOnSettingsReload__", priority: -999 },
   );
 
   return logger;

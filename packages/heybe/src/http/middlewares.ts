@@ -9,30 +9,30 @@ import type { AuthState, Middleware, RequestEvent } from "./router";
 export const DEFAULT_MAX_BODY_SIZE = 32 << 20;
 
 // PB apis/middlewares.go ids and priorities (DefaultRateLimitMiddlewarePriority is -1000).
-export const ACTIVITY_LOGGER_ID = "pbActivityLogger";
+export const ACTIVITY_LOGGER_ID = "hbActivityLogger";
 export const ACTIVITY_LOGGER_PRIORITY = -1040;
-export const SKIP_SUCCESS_ACTIVITY_LOG_ID = "pbSkipSuccessActivityLog";
-export const LOG_META_KEY = "pbLogMeta";
-export const SKIP_SUCCESS_ACTIVITY_LOG_KEY = "pbSkipSuccessActivityLog";
-export const CORS_ID = "pbCors";
+export const SKIP_SUCCESS_ACTIVITY_LOG_ID = "hbSkipSuccessActivityLog";
+export const LOG_META_KEY = "hbLogMeta";
+export const SKIP_SUCCESS_ACTIVITY_LOG_KEY = "hbSkipSuccessActivityLog";
+export const CORS_ID = "hbCors";
 export const CORS_PRIORITY = -1041;
-export const PANIC_RECOVER_ID = "pbPanicRecover";
+export const PANIC_RECOVER_ID = "hbPanicRecover";
 export const PANIC_RECOVER_PRIORITY = -1030;
-export const LOAD_AUTH_TOKEN_ID = "pbLoadAuthToken";
+export const LOAD_AUTH_TOKEN_ID = "hbLoadAuthToken";
 export const LOAD_AUTH_TOKEN_PRIORITY = -1020;
-export const SUPERUSER_IPS_WHITELIST_ID = "pbSuperuserIPsWhitelist";
+export const SUPERUSER_IPS_WHITELIST_ID = "hbSuperuserIPsWhitelist";
 export const SUPERUSER_IPS_WHITELIST_PRIORITY = -1015;
-export const SECURITY_HEADERS_ID = "pbSecurityHeaders";
+export const SECURITY_HEADERS_ID = "hbSecurityHeaders";
 export const SECURITY_HEADERS_PRIORITY = -1010;
-export const BODY_LIMIT_ID = "pbBodyLimit";
+export const BODY_LIMIT_ID = "hbBodyLimit";
 export const BODY_LIMIT_PRIORITY = -990;
-export const REQUIRE_GUEST_ONLY_ID = "pbRequireGuestOnly";
-export const REQUIRE_AUTH_ID = "pbRequireAuth";
-export const REQUIRE_SUPERUSER_AUTH_ID = "pbRequireSuperuserAuth";
+export const REQUIRE_GUEST_ONLY_ID = "hbRequireGuestOnly";
+export const REQUIRE_AUTH_ID = "hbRequireAuth";
+export const REQUIRE_SUPERUSER_AUTH_ID = "hbRequireSuperuserAuth";
 export const REQUIRE_SUPERUSER_OR_OWNER_AUTH_ID =
-  "pbRequireSuperuserOrOwnerAuth";
+  "hbRequireSuperuserOrOwnerAuth";
 export const REQUIRE_SAME_COLLECTION_CONTEXT_AUTH_ID =
-  "pbRequireSameCollectionContextAuth";
+  "hbRequireSameCollectionContextAuth";
 
 const ALLOW_METHODS = "GET,HEAD,PUT,PATCH,POST,DELETE";
 

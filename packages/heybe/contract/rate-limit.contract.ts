@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { type Target, both, expectSame, startTargets } from "./harness";
+import { type Target, both, expectSame, own, startTargets } from "./harness";
 
 let targets: Awaited<ReturnType<typeof startTargets>>;
 
@@ -217,9 +217,11 @@ describe("rate limits", () => {
       return ((await res.json()) as Json[]).map((c) => c.id);
     };
     for (const t of [targets.pb, targets.hb])
-      expect(await cronIds(t)).not.toContain("__pbRateLimitersCleanup__");
+      expect(await cronIds(t)).not.toContain(
+        own(t, "__pbRateLimitersCleanup__"),
+      );
     await sameStatuses(1, (t) => health(t));
     for (const t of [targets.pb, targets.hb])
-      expect(await cronIds(t)).toContain("__pbRateLimitersCleanup__");
+      expect(await cronIds(t)).toContain(own(t, "__pbRateLimitersCleanup__"));
   });
 });

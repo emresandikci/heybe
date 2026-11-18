@@ -51,7 +51,7 @@ export async function runInstaller(
   print(
     "\n(!) Launch the URL below in the browser if it hasn't been open already to create your first superuser account:",
   );
-  print(`${baseUrl.replace(/\/+$/, "")}/_/#/pbinstall/${token}`);
+  print(`${baseUrl.replace(/\/+$/, "")}/_/#/hbinstall/${token}`);
   print(
     "(you can also create your first superuser by running: heybe superuser upsert EMAIL PASS)\n",
   );

@@ -38,10 +38,10 @@ const missing = (err: unknown) =>
 export async function createBackup(app: App, name: string): Promise<void> {
   const event = BackupEvent.of({ app, name, exclude: [...BACKUP_EXCLUDE] });
   await app.hooks.onBackupCreate.trigger(event, async (e) => {
-    if (e.name === "") e.name = generateBackupName(e.app, "pb_backup_");
+    if (e.name === "") e.name = generateBackupName(e.app, "hb_backup_");
     const tempDir = join(app.dataDir, LOCAL_TEMP_DIR);
     await mkdir(tempDir, { recursive: true });
-    const tempZip = join(tempDir, `pb_backup_${randomSecret(6)}`);
+    const tempZip = join(tempDir, `hb_backup_${randomSecret(6)}`);
     try {
       await createZip(e, tempDir, tempZip);
       await e.app

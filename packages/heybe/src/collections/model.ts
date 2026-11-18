@@ -48,7 +48,12 @@ export function crc32(value: string): string {
 }
 
 export function collectionId(type: string, name: string): string {
-  return "pbc_" + crc32(type + name);
+  return "hbc_" + crc32(type + name);
+}
+
+// the Heybe form of a PocketBase collection id: pbc_<n> and _pb_<name>_ become hbc_<n> and _hb_<name>_
+export function fromPbCollectionId(id: string): string {
+  return id.replace(/^pbc_/, "hbc_").replace(/^_pb_(.+_)$/, "_hb_$1");
 }
 
 export function fieldId(type: FieldType, name: string): string {

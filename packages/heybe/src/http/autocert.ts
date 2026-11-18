@@ -161,7 +161,7 @@ export function acmeHttpHandler(
 // Port of PB apis.wwwRedirect.
 export function wwwRedirect(hosts: string[]): Middleware {
   return {
-    id: "pbWWWRedirect",
+    id: "hbWWWRedirect",
     priority: -99999,
     fn: (e) => {
       const host = e.req.headers.get("host") ?? "";

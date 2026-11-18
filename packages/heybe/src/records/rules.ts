@@ -91,7 +91,7 @@ export function matchesDraft(
   info: RequestInfo,
 ): boolean {
   // Fixed name: the draft table only exists inside this query, and a stable SQL text keeps the statement cache bounded.
-  const suffix = "__pb_create__";
+  const suffix = "__hb_create__";
   const draft = { ...c, id: c.id + suffix, name: c.name + suffix };
   const row = { ...values };
   if (row.id === "") row.id = "__temp_id__" + suffix + randomSecret(6);

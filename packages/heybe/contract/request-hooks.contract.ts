@@ -1,7 +1,13 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { type Target, both, expectSame, startTargets } from "./harness";
+import {
+  type Target,
+  both,
+  expectSame,
+  ownBody,
+  startTargets,
+} from "./harness";
 import { type SmtpCapture, startSmtpCapture } from "./smtp";
 
 let targets: Awaited<ReturnType<typeof startTargets>>;
@@ -20,7 +26,7 @@ const api = (
       authorization: token,
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : ownBody(t, JSON.stringify(body)),
   });
 
 async function same(

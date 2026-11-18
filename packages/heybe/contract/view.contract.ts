@@ -35,7 +35,7 @@ const api = (
 // uploaded file names end with a random part
 const RANDOM_PART = /_[a-z0-9]{10}(?=\.)/g;
 // dry-run samples belong to a randomly named temp collection
-const TEMP = /^(temp_view_\w{5}|pbc_\d+)$/;
+const TEMP = /^(temp_view_\w{5}|[ph]bc_\d+)$/;
 
 const mask = (value: unknown, key = ""): unknown => {
   if (typeof value === "string") {

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
+import { own } from "../../heybe/contract/harness";
 import { type SmtpCapture, startSmtpCapture } from "../../heybe/contract/smtp";
 import { HeybeError } from "../src/error";
 import { same, startPair, type Name, type Pair } from "./pair";
@@ -185,7 +186,7 @@ test("crons list and run", async () => {
       .catch((err: HeybeError) => ({ status: err.status }));
     return {
       list: await a.crons.list(),
-      run: await a.crons.run("__pbDBOptimize__"),
+      run: await a.crons.run(own(t, "__pbDBOptimize__")),
       missing,
     };
   });
@@ -196,7 +197,7 @@ test("health", async () => {
 });
 
 test("a non-superuser gets 403 from every service", async () => {
-  await same(pair, async (c) => {
+  await same(pair, async (c, t) => {
     await c.auth("users").withPassword(EMAIL, PASSWORD);
     const calls: Record<string, () => Promise<unknown>> = {
       collections: () => c.collections.findMany(),
@@ -212,7 +213,7 @@ test("a non-superuser gets 403 from every service", async () => {
       testEmail: () => c.settings.testEmail("users", EMAIL, "verification"),
       apple: () => c.settings.generateAppleClientSecret("a", "b", "c", "d", 1),
       cronsList: () => c.crons.list(),
-      cronsRun: () => c.crons.run("__pbDBOptimize__"),
+      cronsRun: () => c.crons.run(own(t, "__pbDBOptimize__")),
     };
     const out: Record<string, unknown> = {};
     for (const [key, call] of Object.entries(calls))

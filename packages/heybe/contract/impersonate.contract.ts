@@ -1,6 +1,6 @@
 import { generateKeyPairSync as generateKeyPair } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { type Target, both, expectSame, startTargets } from "./harness";
+import { type Target, both, expectSame, own, startTargets } from "./harness";
 
 let targets: Awaited<ReturnType<typeof startTargets>>;
 
@@ -168,7 +168,12 @@ describe("impersonate", () => {
     );
     await same(
       (t) =>
-        api(t, "POST", `/api/collections/_pb_users_auth_/impersonate/x`, {}),
+        api(
+          t,
+          "POST",
+          own(t, "/api/collections/_pb_users_auth_/impersonate/x"),
+          {},
+        ),
       404,
     );
   });

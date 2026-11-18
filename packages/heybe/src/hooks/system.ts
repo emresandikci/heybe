@@ -16,8 +16,8 @@ import type { Hook, HookEvent } from "./hook";
 
 // PB core/db.go, core/record_model.go, core/collection_model.go and core/auth_origin_model.go
 
-export const RECORD_SYSTEM_HOOK_ID = "__pbRecordSystemHook__";
-export const COLLECTION_SYSTEM_HOOK_ID = "__pbCollectionSystemHook__";
+export const RECORD_SYSTEM_HOOK_ID = "__hbRecordSystemHook__";
+export const COLLECTION_SYSTEM_HOOK_ID = "__hbCollectionSystemHook__";
 
 type Op = "Create" | "Update" | "Delete";
 
@@ -271,7 +271,7 @@ function bindSuperuserHooks(app: App) {
         }
       },
       {
-        id: "pbSuperusersRecordSaveExec",
+        id: "hbSuperusersRecordSaveExec",
         priority: -99,
         tags: ["_superusers"],
       },
@@ -363,7 +363,7 @@ function bindSettingsHooks(app: App) {
         r.label = `${e.collection.name}:${r.label.slice(prefix.length)}`;
       await e.app.settings.save(settings);
     },
-    { id: "__pbSettingsSystemHook__", priority: 99 },
+    { id: "__hbSettingsSystemHook__", priority: 99 },
   );
 }
 

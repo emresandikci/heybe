@@ -502,7 +502,7 @@ async function throttleEmptySearches(
 ): Promise<void> {
   if (e.hasSuperuserAuth() || !c.listRule || filter === "" || found > 0) return;
   try {
-    checkRateLimit(e, `@pb_list_timing_check_${c.id}`, LIST_TIMING_RULE);
+    checkRateLimit(e, `@hb_list_timing_check_${c.id}`, LIST_TIMING_RULE);
   } catch {
     e.app.logger.debug(
       "Randomized throttle because of too many failed searches",

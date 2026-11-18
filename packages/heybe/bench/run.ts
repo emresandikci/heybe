@@ -1,6 +1,6 @@
 import os from "node:os";
 import { join } from "node:path";
-import { type Target, startTargets } from "../contract/harness";
+import { type Target, own, startTargets } from "../contract/harness";
 import { waitForQuiet } from "./load";
 
 const AUTOCANNON = join(
@@ -178,7 +178,7 @@ async function seed(t: Target): Promise<Seeded> {
         {
           name: "author",
           type: "relation",
-          collectionId: "_pb_users_auth_",
+          collectionId: own(t, "_pb_users_auth_"),
           maxSelect: 1,
         },
         { name: "created", type: "autodate", onCreate: true },

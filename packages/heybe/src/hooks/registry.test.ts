@@ -27,7 +27,7 @@ beforeEach(() => {
 afterEach(() => app.close());
 
 const collection = (name: string) =>
-  ({ id: "pbc_" + name, name, fields: [] }) as unknown as Collection;
+  ({ id: "hbc_" + name, name, fields: [] }) as unknown as Collection;
 
 const recordEvent = (name: string) =>
   RecordEvent.of({
@@ -81,11 +81,11 @@ test("app binder with tags fires only for matching collections and unbinds by id
 
 test("a collection id works as the tag like its name", async () => {
   const seen: string[] = [];
-  app.onRecordCreate("pbc_posts", (e) => {
+  app.onRecordCreate("hbc_posts", (e) => {
     seen.push("record:" + e.record.collection.name);
     return e.next();
   });
-  app.onCollectionCreate("pbc_posts", (e) => {
+  app.onCollectionCreate("hbc_posts", (e) => {
     seen.push("collection by id");
     return e.next();
   });
@@ -165,13 +165,13 @@ test("binder options keep id and priority", async () => {
 
 test("event tags follow PB", () => {
   const c = collection("posts");
-  expect(recordEvent("posts").tags()).toEqual(["posts", "pbc_posts"]);
+  expect(recordEvent("posts").tags()).toEqual(["posts", "hbc_posts"]);
   expect(
     CollectionEvent.of({ app, collection: c, type: "create" }).tags(),
-  ).toEqual(["pbc_posts", "posts"]);
+  ).toEqual(["hbc_posts", "posts"]);
   expect(
     ModelEvent.of({ app, model: new RecordModel(c), type: "create" }).tags(),
-  ).toEqual(["posts", "pbc_posts"]);
+  ).toEqual(["posts", "hbc_posts"]);
   expect(ModelEvent.of({ app, model: c, type: "create" }).tags()).toEqual([
     "_collections",
   ]);

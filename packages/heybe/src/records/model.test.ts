@@ -179,11 +179,11 @@ describe("toJSON", () => {
   test("custom data is exported only when enabled", () => {
     const r = record();
     r.set("extra", 1);
-    r.set("@pbInternalX", 2);
+    r.set("@hbInternalX", 2);
     expect(r.toJSON()).not.toHaveProperty("extra");
     r.withCustomData(true);
     expect(r.toJSON().extra).toBe(1);
-    expect(r.toJSON()).not.toHaveProperty("@pbInternalX");
+    expect(r.toJSON()).not.toHaveProperty("@hbInternalX");
     r.hide("extra");
     expect(r.toJSON()).not.toHaveProperty("extra");
   });

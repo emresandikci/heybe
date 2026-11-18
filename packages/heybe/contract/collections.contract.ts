@@ -4,6 +4,8 @@ import {
   type Target,
   both,
   expectSame,
+  own,
+  ownBody,
   startTargets,
 } from "./harness";
 
@@ -37,7 +39,7 @@ const api = (
         ? undefined
         : typeof body === "string"
           ? body
-          : JSON.stringify(body),
+          : ownBody(t, JSON.stringify(body)),
   });
 
 const fetchJson = async (t: Target, path: string): Promise<Json> =>
@@ -132,7 +134,10 @@ describe("create and view", () => {
   });
 
   test("view by id and by uppercase name", async () => {
-    await same((t) => api(t, "GET", "/api/collections/pbc_3142635823"), 200);
+    await same(
+      (t) => api(t, "GET", own(t, "/api/collections/pbc_3142635823")),
+      200,
+    );
     await same((t) => api(t, "GET", "/api/collections/CT_ALL"), 200);
   });
 

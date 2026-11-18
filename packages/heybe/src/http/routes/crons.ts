@@ -1,7 +1,7 @@
 import { requireSuperuserAuth } from "../middlewares";
 import type { Router } from "../router";
 
-// Port of PB apis/cron.go; its comparator yields own ids alphabetically, then the __pb ones in order.
+// Port of PB apis/cron.go; its comparator yields own ids alphabetically, then the __hb ones in order.
 export function registerCronRoutes(router: Router): void {
   const guard = requireSuperuserAuth();
   router.route(
@@ -12,9 +12,9 @@ export function registerCronRoutes(router: Router): void {
         .jobs()
         .map(({ id, expression }) => ({ id, expression }));
       const own = jobs
-        .filter((j) => !j.id.startsWith("__pb"))
+        .filter((j) => !j.id.startsWith("__hb"))
         .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      const system = jobs.filter((j) => j.id.startsWith("__pb"));
+      const system = jobs.filter((j) => j.id.startsWith("__hb"));
       return e.json(200, [...own, ...system]);
     },
     guard,

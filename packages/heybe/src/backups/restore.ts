@@ -98,10 +98,10 @@ export async function restoreBackup(
         `missing or invalid backup file ${JSON.stringify(name)} to restore`,
       );
 
-    const extracted = join(tempDir, `pb_restore_${randomSecret(8)}`);
+    const extracted = join(tempDir, `hb_restore_${randomSecret(8)}`);
     try {
       if (e.app.settings.current().backups.s3.enabled) {
-        const tempZip = join(tempDir, `pb_restore_zip${randomSecret(10)}`);
+        const tempZip = join(tempDir, `hb_restore_zip${randomSecret(10)}`);
         try {
           const file = await fsys.file(name);
           if (!file)
@@ -121,7 +121,7 @@ export async function restoreBackup(
       }
       checkDataDb(join(extracted, "data.db"));
 
-      const old = join(tempDir, `old_pb_data_${randomSecret(8)}`);
+      const old = join(tempDir, `old_hb_data_${randomSecret(8)}`);
       // queued entries land in the old auxiliary.db before it moves
       await e.app.logger.release();
       await swap(e.app, () => {
@@ -130,7 +130,7 @@ export async function restoreBackup(
         } catch (err) {
           reopenDbs(e.app);
           throw new Error(
-            `failed to move the current pb_data content to a temp location: ${errorMessage(err)}`,
+            `failed to move the current data directory content to a temp location: ${errorMessage(err)}`,
           );
         }
         try {
@@ -139,7 +139,7 @@ export async function restoreBackup(
           moveDirContent(old, dataDir, e.exclude);
           reopenDbs(e.app);
           throw new Error(
-            `failed to move the extracted archive content to pb_data: ${errorMessage(err)}`,
+            `failed to move the extracted archive content to the data directory: ${errorMessage(err)}`,
           );
         }
       });

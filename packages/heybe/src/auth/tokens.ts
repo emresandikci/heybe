@@ -1,5 +1,5 @@
 import type { App } from "../app";
-import type { Collection } from "../collections/model";
+import { type Collection, fromPbCollectionId } from "../collections/model";
 import type { AuthState } from "../http/router";
 import { NotFoundError } from "../util";
 import { parseUnverifiedJwt, signJwt, verifyJwt } from "./jwt";
@@ -60,7 +60,10 @@ export function authFromToken(
   const { id, collectionId } = claims;
   if (typeof id !== "string" || typeof collectionId !== "string") return null;
 
-  const collection = app.collections.findCached(collectionId);
+  // a token PocketBase issued before the import carries its pbc_ or _pb_ collection id
+  const collection =
+    app.collections.findCached(collectionId) ??
+    app.collections.findCached(fromPbCollectionId(collectionId));
   if (!collection || collection.type !== "auth") return null;
 
   let record: Record<string, unknown>;

@@ -6,10 +6,10 @@ import type { Middleware, RequestEvent } from "./router";
 
 // Port of PB apis/middlewares_rate_limit.go.
 
-export const RATE_LIMIT_ID = "pbRateLimit";
+export const RATE_LIMIT_ID = "hbRateLimit";
 export const RATE_LIMIT_PRIORITY = -1000;
-const CLEANUP_CRON_ID = "__pbRateLimitersCleanup__";
-const SETTINGS_HOOK_ID = "__pbRateLimitersSettingsHook__";
+const CLEANUP_CRON_ID = "__hbRateLimitersCleanup__";
+const SETTINGS_HOOK_ID = "__hbRateLimitersSettingsHook__";
 const MIN_DELETE_INTERVAL = 1800;
 
 interface Limiter {

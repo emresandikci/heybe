@@ -216,14 +216,14 @@ describe("app logger", () => {
     expect(rows()[1]!.message).toBe("y".repeat(8000));
   });
 
-  test("data over maxDataSize keeps leading keys and adds __pb_truncated__", async () => {
+  test("data over maxDataSize keeps leading keys and adds __hb_truncated__", async () => {
     await app.settings.update({ logs: { maxDataSize: 29 } });
     // {"a":"1234","b":"5678","c":"9"} is 31 bytes, "b" ends at byte 22 and "c" at 30
     app.logger.info("t", { a: "1234", b: "5678", c: "9" });
     app.logger.info("fits", { a: "1" });
     await app.logger.flush();
     expect(rows().map((r) => r.data)).toEqual([
-      '{"a":"1234","b":"5678","__pb_truncated__":true}',
+      '{"a":"1234","b":"5678","__hb_truncated__":true}',
       '{"a":"1"}',
     ]);
   });
@@ -231,7 +231,7 @@ describe("app logger", () => {
   test("the default maxDataSize is 16384", async () => {
     app.logger.info("big", { a: "x".repeat(100_000), b: 1 });
     await app.logger.flush();
-    expect(rows()[0]!.data).toBe('{"__pb_truncated__":true}');
+    expect(rows()[0]!.data).toBe('{"__hb_truncated__":true}');
   });
 
   test("bigint, Error and cyclic data do not throw", async () => {
@@ -248,7 +248,7 @@ describe("app logger", () => {
     expect(rows().map((r) => r.data)).toEqual([
       '{"big":"100000000000000000000","error":"boom","nested":{"error":"inner"}}',
       "{}",
-      '{"__pb_truncated__":true}',
+      '{"__hb_truncated__":true}',
     ]);
   });
 
@@ -461,12 +461,12 @@ describe("app logger", () => {
     expect(freelist()).toBe(0);
   });
 
-  test("__pbLogsCleanup__ deletes rows older than maxDays", async () => {
+  test("__hbLogsCleanup__ deletes rows older than maxDays", async () => {
     await insert(0, "2026-01-05 12:00:00.000Z");
     await insert(0, "2026-01-05 12:00:00.001Z");
     await app.scheduler
       .jobs()
-      .find((j) => j.id === "__pbLogsCleanup__")!
+      .find((j) => j.id === "__hbLogsCleanup__")!
       .run();
     expect(rows().map((r) => r.created)).toEqual(["2026-01-05 12:00:00.001Z"]);
   });

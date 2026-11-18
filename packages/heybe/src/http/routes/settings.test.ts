@@ -154,10 +154,10 @@ describe("POST /api/settings/test/s3", () => {
     const puts = s3.requests.filter((r) => r.method === "PUT");
     expect(puts.map((r) => r.path)).toEqual([
       expect.stringMatching(
-        /^\/st\/pb_settings_test_[a-zA-Z0-9]{5}\/test\.txt$/,
+        /^\/st\/hb_settings_test_[a-zA-Z0-9]{5}\/test\.txt$/,
       ),
       expect.stringMatching(
-        /^\/bk\/pb_settings_test_[a-zA-Z0-9]{5}\/test\.txt$/,
+        /^\/bk\/hb_settings_test_[a-zA-Z0-9]{5}\/test\.txt$/,
       ),
     ]);
     expect(s3.objects("st").size).toBe(0);

@@ -255,6 +255,21 @@ export async function startTargets(
   return active;
 }
 
+// Heybe uses hb where PocketBase uses pb: pbc_<n> ids, _pb_users_auth_, __pbDBOptimize__ cron ids.
+// Takes an id or a path with one.
+export const own = (t: Target, pbIdOrPath: string) =>
+  t.name === "heybe"
+    ? pbIdOrPath.replace(/(^|\/)(_*)pb(?=c_|_|[A-Z])/g, "$1$2hb")
+    : pbIdOrPath;
+
+// a JSON request body with the users collection id in the target's form
+export const ownBody = (t: Target, json: string) =>
+  t.name === "heybe"
+    ? json.replaceAll('"_pb_users_auth_"', '"_hb_users_auth_"')
+    : json;
+
+const HB_PREFIX = /hbc_|_hb_|__hb/g;
+
 export function normalize(
   target: Target["name"],
   value: unknown,
@@ -273,13 +288,18 @@ export function normalize(
     );
   }
   if (typeof value === "string") {
-    if (key === "id" && value !== "") return placeholder(value);
+    const s =
+      target === "heybe"
+        ? value.replace(HB_PREFIX, (m) => m.replace("hb", "pb"))
+        : value;
+    if (key === "id" && s !== "") return placeholder(s);
     if (Object.hasOwn(PLACEHOLDERS, key)) {
       const [format, placeholder] = PLACEHOLDERS[key]!;
-      if (format.test(value)) return placeholder;
+      if (format.test(s)) return placeholder;
     }
     // other strings only when already seen as an id (relation values), so a wrong value is not hidden
-    if (value !== "" && ids.has(value)) return placeholder(value);
+    if (s !== "" && ids.has(s)) return placeholder(s);
+    return s;
   }
   return value;
 }

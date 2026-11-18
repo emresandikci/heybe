@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
 import type { App } from "../app";
+import { authFromToken } from "../auth/tokens";
+import { signJwt } from "../auth/jwt";
 import { testApp } from "../test-app";
 import { INSTALLER_EMAIL } from "../util";
 import {
@@ -174,7 +176,7 @@ describe("importPocketBase", () => {
     });
     await importPocketBase(app, pbDir);
 
-    const imported = app.collections.find("pbc_posts00001")!;
+    const imported = app.collections.find("hbc_posts00001")!;
     expect(imported.name).toBe("posts");
     expect(imported.viewRule).toBe("@request.auth.id != ''");
     expect(imported.createRule).toBeNull();
@@ -183,7 +185,7 @@ describe("importPocketBase", () => {
       posts.fields.map((f) => [f.id, f.name, f.type]),
     );
 
-    const users = app.collections.find("_pb_users_auth_") as unknown as Obj;
+    const users = app.collections.find("_hb_users_auth_") as unknown as Obj;
     for (const key of [
       "authToken",
       "passwordResetToken",
@@ -197,10 +199,70 @@ describe("importPocketBase", () => {
       JSON.parse(String(pbSuperusers.options)).authToken,
     );
 
-    expect(app.collections.find("pbc_titles0001")?.type).toBe("view");
+    expect(app.collections.find("hbc_titles0001")?.type).toBe("view");
     expect(raw("SELECT id, title FROM post_titles")).toEqual([
       { id: postRow.id, title: "Merhaba" },
     ]);
+  });
+
+  test("rewrites pb ids to hb ones, keeping relations, files and PocketBase tokens working", async () => {
+    const superuser = {
+      id: "super0000000001",
+      email: "root@example.com",
+      password: userRow.password,
+      tokenKey: "tokenkeysuper1",
+    };
+    writePbDataDir(pbDir, {
+      collections: [posts],
+      rows: { users: [userRow], posts: [postRow], _superusers: [superuser] },
+      files: {
+        "pbc_posts00001/post00000000001/a_abc123.png": "png-a",
+        "_pb_users_auth_/user00000000001/avatar.png": "png-u",
+      },
+    });
+    await importPocketBase(app, pbDir);
+
+    const ids = app.collections.all().map((c) => c.id);
+    expect(ids).toContain("hbc_3142635823");
+    expect(ids).toContain("_hb_users_auth_");
+    expect(ids).toContain("hbc_posts00001");
+    expect(ids.filter((id) => /^(pbc_|_pb_)/.test(id))).toEqual([]);
+
+    const authors = app.collections
+      .find("posts")!
+      .fields.find((f) => f.name === "authors")!;
+    expect(authors.collectionId).toBe("_hb_users_auth_");
+    expect(app.collections.find(String(authors.collectionId))?.name).toBe(
+      "users",
+    );
+
+    expect(
+      await app.files.exists("hbc_posts00001/post00000000001/a_abc123.png"),
+    ).toBe(true);
+    expect(
+      await app.files.exists("_hb_users_auth_/user00000000001/avatar.png"),
+    ).toBe(true);
+
+    const pbToken = (pbCollection: Obj, collectionId: string, row: Obj) =>
+      signJwt(
+        {
+          type: "auth",
+          id: row.id,
+          collectionId,
+          refreshable: true,
+          exp: Math.floor(app.now().getTime() / 1000) + 60,
+        },
+        `${row.tokenKey}${JSON.parse(String(pbCollection.options)).authToken.secret}`,
+      );
+    expect(
+      authFromToken(app, pbToken(pbUsers, "_pb_users_auth_", userRow))?.record
+        .id,
+    ).toBe(userRow.id);
+    const su = authFromToken(
+      app,
+      pbToken(pbSuperusers, "pbc_3142635823", superuser),
+    );
+    expect(su?.isSuperuser).toBe(true);
   });
 
   test("copies rows of every field type verbatim", async () => {
@@ -267,7 +329,10 @@ describe("importPocketBase", () => {
     ]);
     for (const table of ["_externalAuths", "_mfas", "_otps", "_authOrigins"])
       expect(raw(`SELECT * FROM ${table}`)).toEqual(
-        rows[table as keyof typeof rows],
+        rows[table as keyof typeof rows].map((r) => ({
+          ...r,
+          collectionRef: "_hb_users_auth_",
+        })),
       );
     expect(summary).toEqual({ collections: 6, records: 6, files: 0 });
   });
@@ -329,7 +394,9 @@ describe("importPocketBase", () => {
       files: 2,
     });
     for (const [path, content] of Object.entries(files))
-      expect(readFileSync(join(storage(), path), "utf8")).toBe(content);
+      expect(
+        readFileSync(join(storage(), path.replace("pbc_", "hbc_")), "utf8"),
+      ).toBe(content);
 
     const s3 = testApp({ argv: [] });
     try {
@@ -448,8 +515,8 @@ describe("importPocketBase", () => {
     };
     writePbDataDir(pbDir, { collections: [people] });
     await importPocketBase(app, pbDir);
-    expect(app.collections.find("_pb_users_auth_")).toBeNull();
-    expect(app.collections.find("users")?.id).toBe("pbc_people0001");
+    expect(app.collections.find("_hb_users_auth_")).toBeNull();
+    expect(app.collections.find("users")?.id).toBe("hbc_people0001");
 
     const second = testApp({ argv: [] });
     try {

@@ -5,7 +5,7 @@ import { fakeEnv, jwt } from "./test-env.js";
 const user = { id: "u1", collectionId: "c1", collectionName: "users" };
 const admin = {
   id: "s1",
-  collectionId: "pbc_3142635823",
+  collectionId: "hbc_3142635823",
   collectionName: "_superusers",
 };
 const tokenFor = (rec: typeof user, exp: number) =>

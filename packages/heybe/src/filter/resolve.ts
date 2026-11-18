@@ -81,7 +81,7 @@ const jsonArrayLength = (c: string) =>
 
 function jsonExtract(c: string, path: string) {
   if (path !== "" && !path.startsWith("[")) path = "." + path;
-  return `(CASE WHEN json_valid(${c}) THEN JSON_EXTRACT(${c}, '$${path}') ELSE JSON_EXTRACT(json_object('pb', ${c}), '$.pb${path}') END)`;
+  return `(CASE WHEN json_valid(${c}) THEN JSON_EXTRACT(${c}, '$${path}') ELSE JSON_EXTRACT(json_object('hb', ${c}), '$.hb${path}') END)`;
 }
 
 export const joinSql = (j: Join) =>

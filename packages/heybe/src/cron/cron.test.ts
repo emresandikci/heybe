@@ -355,10 +355,10 @@ describe("app cron", () => {
 
   test("registers the system jobs in order", () => {
     expect(app.scheduler.jobs().map((j) => [j.id, j.expression])).toEqual([
-      ["__pbDBOptimize__", "0 0 * * *"],
-      ["__pbMFACleanup__", "0 * * * *"],
-      ["__pbOTPCleanup__", "0 * * * *"],
-      ["__pbLogsCleanup__", "0 */6 * * *"],
+      ["__hbDBOptimize__", "0 0 * * *"],
+      ["__hbMFACleanup__", "0 * * * *"],
+      ["__hbOTPCleanup__", "0 * * * *"],
+      ["__hbLogsCleanup__", "0 */6 * * *"],
     ]);
   });
 
@@ -455,11 +455,11 @@ describe("app cron", () => {
     expect(() => app.db.get("SELECT 1")).toThrow();
   });
 
-  test("__pbDBOptimize__ runs its pragmas outside a transaction", async () => {
+  test("__hbDBOptimize__ runs its pragmas outside a transaction", async () => {
     const warn = spyOn(app.logger, "warn");
     await app.scheduler
       .jobs()
-      .find((j) => j.id === "__pbDBOptimize__")!
+      .find((j) => j.id === "__hbDBOptimize__")!
       .run();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
@@ -490,8 +490,8 @@ describe("OTP and MFA cleanup", () => {
   }
 
   test.each([
-    ["_otps", "__pbOTPCleanup__", otpDurationMs],
-    ["_mfas", "__pbMFACleanup__", mfaDurationMs],
+    ["_otps", "__hbOTPCleanup__", otpDurationMs],
+    ["_mfas", "__hbMFACleanup__", mfaDurationMs],
   ] as const)(
     "%s removes only expired rows through the delete hooks",
     async (table, job, durationMs) => {

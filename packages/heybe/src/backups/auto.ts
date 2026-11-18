@@ -5,8 +5,8 @@ import { generateBackupName } from "./create";
 
 // Port of PB core/backup.go registerAutobackupHooks.
 
-const JOB_ID = "__pbAutoBackup__";
-const AUTO_PREFIX = "@auto_pb_backup_";
+const JOB_ID = "__hbAutoBackup__";
+const AUTO_PREFIX = "@auto_hb_backup_";
 
 async function autoBackup(app: App): Promise<void> {
   const name = generateBackupName(app, AUTO_PREFIX);

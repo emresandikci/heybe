@@ -4,6 +4,7 @@ import {
   type Target,
   both,
   expectSame,
+  ownBody,
   startTargets,
 } from "./harness";
 
@@ -32,7 +33,7 @@ const api = (
         ? undefined
         : typeof body === "string"
           ? body
-          : JSON.stringify(body),
+          : ownBody(t, JSON.stringify(body)),
   });
 
 async function same(

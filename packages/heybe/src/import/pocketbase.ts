@@ -11,6 +11,7 @@ import { cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { App } from "../app";
+import { fromPbCollectionId } from "../collections/model";
 import type { SettingsData } from "../settings";
 import { INSTALLER_EMAIL } from "../util";
 import { decryptPbValue } from "./decrypt";
@@ -45,13 +46,20 @@ const quote = (name: string) => `\`${name.replaceAll("`", "``")}\``;
 const tableInfo = (table: string) => `PRAGMA table_info(${quote(table)})`;
 
 function toItem(row: PbCollectionRow): Obj {
+  const id = fromPbCollectionId(row.id);
   return {
-    id: row.id,
+    id,
     name: row.name,
     type: row.type,
     system: !!row.system,
-    fields: JSON.parse(row.fields),
-    indexes: JSON.parse(row.indexes),
+    fields: JSON.parse(row.fields).map((f: Obj) =>
+      f.type === "relation"
+        ? { ...f, collectionId: fromPbCollectionId(String(f.collectionId)) }
+        : f,
+    ),
+    indexes: JSON.parse(row.indexes).map((sql: string) =>
+      sql.replaceAll(row.id, id),
+    ),
     listRule: row.listRule,
     viewRule: row.viewRule,
     createRule: row.createRule,
@@ -98,7 +106,7 @@ function assertFresh(app: App, storageDir: string): void {
     `the Heybe data directory "${app.dataDir}" is not empty, import needs a fresh one`,
   );
   for (const c of app.collections.all()) {
-    if (!c.system && c.id !== "_pb_users_auth_") throw notEmpty;
+    if (!c.system && c.id !== "_hb_users_auth_") throw notEmpty;
     if (c.type === "view") continue;
     const installer = c.name === "_superusers" ? " WHERE email != ?" : "";
     const { n } = app.db.get<{ n: number }>(
@@ -159,11 +167,12 @@ export async function importPocketBase(
     let records = 0;
     try {
       if (copyFiles)
-        await cp(pbStorage, storageDir, {
-          recursive: true,
-          errorOnExist: true,
-          force: false,
-        });
+        for (const entry of readdirSync(pbStorage))
+          await cp(
+            join(pbStorage, entry),
+            join(storageDir, fromPbCollectionId(entry)),
+            { recursive: true, errorOnExist: true, force: false },
+          );
       await app.db.write(async () => {
         await app.collections.import(items, true);
         app.db.run(`DELETE FROM ${quote("_superusers")}`);
@@ -179,11 +188,14 @@ export async function importPocketBase(
             .map((c) => c.name)
             .filter((c) => target.has(c));
           const insert = `INSERT INTO ${quote(table)} (${shared.map(quote).join(", ")}) VALUES (${shared.map(() => "?").join(", ")})`;
+          const mapRef = item.system && shared.includes("collectionRef");
           for (const row of pb!
             .query<Obj, []>(
               `SELECT ${shared.map(quote).join(", ")} FROM ${quote(table)}`,
             )
             .iterate()) {
+            if (mapRef)
+              row.collectionRef = fromPbCollectionId(String(row.collectionRef));
             app.db.run(
               insert,
               shared.map((c) => row[c] as string | number | null),

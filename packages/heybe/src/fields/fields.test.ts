@@ -13,8 +13,8 @@ db.tx(() => db.run("INSERT INTO targets (id) VALUES ('a'), ('b'), ('c')"));
 db.tx(() => db.run("CREATE TABLE posts (id TEXT PRIMARY KEY)"));
 db.tx(() => db.run("INSERT INTO posts (id) VALUES ('Taken')"));
 
-const targets = { id: "pbc_targets", name: "targets" } as Collection;
-const posts = { id: "pbc_posts", name: "posts" } as Collection;
+const targets = { id: "hbc_targets", name: "targets" } as Collection;
+const posts = { id: "hbc_posts", name: "posts" } as Collection;
 
 const ctx = (over: Partial<FieldCtx> = {}): FieldCtx => ({
   db,
@@ -23,7 +23,7 @@ const ctx = (over: Partial<FieldCtx> = {}): FieldCtx => ({
   isNew: true,
   now: () => new Date("2026-01-01T00:00:00Z"),
   findCollection: (idOrName) =>
-    idOrName === "pbc_targets" || idOrName === "targets" ? targets : null,
+    idOrName === "hbc_targets" || idOrName === "targets" ? targets : null,
   ...over,
 });
 
@@ -543,7 +543,7 @@ describe("json", () => {
 });
 
 describe("relation", () => {
-  const rel = { collectionId: "pbc_targets" };
+  const rel = { collectionId: "hbc_targets" };
 
   test.each<[Record<string, unknown>, unknown, unknown]>([
     [{}, null, ""],
@@ -575,7 +575,7 @@ describe("relation", () => {
       ["a"],
       "validation_not_enough_values",
     ],
-    [{ collectionId: "pbc_nope" }, "a", "validation_missing_rel_collection"],
+    [{ collectionId: "hbc_nope" }, "a", "validation_missing_rel_collection"],
     [{ collectionId: "targets" }, "a", null],
   ])("validate %p %p", (opts, value, expected) => {
     expect(code("relation", opts, value)).toBe(expected);
@@ -708,7 +708,7 @@ describe("file", () => {
 
   test("prepare uploads Files nested in arrays", async () => {
     const ctx: PrepareCtx = {
-      collection: { id: "pbc_1" } as Collection,
+      collection: { id: "hbc_1" } as Collection,
       recordId: "rec1",
       files: { write: async () => {} } as unknown as PrepareCtx["files"],
       written: [],
@@ -758,7 +758,7 @@ describe("file", () => {
   test("prepare writes new files under the record and returns uploads", async () => {
     const writes: string[] = [];
     const ctx: PrepareCtx = {
-      collection: { id: "pbc_1" } as Collection,
+      collection: { id: "hbc_1" } as Collection,
       recordId: "rec1",
       files: {
         write: async (key: string) => void writes.push(key),
@@ -783,7 +783,7 @@ describe("file", () => {
     expect(text!.name).toMatch(/^hello_world_[a-z0-9]{10}\.txt$/);
     expect(text!.originalName).toBe("Hello World.txt");
     expect(text!.size).toBe(2);
-    const keys = [image!.name, text!.name].map((n) => `pbc_1/rec1/${n}`);
+    const keys = [image!.name, text!.name].map((n) => `hbc_1/rec1/${n}`);
     expect(writes).toEqual(keys);
     expect(ctx.written).toEqual(keys);
   });

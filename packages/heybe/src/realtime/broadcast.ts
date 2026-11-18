@@ -22,7 +22,7 @@ import type { Client, Message } from "./broker";
 // Port of the record broadcasts and client auth hooks of PB apis/realtime.go.
 
 export const AUTH_KEY = "auth";
-export const IP_KEY = "pbRealtimeClientIP";
+export const IP_KEY = "hbRealtimeClientIP";
 
 type Action = "create" | "update" | "delete";
 

@@ -37,17 +37,17 @@ export function registerCronJobs(app: App): void {
       app.scheduler.start();
       return e.next();
     },
-    { id: "__pbCronStart__", priority: 999 },
+    { id: "__hbCronStart__", priority: 999 },
   );
   app.onBootstrapClear(
     async (e) => {
       await app.scheduler.stop();
       return e.next();
     },
-    { id: "__pbCronStop__", priority: 999 },
+    { id: "__hbCronStop__", priority: 999 },
   );
 
-  app.scheduler.add("__pbDBOptimize__", "0 0 * * *", async () => {
+  app.scheduler.add("__hbDBOptimize__", "0 0 * * *", async () => {
     try {
       await exclusive(app.db, (s) => s.run("PRAGMA wal_checkpoint(TRUNCATE)"));
     } catch (error) {
@@ -73,14 +73,14 @@ export function registerCronJobs(app: App): void {
     }
   });
   for (const [table, label, durationMs] of CLEANUPS)
-    app.scheduler.add(`__pb${label}Cleanup__`, "0 * * * *", () =>
+    app.scheduler.add(`__hb${label}Cleanup__`, "0 * * * *", () =>
       deleteExpired(app, table, durationMs).catch((error) =>
         app.logger.warn(`Failed to delete expired ${label} sessions`, {
           error,
         }),
       ),
     );
-  app.scheduler.add("__pbLogsCleanup__", "0 */6 * * *", () =>
+  app.scheduler.add("__hbLogsCleanup__", "0 */6 * * *", () =>
     deleteOldLogs(app, app.settings.get().logs.maxDays).catch((error) =>
       app.logger.warn("Failed to delete old logs", { error }),
     ),

@@ -180,7 +180,7 @@ await heybe.settings.generateAppleClientSecret(clientId, teamId, keyId, privateK
 await heybe.settings.testS3("storage"); // or "backups"
 
 await heybe.crons.list();
-await heybe.crons.run("__pbDBOptimize__");
+await heybe.crons.run("__hbDBOptimize__");
 await heybe.health.check();
 ```
 

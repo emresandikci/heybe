@@ -11,7 +11,7 @@ import { collectionPathRateLimit, rateLimiters } from "./rate-limit";
 import { createEvent } from "./router";
 import { createRouter } from "./server";
 
-const CRON_ID = "__pbRateLimitersCleanup__";
+const CRON_ID = "__hbRateLimitersCleanup__";
 
 let clock: ReturnType<typeof fakeClock>;
 let app: App;

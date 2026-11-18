@@ -68,6 +68,9 @@ describe("memoryStore", () => {
     const b = memoryStore();
     b.save(jwt({ type: "auth", collectionId: "pbc_3142635823" }), null);
     expect(b.isSuperuser).toBe(true);
+    const e = memoryStore();
+    e.save(jwt({ type: "auth", collectionId: "hbc_3142635823" }), null);
+    expect(e.isSuperuser).toBe(true);
     const c = memoryStore();
     c.save(jwt({ type: "auth" }), rec());
     expect(c.isSuperuser).toBe(false);

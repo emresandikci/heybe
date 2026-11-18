@@ -36,66 +36,66 @@ afterEach(() => s3.stop());
 describe("s3Filesystem", () => {
   test("write, file, exists, list, delete, deletePrefix round trip", async () => {
     const fs = s3Filesystem(config);
-    await fs.write("pbc_1/a/x.txt", enc("hello"));
-    await fs.write("pbc_1/a/y.json", new Blob(["{}"]), "application/json");
-    await fs.write("pbc_1/b/z.txt", enc("z"));
-    await fs.write("pbc_10/a/w.txt", enc("w"));
+    await fs.write("hbc_1/a/x.txt", enc("hello"));
+    await fs.write("hbc_1/a/y.json", new Blob(["{}"]), "application/json");
+    await fs.write("hbc_1/b/z.txt", enc("z"));
+    await fs.write("hbc_10/a/w.txt", enc("w"));
 
-    expect(s3.objects("hb").get("pbc_1/a/x.txt")?.type).toBe(
+    expect(s3.objects("hb").get("hbc_1/a/x.txt")?.type).toBe(
       "text/plain; charset=utf-8",
     );
-    expect(s3.objects("hb").get("pbc_1/a/y.json")?.type).toStartWith(
+    expect(s3.objects("hb").get("hbc_1/a/y.json")?.type).toStartWith(
       "application/json",
     );
 
-    const file = await fs.file("pbc_1/a/x.txt");
+    const file = await fs.file("hbc_1/a/x.txt");
     expect(await file?.blob.text()).toBe("hello");
     expect(await file?.blob.slice(1, 3).text()).toBe("el");
     expect(file?.size).toBe(5);
     expect(file?.modified).toEqual(new Date("2026-01-02T03:04:05Z"));
 
-    expect(await fs.exists("pbc_1/a/x.txt")).toBe(true);
-    expect(await fs.exists("pbc_1/a/missing.txt")).toBe(false);
+    expect(await fs.exists("hbc_1/a/x.txt")).toBe(true);
+    expect(await fs.exists("hbc_1/a/missing.txt")).toBe(false);
 
-    const list = await fs.list("pbc_1/");
+    const list = await fs.list("hbc_1/");
     expect(list.map((f) => f.key)).toEqual([
-      "pbc_1/a/x.txt",
-      "pbc_1/a/y.json",
-      "pbc_1/b/z.txt",
+      "hbc_1/a/x.txt",
+      "hbc_1/a/y.json",
+      "hbc_1/b/z.txt",
     ]);
     expect(list[0]).toEqual({
-      key: "pbc_1/a/x.txt",
+      key: "hbc_1/a/x.txt",
       size: 5,
       modified: new Date("2026-01-02T03:04:05Z"),
     });
 
-    await fs.delete("pbc_1/a/x.txt");
-    expect(await fs.file("pbc_1/a/x.txt")).toBeNull();
+    await fs.delete("hbc_1/a/x.txt");
+    expect(await fs.file("hbc_1/a/x.txt")).toBeNull();
 
-    await fs.deletePrefix("pbc_1/");
-    expect([...s3.objects("hb").keys()]).toEqual(["pbc_10/a/w.txt"]);
+    await fs.deletePrefix("hbc_1/");
+    expect([...s3.objects("hb").keys()]).toEqual(["hbc_10/a/w.txt"]);
   });
 
   test("keys with spaces, +, %, unicode and thumbs_ prefixes round trip", async () => {
     const fs = s3Filesystem(config);
     const keys = [
-      "pbc_1/r 1/a b+c%20d.txt",
-      "pbc_1/r 1/ünï çødé 漢字.txt",
-      "pbc_1/r 1/thumbs_a b+c.png/100x100_a b+c.png",
+      "hbc_1/r 1/a b+c%20d.txt",
+      "hbc_1/r 1/ünï çødé 漢字.txt",
+      "hbc_1/r 1/thumbs_a b+c.png/100x100_a b+c.png",
     ];
     for (const key of keys) await fs.write(key, enc(key));
     expect([...s3.objects("hb").keys()].sort()).toEqual([...keys].sort());
     for (const key of keys)
       expect(await (await fs.file(key))?.blob.text()).toBe(key);
-    expect((await fs.list("pbc_1/r 1/")).map((f) => f.key)).toEqual(
+    expect((await fs.list("hbc_1/r 1/")).map((f) => f.key)).toEqual(
       [...keys].sort(),
     );
-    expect((await fs.list("pbc_1/r 1/thumbs_")).map((f) => f.key)).toEqual([
+    expect((await fs.list("hbc_1/r 1/thumbs_")).map((f) => f.key)).toEqual([
       keys[2]!,
     ]);
-    await fs.deletePrefix("pbc_1/r 1/thumbs_a b+c.png/");
+    await fs.deletePrefix("hbc_1/r 1/thumbs_a b+c.png/");
     expect(await fs.exists(keys[2]!)).toBe(false);
-    await fs.deletePrefix("pbc_1/r 1/");
+    await fs.deletePrefix("hbc_1/r 1/");
     expect(s3.objects("hb").size).toBe(0);
   });
 
@@ -151,7 +151,7 @@ describe("s3Filesystem", () => {
   });
 
   test("file of a missing key is null", async () => {
-    expect(await s3Filesystem(config).file("pbc_1/a/missing.txt")).toBeNull();
+    expect(await s3Filesystem(config).file("hbc_1/a/missing.txt")).toBeNull();
   });
 
   test("an S3 that never answers rejects after the timeout", async () => {

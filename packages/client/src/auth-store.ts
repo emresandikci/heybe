@@ -1,5 +1,8 @@
 import { tokenExpired, tokenPayload } from "./jwt.js";
 
+// Heybe's superusers collection id, and PocketBase's for a PocketBase server
+export const SUPERUSER_IDS = ["hbc_3142635823", "pbc_3142635823"];
+
 export type AuthRecord = {
   id: string;
   collectionId: string;
@@ -55,7 +58,7 @@ function createStore(
       return (
         payload.type === "auth" &&
         (record?.collectionName === "_superusers" ||
-          payload.collectionId === "pbc_3142635823")
+          SUPERUSER_IDS.includes(payload.collectionId as string))
       );
     },
     save: (t, r) => update(t, r, true),

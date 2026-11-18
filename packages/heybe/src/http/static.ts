@@ -223,6 +223,6 @@ export function bindUIExtensions(app: App): void {
         .use(skipSuccessActivityLog());
       return se.next();
     },
-    { id: "__pbUIExtensions__", priority: 9999 },
+    { id: "__hbUIExtensions__", priority: 9999 },
   );
 }

@@ -12,9 +12,10 @@ import {
   both,
   expectSame,
   normalize,
+  own,
   startTargets,
 } from "./harness";
-import { collectionId } from "../src/collections/model";
+import { crc32 } from "../src/collections/model";
 import { type Frame, type SSE, connect } from "./sse";
 
 type Name = Target["name"];
@@ -167,7 +168,7 @@ beforeAll(async () => {
     null,
     "POST",
     () => "/api/collections",
-    () => ({
+    (t) => ({
       name: "posts",
       listRule: "",
       viewRule: "public = true",
@@ -178,7 +179,7 @@ beforeAll(async () => {
         {
           name: "author",
           type: "relation",
-          collectionId: collectionId("auth", "members"),
+          collectionId: own(t, "pbc_" + crc32("authmembers")),
           maxSelect: 1,
         },
       ],
@@ -207,13 +208,13 @@ beforeAll(async () => {
     null,
     "POST",
     () => "/api/collections",
-    () => ({
+    (t) => ({
       name: "refs",
       fields: [
         {
           name: "post",
           type: "relation",
-          collectionId: collectionId("base", "posts"),
+          collectionId: own(t, "pbc_" + crc32("baseposts")),
           maxSelect: 1,
           required: true,
         },

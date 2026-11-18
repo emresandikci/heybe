@@ -164,7 +164,7 @@ export async function serveCommand(args: string[], app: App): Promise<void> {
       terminated.resolve();
       await e.next();
     },
-    { id: "pbGracefulShutdown", priority: -9999 },
+    { id: "hbGracefulShutdown", priority: -9999 },
   );
   await new Promise<void>((resolve) => {
     const onSignal = () => {

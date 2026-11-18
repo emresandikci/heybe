@@ -23,7 +23,7 @@ const users: Record<Target["name"], { auth: string; file: string }> = {
   heybe: { auth: "", file: "" },
 };
 const DATE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const DEFAULT_NAME = /pb_backup_acme_\d{14}\.zip/g;
+const DEFAULT_NAME = /[ph]b_backup_acme_\d{14}\.zip/g;
 const RANDOM_PART = /_[a-z0-9]{10}(?=\.)/g;
 const SERVED_HEADERS = [
   "content-type",

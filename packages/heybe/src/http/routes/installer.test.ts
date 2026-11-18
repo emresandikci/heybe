@@ -24,7 +24,7 @@ describe("installer", () => {
     const lines = await install();
     const url = lines.find((l) => l.startsWith("http"))!;
     const match = url.match(
-      /^http:\/\/127\.0\.0\.1:8090\/_\/#\/pbinstall\/(.+)$/,
+      /^http:\/\/127\.0\.0\.1:8090\/_\/#\/hbinstall\/(.+)$/,
     );
     expect(match).not.toBeNull();
     const auth = authFromToken(app, match![1])!;

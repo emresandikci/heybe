@@ -223,7 +223,7 @@ const ref = (name: string, options: Record<string, unknown> = {}) =>
   field("text", name, { system: true, required: true, ...options });
 
 export function usersScaffold(): Collection {
-  const c = scaffold("auth", "users", "_pb_users_auth_");
+  const c = scaffold("auth", "users", "_hb_users_auth_");
   c.listRule = "id = @request.auth.id";
   c.viewRule = "id = @request.auth.id";
   c.createRule = "";

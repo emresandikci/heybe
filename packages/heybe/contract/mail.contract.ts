@@ -78,7 +78,11 @@ const MESSAGE_ID = /^<[^@]+@example\.com>$/;
 
 function normalized(m: CapturedMail) {
   const clean = (s: string) =>
-    s.replace(TOKEN, "<token>").replace(NOW, "<now>").replace(/\r\n/g, "\n");
+    s
+      .replace(TOKEN, "<token>")
+      .replace(NOW, "<now>")
+      .replace(/\r\n/g, "\n")
+      .replaceAll("__hb_test_", "__pb_test_");
   return {
     from: m.from,
     recipients: m.recipients,

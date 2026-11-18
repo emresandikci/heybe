@@ -116,6 +116,8 @@ heybe import ./pb_data --dir ./heybe_data [--encryptionEnv PB_KEY]
 
 Imported: collections (with their rules, indexes and auth token secrets, so issued tokens stay valid), all records, settings and uploaded files (not when PocketBase uses S3). Not imported: logs, backups, migration history, `pb_hooks` and `pb_migrations`. Port hooks and migrations by hand. `--encryptionEnv` names the environment variable that holds the key when PocketBase settings are encrypted.
 
+Collection ids are rewritten to Heybe's prefix: `pbc_<n>` becomes `hbc_<n>` and `_pb_users_auth_` becomes `_hb_users_auth_`, in collections, relation fields, the auth system tables and the storage directories. Code or migrations that hardcode a PocketBase collection id need the new one. Tokens PocketBase issued still carry the old id and are still accepted.
+
 ## npm
 
 The packages are not published yet. Once they are, `heybe` runs on Bun only:

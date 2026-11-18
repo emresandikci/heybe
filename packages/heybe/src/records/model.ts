@@ -5,7 +5,7 @@ import { plain, sortKeys } from "./serialize";
 type Values = Record<string, unknown>;
 export type Expand = Record<string, RecordModel | RecordModel[]>;
 
-const INTERNAL_PREFIX = "@pbInternal";
+const INTERNAL_PREFIX = "@hbInternal";
 
 export class RecordModel {
   readonly collection: Collection;

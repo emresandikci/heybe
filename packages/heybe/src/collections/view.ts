@@ -172,8 +172,8 @@ function parseIdentifiers(query: string): {
 } {
   const str = trimChars(query.trim(), ";")
     .replace(COMMENTS, " ")
-    .replace(JOIN, " __pb_join__ ")
-    .replace(DISCARD, " __pb_discard__ ");
+    .replace(JOIN, " __hb_join__ ")
+    .replace(DISCARD, " __hb_discard__ ");
 
   const tk = new Tokenizer(str, {
     separators: ", \n\t",
@@ -189,11 +189,11 @@ function parseIdentifiers(query: string): {
     if (trimmed === "select" || trimmed === "from") {
       skip = false;
       active = trimmed;
-    } else if (trimmed === "__pb_join__") {
+    } else if (trimmed === "__hb_join__") {
       skip = false;
       if (active === "join") parts.join += ",";
       active = "join";
-    } else if (trimmed === "__pb_discard__") {
+    } else if (trimmed === "__hb_discard__") {
       skip = true;
     } else {
       if (active === "join" && trimmed === "on") skip = true;

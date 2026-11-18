@@ -138,23 +138,23 @@ describe("names", () => {
     expect(snakecase(input)).toBe(expected);
   });
 
-  test("default name is pb_backup_acme_20260101000000.zip", () => {
-    expect(generateBackupName(app, "pb_backup_")).toBe(
-      "pb_backup_acme_20260101000000.zip",
+  test("default name is hb_backup_acme_20260101000000.zip", () => {
+    expect(generateBackupName(app, "hb_backup_")).toBe(
+      "hb_backup_acme_20260101000000.zip",
     );
   });
 
   test("a 60 char app name is cut to 50", async () => {
     await app.settings.update({ meta: { appName: "x".repeat(60) } });
-    expect(generateBackupName(app, "@auto_pb_backup_")).toBe(
-      `@auto_pb_backup_${"x".repeat(50)}_20260101000000.zip`,
+    expect(generateBackupName(app, "@auto_hb_backup_")).toBe(
+      `@auto_hb_backup_${"x".repeat(50)}_20260101000000.zip`,
     );
   });
 });
 
 describe("createBackup", () => {
   test("zip holds data.db, auxiliary.db and storage files but not backups/ or the temp dir", async () => {
-    await app.files.write("pbc_1/r1/a.txt", enc("a"));
+    await app.files.write("hbc_1/r1/a.txt", enc("a"));
     await mkdir(join(dir, "backups"), { recursive: true });
     await Bun.write(join(dir, "backups", "old.zip"), "old");
     await Bun.write(join(dir, LOCAL_TEMP_DIR, "junk"), "junk");
@@ -162,18 +162,18 @@ describe("createBackup", () => {
 
     await app.createBackup();
 
-    expect(await entries("pb_backup_acme_20260101000000.zip")).toEqual([
+    expect(await entries("hb_backup_acme_20260101000000.zip")).toEqual([
       "auxiliary.db",
       "data.db",
       "extra.txt",
-      "storage/pbc_1/r1/a.txt",
+      "storage/hbc_1/r1/a.txt",
     ]);
     expect(await readdir(join(dir, LOCAL_TEMP_DIR))).toEqual(["junk"]);
     expect(app.activeBackup).toBeNull();
   });
 
   test("onBackupCreate can rename and add excludes", async () => {
-    await app.files.write("pbc_1/r1/a.txt", enc("a"));
+    await app.files.write("hbc_1/r1/a.txt", enc("a"));
     app.onBackupCreate((e) => {
       expect(e.name).toBe("");
       expect(e.exclude).toEqual(["backups", LOCAL_TEMP_DIR, "lost+found"]);
@@ -204,9 +204,9 @@ describe("createBackup", () => {
 
   test("files and records changed during the run follow the data.db snapshot", async () => {
     await app.records("posts").create({ title: "before" });
-    await app.files.write("pbc_1/r1/old.txt", enc("old"));
-    await app.files.write("pbc_1/r1/a.txt", enc("a"));
-    await app.files.write("pbc_1/r1/z.txt", enc("z"));
+    await app.files.write("hbc_1/r1/old.txt", enc("old"));
+    await app.files.write("hbc_1/r1/a.txt", enc("a"));
+    await app.files.write("hbc_1/r1/z.txt", enc("z"));
     // z.txt is deleted while the storage walk zips a.txt
     const createWriter = zipModule.createZipWriter;
     let walked = false;
@@ -215,9 +215,9 @@ describe("createBackup", () => {
         const w = await createWriter(path);
         return {
           async addFile(local, name) {
-            if (name === "storage/pbc_1/r1/a.txt" && !walked) {
+            if (name === "storage/hbc_1/r1/a.txt" && !walked) {
               walked = true;
-              await app.files.delete("pbc_1/r1/z.txt");
+              await app.files.delete("hbc_1/r1/z.txt");
             }
             return w.addFile(local, name);
           },
@@ -234,8 +234,8 @@ describe("createBackup", () => {
       const result = await original(db, fn);
       if (db === app.db && !done) {
         done = true;
-        await app.files.delete("pbc_1/r1/old.txt");
-        await app.files.write("pbc_1/r1/new.txt", enc("new"));
+        await app.files.delete("hbc_1/r1/old.txt");
+        await app.files.write("hbc_1/r1/new.txt", enc("new"));
         await app.records("posts").create({ title: "during" });
       }
       return result;
@@ -251,15 +251,15 @@ describe("createBackup", () => {
     expect(await entries("c.zip")).toEqual([
       "auxiliary.db",
       "data.db",
-      "storage/pbc_1/r1/a.txt",
-      "storage/pbc_1/r1/old.txt",
-      "storage/pbc_1/r1/z.txt",
+      "storage/hbc_1/r1/a.txt",
+      "storage/hbc_1/r1/old.txt",
+      "storage/hbc_1/r1/z.txt",
     ]);
     const out = await unzip("c.zip");
-    expect(await Bun.file(join(out, "storage/pbc_1/r1/old.txt")).text()).toBe(
+    expect(await Bun.file(join(out, "storage/hbc_1/r1/old.txt")).text()).toBe(
       "old",
     );
-    expect(existsSync(join(out, "storage/pbc_1/r1/new.txt"))).toBe(false);
+    expect(existsSync(join(out, "storage/hbc_1/r1/new.txt"))).toBe(false);
     const db = new Database(join(out, "data.db"));
     expect(
       db
@@ -270,8 +270,8 @@ describe("createBackup", () => {
     db.close();
   });
   test("a file zipped by the walk and deleted later in the run is zipped once", async () => {
-    await app.files.write("pbc_1/r1/a.txt", enc("a"));
-    await app.files.write("pbc_1/r1/b.txt", enc("b"));
+    await app.files.write("hbc_1/r1/a.txt", enc("a"));
+    await app.files.write("hbc_1/r1/b.txt", enc("b"));
     const createWriter = zipModule.createZipWriter;
     const added: string[] = [];
     const zipSpy = spyOn(zipModule, "createZipWriter").mockImplementation(
@@ -280,8 +280,8 @@ describe("createBackup", () => {
         return {
           async addFile(local, name) {
             added.push(name);
-            if (name === "storage/pbc_1/r1/b.txt")
-              await app.files.delete("pbc_1/r1/a.txt");
+            if (name === "storage/hbc_1/r1/b.txt")
+              await app.files.delete("hbc_1/r1/a.txt");
             return w.addFile(local, name);
           },
           close: () => w.close(),
@@ -293,8 +293,8 @@ describe("createBackup", () => {
     } finally {
       zipSpy.mockRestore();
     }
-    expect(added.filter((n) => n === "storage/pbc_1/r1/a.txt")).toHaveLength(1);
-    expect(await entries("d.zip")).toContain("storage/pbc_1/r1/a.txt");
+    expect(added.filter((n) => n === "storage/hbc_1/r1/a.txt")).toHaveLength(1);
+    expect(await entries("d.zip")).toContain("storage/hbc_1/r1/a.txt");
   });
 
   test("VACUUM INTO runs off the main thread", async () => {
@@ -322,12 +322,12 @@ describe("createBackup", () => {
 describe("restoreBackup", () => {
   test("restores the data dir and re-executes the process", async () => {
     await app.records("posts").create({ title: "a" });
-    await app.files.write("pbc_1/r1/a.txt", enc("a"));
+    await app.files.write("hbc_1/r1/a.txt", enc("a"));
     app.logger.warn("in backup");
     await app.logger.flush();
     await app.createBackup("b1.zip");
     await app.records("posts").create({ title: "b" });
-    await app.files.write("pbc_1/r2/b.txt", enc("b"));
+    await app.files.write("hbc_1/r2/b.txt", enc("b"));
     await app.settings.update({ meta: { appName: "Changed" } });
 
     app.logger.warn("before restore");
@@ -341,7 +341,7 @@ describe("restoreBackup", () => {
     // macOS fails a new connection to the moved file, so its bytes are searched instead
     const temp = join(dir, LOCAL_TEMP_DIR);
     const old = (await readdir(temp)).find((n) =>
-      n.startsWith("old_pb_data_"),
+      n.startsWith("old_hb_data_"),
     )!;
     const oldAux = join(temp, old, "auxiliary.db");
     let oldBytes = "";
@@ -358,8 +358,8 @@ describe("restoreBackup", () => {
     expect(existsSync(join(dir, LOCAL_TEMP_DIR))).toBe(false);
     expect(titles(restored)).toEqual(["a"]);
     expect(restored.settings.current().meta.appName).toBe("Acme");
-    expect(await restored.files.exists("pbc_1/r1/a.txt")).toBe(true);
-    expect(await restored.files.exists("pbc_1/r2/b.txt")).toBe(false);
+    expect(await restored.files.exists("hbc_1/r1/a.txt")).toBe(true);
+    expect(await restored.files.exists("hbc_1/r2/b.txt")).toBe(false);
     expect(await readdir(join(dir, "backups"))).toEqual(["b1.zip"]);
   });
 
@@ -457,7 +457,7 @@ describe("restoreBackup", () => {
     ];
     test.each(cases)("%s", async (_, prepare, message) => {
       await app.records("posts").create({ title: "keep" });
-      await app.files.write("pbc_1/r1/a.txt", enc("a"));
+      await app.files.write("hbc_1/r1/a.txt", enc("a"));
       const name = await prepare();
       const before = await listing();
 
@@ -475,7 +475,7 @@ describe("restoreBackup", () => {
     await app.records("posts").create({ title: "a" });
     await app.createBackup("b1.zip");
     await app.records("posts").create({ title: "b" });
-    await app.files.write("pbc_1/r2/b.txt", enc("b"));
+    await app.files.write("hbc_1/r2/b.txt", enc("b"));
     const before = await listing();
     execve = () => {
       throw new Error("boom");
@@ -488,13 +488,13 @@ describe("restoreBackup", () => {
     expect(await listing()).toEqual(before);
     await app.records("posts").create({ title: "c" });
     expect(titles(app)).toEqual(["a", "b", "c"]);
-    expect(await app.files.exists("pbc_1/r2/b.txt")).toBe(true);
+    expect(await app.files.exists("hbc_1/r2/b.txt")).toBe(true);
     expect(app.activeBackup).toBeNull();
   });
 
   test("a failed move puts the data dir back and the app keeps serving", async () => {
     await app.records("posts").create({ title: "a" });
-    await app.files.write("pbc_1/r1/a.txt", enc("a"));
+    await app.files.write("hbc_1/r1/a.txt", enc("a"));
     await app.createBackup("b1.zip");
     await app.records("posts").create({ title: "b" });
     const before = await listing();
@@ -502,7 +502,7 @@ describe("restoreBackup", () => {
     // the extracted storage dir moves in after its data.db
     const spy = spyOn(fsModule, "renameSync").mockImplementation((from, to) => {
       if (
-        String(from).includes("pb_restore_") &&
+        String(from).includes("hb_restore_") &&
         String(from).endsWith("storage")
       )
         throw new Error("EXDEV");
@@ -510,7 +510,7 @@ describe("restoreBackup", () => {
     });
     try {
       await expect(app.restoreBackup("b1.zip")).rejects.toThrow(
-        "failed to move the extracted archive content to pb_data: EXDEV",
+        "failed to move the extracted archive content to the data directory: EXDEV",
       );
     } finally {
       spy.mockRestore();
@@ -551,7 +551,7 @@ describe("restart", () => {
 
 describe("auto backups", () => {
   const job = (a = app) =>
-    a.scheduler.jobs().find((j) => j.id === "__pbAutoBackup__");
+    a.scheduler.jobs().find((j) => j.id === "__hbAutoBackup__");
 
   test("keeps the newest cronMaxKeep auto backups", async () => {
     await mkdir(join(dir, "backups"), { recursive: true });
@@ -565,8 +565,8 @@ describe("auto backups", () => {
       await job()!.run();
     }
     expect((await readdir(join(dir, "backups"))).sort()).toEqual([
-      "@auto_pb_backup_acme_20260101020000.zip",
-      "@auto_pb_backup_acme_20260101030000.zip",
+      "@auto_hb_backup_acme_20260101020000.zip",
+      "@auto_hb_backup_acme_20260101030000.zip",
       "manual.zip",
     ]);
   });
@@ -624,7 +624,7 @@ describe("auto backups", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]!.level).toBe(8);
       const data = JSON.parse(rows[0]!.data);
-      expect(data.name).toBe("@auto_pb_backup_acme_x_20260101000000.zip");
+      expect(data.name).toBe("@auto_hb_backup_acme_x_20260101000000.zip");
       expect(typeof data.error).toBe("string");
       expect(sent.map((m) => m.to.map((t) => t.address))).toEqual([
         ["a@example.com"],
