@@ -300,7 +300,8 @@ describe("migrate create", () => {
     expect(lines).toEqual([
       `Successfully created file ${JSON.stringify(file)}`,
     ]);
-    expect(readFileSync(file, "utf8")).toBe(`import { migrate } from "heybe";
+    expect(readFileSync(file, "utf8"))
+      .toBe(`import { migrate } from "@heybe/core";
 
 export default migrate(async (app) => {
   // add up queries...

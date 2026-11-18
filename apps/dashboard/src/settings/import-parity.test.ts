@@ -1,8 +1,8 @@
 import type { CollectionModel } from "@heybe/client";
 import { expect, test } from "bun:test";
-import type { App } from "../../../../packages/heybe/src/app";
-import { serializeCollection } from "../../../../packages/heybe/src/collections/codec";
-import { testApp } from "../../../../packages/heybe/src/test-app";
+import type { App } from "../../../../packages/core/src/app";
+import { serializeCollection } from "../../../../packages/core/src/collections/codec";
+import { testApp } from "../../../../packages/core/src/test-app";
 import { diffImport, type ImportDiff } from "./import-diff";
 
 type C = CollectionModel;

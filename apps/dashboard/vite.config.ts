@@ -9,9 +9,7 @@ const src = (pkg: string) =>
 
 const { version } = JSON.parse(
   readFileSync(
-    fileURLToPath(
-      new URL("../../packages/heybe/package.json", import.meta.url),
-    ),
+    fileURLToPath(new URL("../../packages/core/package.json", import.meta.url)),
     "utf8",
   ),
 ) as { version: string };
@@ -28,7 +26,7 @@ export default defineConfig({
     ],
   },
   build: {
-    outDir: "../../packages/heybe/ui/dist",
+    outDir: "../../packages/core/ui/dist",
     emptyOutDir: true,
     chunkSizeWarningLimit: 1400,
   },

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fieldDefaults as serverDefaults } from "../../../../packages/heybe/src/collections/field-settings";
+import { fieldDefaults as serverDefaults } from "../../../../packages/core/src/collections/field-settings";
 import { FIELD_TYPES, fieldDefaults } from "./field-types";
 
 test("fieldDefaults matches the server for every type", () => {

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import {
   type OAuth2Mock,
   startOAuth2Mock,
-} from "../../heybe/contract/oauth2-mock";
+} from "../../core/contract/oauth2-mock";
 import type { HeybeClient } from "../src/client";
 import { HeybeError } from "../src/error";
 import type { OAuth2Config } from "../src/oauth2";

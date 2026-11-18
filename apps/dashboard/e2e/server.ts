@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { createApp } from "heybe";
+import { createApp } from "@heybe/core";
 
 const app = createApp();
 app.onServe((e) => {

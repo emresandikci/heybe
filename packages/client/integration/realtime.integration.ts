@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { Target } from "../../heybe/contract/harness";
+import type { Target } from "../../core/contract/harness";
 import type { HeybeClient } from "../src/client";
 import { same, startPair, type Name, type Pair } from "./pair";
 

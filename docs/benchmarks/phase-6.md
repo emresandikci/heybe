@@ -85,5 +85,5 @@ Rate limiter: with it, Heybe view one went from 10051 and 11550 rps to 9267 and 
 
 ## Changed files
 
-- `packages/heybe/bench/run.ts`
+- `packages/core/bench/run.ts`
 - `docs/benchmarks/phase-6.md`

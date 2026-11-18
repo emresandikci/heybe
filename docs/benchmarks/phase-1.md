@@ -7,7 +7,7 @@ Same machine, same data, both servers running at the same time (one idle while t
 - Machine: Apple M2, 8 cores, 16 GB RAM, macOS (Darwin 24.6.0, arm64)
 - Heybe commit measured: 825d4e5, with uncommitted Task 14 files
 - Bun 1.4.4 (runs Heybe), Node 24.16.0 (runs autocannon), PocketBase 0.41.1
-- Command: `pnpm bench` (from the repo root; runs `bun bench/run.ts` in `packages/heybe`)
+- Command: `pnpm bench` (from the repo root; runs `bun bench/run.ts` in `packages/core`)
 - Load: autocannon 9, 100 connections, 10 s measured after a 3 s warm-up, 4 workers, client in a separate Node process that shares the 8 cores with both servers (so absolute numbers are lower and noisier than a dedicated client machine would give)
 - Data: public `posts` collection (`title`, `body`, `views`, `status`, `author` relation to `users`, `created`), 10,000 records seeded over HTTP, 10 users (`a@x.com` is one of them). Fresh servers and fresh data for each round.
 - `users` list/view rules were set to `""` so the guest relation filter can match (PB checks the relation collection's rules).

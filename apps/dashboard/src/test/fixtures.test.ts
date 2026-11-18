@@ -3,8 +3,8 @@ import {
   authSystemFields,
   autodateFields,
   idField,
-} from "../../../../packages/heybe/src/collections/scaffold";
-import { publicSettings } from "../../../../packages/heybe/src/settings";
+} from "../../../../packages/core/src/collections/scaffold";
+import { publicSettings } from "../../../../packages/core/src/settings";
 import { collectionsFixture, settingsFixture } from "./fixtures";
 
 const shape = (f: Record<string, unknown>) => ({

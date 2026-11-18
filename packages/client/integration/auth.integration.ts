@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import type { Target } from "../../heybe/contract/harness";
-import { type SmtpCapture, startSmtpCapture } from "../../heybe/contract/smtp";
+import type { Target } from "../../core/contract/harness";
+import { type SmtpCapture, startSmtpCapture } from "../../core/contract/smtp";
 import type { HeybeClient } from "../src/client";
 import { HeybeError } from "../src/error";
 import { same, startPair, type Name, type Pair } from "./pair";

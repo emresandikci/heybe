@@ -121,13 +121,13 @@ const tables = (app: App) =>
     ? rows(app)
     : [];
 
-// generated files import "heybe", which does not resolve from a temp dir
+// generated files import "@heybe/core", which does not resolve from a temp dir
 function resolveImports(dir: string) {
   for (const f of readdirSync(dir))
     writeFileSync(
       join(dir, f),
       readFileSync(join(dir, f), "utf8").replace(
-        'from "heybe"',
+        'from "@heybe/core"',
         `from ${INDEX}`,
       ),
     );
@@ -207,7 +207,7 @@ describe("automigrate through the collection routes", () => {
     expect((await createPosts(app)).status).toBe(200);
     expect(files(app)).toEqual(["1700000000_created_posts.ts"]);
     expect(read(app, "1700000000_created_posts.ts")).toBe(
-      `import { migrate, newCollection } from "heybe";
+      `import { migrate, newCollection } from "@heybe/core";
 
 export default migrate(async (app) => {
   const collection = newCollection(${POSTS_JSON});
@@ -231,7 +231,7 @@ export default migrate(async (app) => {
       204,
     );
     expect(read(app, "1700000001_deleted_posts.ts")).toBe(
-      `import { migrate, newCollection } from "heybe";
+      `import { migrate, newCollection } from "@heybe/core";
 
 export default migrate(async (app) => {
   await app.collections.delete("hbc_1125843985");
@@ -322,7 +322,7 @@ const COUNT_PROPS = (max: string) => `"help": "",
   "system": false,
   "type": "number"`;
 
-const UPDATE_FILE = `import { addFieldAt, mergeCollection, migrate, removeFieldById } from "heybe";
+const UPDATE_FILE = `import { addFieldAt, mergeCollection, migrate, removeFieldById } from "@heybe/core";
 
 export default migrate(async (app) => {
   const collection = app.collections.require("hbc_1125843985");
@@ -535,7 +535,7 @@ describe("generated files on a fresh data dir", () => {
       `Successfully created file ${JSON.stringify(file)}`,
     ]);
     expect(readFileSync(file, "utf8")).toStartWith(
-      `import { importCollections, migrate } from "heybe";
+      `import { importCollections, migrate } from "@heybe/core";
 
 export default migrate(async (app) => {
   const snapshot = [

@@ -21,7 +21,7 @@ Heybe is an open source backend in a single binary, built with TypeScript on [Bu
 ### Hooks and routes
 
 ```ts
-import { RecordHooks, Route } from "heybe";
+import { RecordHooks, Route } from "@heybe/core";
 
 class PostHooks extends RecordHooks {
   collection = "posts";
@@ -96,7 +96,7 @@ Each package is versioned and released on its own with semantic-release when cha
 Build one executable that embeds the dashboard and the sharp native files (needs Bun 1.4 and a prior `pnpm install`):
 
 ```bash
-cd packages/heybe
+cd packages/core
 bun scripts/build-binary.ts          # writes dist/heybe for this machine
 bun scripts/smoke-binary.ts --binary dist/heybe
 ./dist/heybe serve
@@ -120,11 +120,17 @@ Collection ids are rewritten to Heybe's prefix: `pbc_<n>` becomes `hbc_<n>` and 
 
 ## npm
 
-The packages are not published yet. Once they are, `heybe` runs on Bun only:
+The packages are not published yet. Once they are, `@heybe/core` runs on Bun only. Install it globally to get the `heybe` command:
 
 ```bash
-bun add heybe
-bunx heybe serve
+bun add -g @heybe/core
+heybe serve
+```
+
+To use it as a library:
+
+```bash
+bun add @heybe/core
 ```
 
 ## Dashboard
@@ -135,7 +141,7 @@ The superuser panel lives in `apps/dashboard` (React, Vite) and is served by `he
 pnpm --filter @heybe/dashboard build
 ```
 
-The build writes `packages/heybe/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
+The build writes `packages/core/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
 
 It covers collections (with a field, rule and index editor), records, logs, backups and all settings. OAuth2 providers of an auth collection are managed under Settings > Auth providers. The records filter, the logs filter, API rules and the SQL fields (view query, indexes, SQL page) autocomplete fields, operators, modifiers, macros and `@request` params as you type.
 

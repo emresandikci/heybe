@@ -3,7 +3,7 @@ import {
   normalize,
   startTargets,
   type Target,
-} from "../../heybe/contract/harness";
+} from "../../core/contract/harness";
 import { memoryStore } from "../src/auth-store";
 import { createClient, type HeybeClient } from "../src/client";
 import { HeybeError } from "../src/error";

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { generateKeyPairSync } from "node:crypto";
-import { own } from "../../heybe/contract/harness";
-import { type SmtpCapture, startSmtpCapture } from "../../heybe/contract/smtp";
+import { own } from "../../core/contract/harness";
+import { type SmtpCapture, startSmtpCapture } from "../../core/contract/smtp";
 import { HeybeError } from "../src/error";
 import { same, startPair, type Name, type Pair } from "./pair";
 

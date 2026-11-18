@@ -33,7 +33,7 @@ const check = (name: string) => {
 
   const required = ["package/LICENSE", "package/package.json"];
   const forbidden: RegExp[] = [];
-  if (name === "heybe") {
+  if (name === "@heybe/core") {
     required.push(
       "package/src/cli.ts",
       "package/src/index.ts",
@@ -110,13 +110,16 @@ const smokeInstalled = async () => {
   const dir = join(tmp, "install");
   mkdirSync(dir);
   const query = `file:${tarballs["@heybe/query"]}`;
+  const core = `file:${tarballs["@heybe/core"]}`;
   writeFileSync(
     join(dir, "package.json"),
     JSON.stringify({
       name: "heybe-pack-smoke",
       private: true,
-      dependencies: { heybe: `file:${tarballs.heybe}`, "@heybe/query": query },
-      overrides: { "@heybe/query": query },
+      dependencies: {
+        "@heybe/core": core,
+      },
+      overrides: { "@heybe/core": core, "@heybe/query": query },
     }),
   );
   run(["bun", "install", "--cwd", dir]);
@@ -151,7 +154,12 @@ const smokeInstalled = async () => {
 };
 
 try {
-  for (const name of ["@heybe/query", "@heybe/client", "@heybe/ui", "heybe"])
+  for (const name of [
+    "@heybe/query",
+    "@heybe/client",
+    "@heybe/ui",
+    "@heybe/core",
+  ])
     check(name);
   await smokeInstalled();
 } catch (err) {

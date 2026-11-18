@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { providers } from "../../../../packages/heybe/src/auth/oauth2/providers";
+import { providers } from "../../../../packages/core/src/auth/oauth2/providers";
 import { OAUTH2_PROVIDERS, randomSecret } from "./oauth2-providers";
 
 test("provider list matches the server's providers", () => {

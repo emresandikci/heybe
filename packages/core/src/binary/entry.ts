@@ -13,11 +13,12 @@ declare global {
   var __heybeSharpNative: () => string;
 }
 
-// migrations and hooks on disk import "heybe", which a compiled binary cannot resolve
+// migrations and hooks on disk import "@heybe/core" (or the legacy "heybe"), which a compiled binary cannot resolve
 Bun.plugin({
   name: "heybe",
   setup(build) {
-    build.module("heybe", () => ({ exports: heybe, loader: "object" }));
+    for (const name of ["@heybe/core", "heybe"])
+      build.module(name, () => ({ exports: heybe, loader: "object" }));
   },
 });
 

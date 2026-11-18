@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { flushLogs, waitUntil } from "../../heybe/contract/harness";
-import { type FakeS3, startFakeS3 } from "../../heybe/src/files/test-s3";
+import { flushLogs, waitUntil } from "../../core/contract/harness";
+import { type FakeS3, startFakeS3 } from "../../core/src/files/test-s3";
 import { HeybeError } from "../src/error";
 import { same, startPair, type Name, type Pair } from "./pair";
 

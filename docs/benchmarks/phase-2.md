@@ -5,9 +5,9 @@ Same method as phase 1 (`phase-1.md`): same machine, same data, both servers run
 ## Setup
 
 - Machine: Apple M2, 8 cores, 16 GB RAM, macOS (Darwin 24.6.0, arm64)
-- Heybe commit measured: e4439d2, with uncommitted Task 10 files (`packages/heybe/bench/run.ts`)
+- Heybe commit measured: e4439d2, with uncommitted Task 10 files (`packages/core/bench/run.ts`)
 - Bun 1.4.4 (runs Heybe), Node 24.16.0 (runs autocannon), PocketBase 0.41.1
-- Command: `pnpm bench` (from the repo root; runs `bun bench/run.ts` in `packages/heybe`)
+- Command: `pnpm bench` (from the repo root; runs `bun bench/run.ts` in `packages/core`)
 - Load: autocannon 9, 100 connections, 10 s measured after a 3 s warm-up, 4 workers, client in a separate Node process that shares the 8 cores with both servers
 - Data: same as phase 1 (public `posts` with `author` relation to 10 `users`, 10,000 records, fresh servers and data per round), plus a public `attachments` collection with one record holding a 50 KB file (the same 51200 bytes uploaded to both servers).
 - Scenarios run as guest, except create (superuser). Rounds alternate target order (round 1: PB first, round 2: Heybe first).

@@ -67,7 +67,7 @@ function diffMaps(old: Obj, next: Obj, exclude: string[] = []): Obj {
 
 function source(helpers: string[], up: string, down: string): string {
   const names = ["migrate", ...helpers].sort().join(", ");
-  return `import { ${names} } from "heybe";
+  return `import { ${names} } from "@heybe/core";
 
 export default migrate(async (app) => {
   ${up}
@@ -158,7 +158,7 @@ function diffTemplate(next: Collection | null, old: Collection | null): string {
 }
 
 export function snapshotTemplate(collections: Collection[]): string {
-  return `import { importCollections, migrate } from "heybe";
+  return `import { importCollections, migrate } from "@heybe/core";
 
 export default migrate(async (app) => {
   const snapshot = ${marshal(collections.map(toMap))};
