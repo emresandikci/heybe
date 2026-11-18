@@ -48,6 +48,9 @@ jobs:
             target: bun-linux-x64
           - os: ubuntu-24.04-arm
             target: bun-linux-arm64
+          - os: windows-latest
+            target: bun-windows-x64
+            binary: heybe.exe
     steps:
       - uses: actions/checkout@v4
 
@@ -66,12 +69,14 @@ jobs:
 
       - name: Build and smoke test
         working-directory: packages/core
+        shell: bash
         run: |
-          bun scripts/build-binary.ts --target ${{ matrix.target }}
-          bun scripts/smoke-binary.ts --binary dist/heybe
+          binary=${{ matrix.binary || 'heybe' }}
+          bun scripts/build-binary.ts --target ${{ matrix.target }} --outfile dist/$binary
+          bun scripts/smoke-binary.ts --binary dist/$binary
 
       - uses: actions/upload-artifact@v4
         with:
           name: heybe-${{ matrix.target }}
-          path: packages/core/dist/heybe
+          path: packages/core/dist/${{ matrix.binary || 'heybe' }}
           retention-days: 14

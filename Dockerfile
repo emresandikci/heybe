@@ -1,0 +1,26 @@
+FROM node:24.16.0-bookworm-slim AS build
+COPY --from=oven/bun:1.4.4 /usr/local/bin/bun /usr/local/bin/bun
+RUN corepack enable
+WORKDIR /src
+COPY . .
+RUN CI=true pnpm install --frozen-lockfile
+RUN cd packages/core && bun scripts/build-binary.ts
+
+FROM debian:bookworm-slim
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="Heybe" \
+      org.opencontainers.image.source="https://github.com/emresandikci/heybe" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home --home-dir /heybe --shell /usr/sbin/nologin heybe
+COPY --from=build /src/packages/core/dist/heybe /usr/local/bin/heybe
+USER heybe
+WORKDIR /heybe
+RUN mkdir heybe_data heybe_migrations
+VOLUME /heybe/heybe_data
+EXPOSE 8090
+ENTRYPOINT ["heybe"]
+CMD ["serve", "--http", "0.0.0.0:8090", "--dir", "/heybe/heybe_data"]

@@ -5,6 +5,10 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Publish the image and binaries for an existing @heybe/core release (x.y.z) instead of releasing"
+        required: false
 
 permissions:
   contents: write
@@ -14,6 +18,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.published.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +42,209 @@ jobs:
       - run: pnpm build
 
       - name: Release
+        if: ${{ !inputs.version }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm release
+        run: |
+          git tag --list '@heybe/core@*' | sort > /tmp/core-tags-before
+          pnpm release
+          git tag --list '@heybe/core@*' | sort > /tmp/core-tags-after
+          tag=$(comm -13 /tmp/core-tags-before /tmp/core-tags-after | tail -n 1)
+          echo "NEW_CORE_TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Published version
+        id: published
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION:-${NEW_CORE_TAG#@heybe/core@}}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  image:
+    needs: release
+    if: ${{ needs.release.outputs.version != '' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/emresandikci/heybe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "@heybe/core@${{ needs.release.outputs.version }}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: VERSION=${{ needs.release.outputs.version }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.runner }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  image-manifest:
+    needs: [release, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/emresandikci/heybe
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.release.outputs.version }}
+            type=raw,value=latest
+
+      - name: Create manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+
+  binaries:
+    needs: release
+    if: ${{ needs.release.outputs.version != '' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: bun-linux-x64
+            name: linux_amd64
+          - os: ubuntu-24.04-arm
+            target: bun-linux-arm64
+            name: linux_arm64
+          - os: macos-latest
+            target: bun-darwin-arm64
+            name: darwin_arm64
+          - os: macos-15-intel
+            target: bun-darwin-x64
+            name: darwin_amd64
+          - os: windows-latest
+            target: bun-windows-x64
+            name: windows_amd64
+            binary: heybe.exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "@heybe/core@${{ needs.release.outputs.version }}"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build and smoke test
+        working-directory: packages/core
+        shell: bash
+        run: |
+          binary=${{ matrix.binary || 'heybe' }}
+          bun scripts/build-binary.ts --target ${{ matrix.target }} --outfile dist/$binary
+          bun scripts/smoke-binary.ts --binary dist/$binary
+
+      - name: Archive
+        working-directory: packages/core/dist
+        shell: bash
+        run: |
+          archive=heybe_${{ needs.release.outputs.version }}_${{ matrix.name }}.zip
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell -Command "Compress-Archive -Path heybe.exe -DestinationPath $archive"
+          else
+            zip "$archive" heybe
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.name }}
+          path: packages/core/dist/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  github-release:
+    needs: [release, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: "@heybe/core@${{ needs.release.outputs.version }}"
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: archives
+          pattern: archive-*
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: archives
+        run: sha256sum *.zip > checksums.txt
+
+      - name: Publish release assets
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" archives/* --clobber

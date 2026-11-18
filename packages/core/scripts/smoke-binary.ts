@@ -184,7 +184,10 @@ export async function smoke(binary: string): Promise<void> {
 
     server.kill("SIGTERM");
     const code = await Promise.race([server.exited, Bun.sleep(5000)]);
-    check(code === 0, `serve did not exit on SIGTERM within 5000 ms`);
+    check(
+      code === 0 || (process.platform === "win32" && typeof code === "number"),
+      `serve did not exit on SIGTERM within 5000 ms`,
+    );
     server = undefined;
 
     const size = (statSync(binary).size / 1024 / 1024).toFixed(1);
@@ -201,7 +204,10 @@ if (import.meta.main) {
   try {
     let binary = values.binary;
     if (!binary) {
-      binary = resolve(import.meta.dir, "../dist/heybe");
+      binary = resolve(
+        import.meta.dir,
+        process.platform === "win32" ? "../dist/heybe.exe" : "../dist/heybe",
+      );
       await buildBinary({ outfile: binary });
     }
     await smoke(resolve(binary));

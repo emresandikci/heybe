@@ -91,6 +91,39 @@ pnpm commit
 
 Each package is versioned and released on its own with semantic-release when changes land on `main`.
 
+## Download
+
+Get the archive for your OS and architecture (Linux, macOS, Windows) from [GitHub Releases](https://github.com/emresandikci/heybe/releases), unzip it and run it:
+
+```bash
+./heybe serve          # Windows: heybe.exe serve
+```
+
+`checksums.txt` on each release lists the SHA-256 of every archive. Docker is the other option, see below. Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no Windows container image.
+
+## Docker
+
+```bash
+docker run -d -p 8090:8090 -v heybe_data:/heybe/heybe_data ghcr.io/emresandikci/heybe
+```
+
+The dashboard is at `http://localhost:8090/_/`. Data lives in `/heybe/heybe_data`. User migrations are read from `/heybe/heybe_migrations`, mount your directory there:
+
+```bash
+docker run -d -p 8090:8090 \
+  -v heybe_data:/heybe/heybe_data \
+  -v ./heybe_migrations:/heybe/heybe_migrations \
+  ghcr.io/emresandikci/heybe
+```
+
+Create a superuser in a running container:
+
+```bash
+docker exec <container> heybe superuser upsert <email> <password> --dir /heybe/heybe_data
+```
+
+The image (linux/amd64 and linux/arm64) is published to GHCR from every `@heybe/core` release, tagged `x.y.z`, `x.y`, `x` and `latest`. Build it yourself with `docker build -t heybe .`.
+
 ## Single binary
 
 Build one executable that embeds the dashboard and the sharp native files (needs Bun 1.4 and a prior `pnpm install`):

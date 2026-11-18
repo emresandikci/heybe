@@ -15,7 +15,8 @@ function filesUnder(dir: string): string[] {
 async function sharpNative(target: string) {
   const platform = target
     .replace(/^bun-/, "")
-    .replace(/-(baseline|modern)$/, "");
+    .replace(/-(baseline|modern)$/, "")
+    .replace(/^windows-/, "win32-");
   const sharpDir = dirname(Bun.resolveSync("sharp/package.json", PKG));
   const { version } = (await Bun.file(
     join(sharpDir, "package.json"),
@@ -30,12 +31,17 @@ async function sharpNative(target: string) {
     }
   };
   const addonDir = resolvePkg(`@img/sharp-${platform}`, sharpDir);
-  const libvipsDir = resolvePkg(`@img/sharp-libvips-${platform}`, addonDir);
+  const packages = [[`@img/sharp-${platform}`, addonDir]] as const;
+  const libvips = platform.startsWith("win32-")
+    ? []
+    : ([
+        [
+          `@img/sharp-libvips-${platform}`,
+          resolvePkg(`@img/sharp-libvips-${platform}`, addonDir),
+        ],
+      ] as const);
   const files = new Map<string, string>();
-  for (const [name, dir] of [
-    [`@img/sharp-${platform}`, addonDir],
-    [`@img/sharp-libvips-${platform}`, libvipsDir],
-  ] as const)
+  for (const [name, dir] of [...packages, ...libvips])
     for (const file of filesUnder(join(dir, "lib")))
       files.set(`${name}/${relative(dir, file)}`, file);
   const entry = [...files.keys()].find((k) => k.endsWith(".node"));
@@ -82,8 +88,11 @@ export async function buildBinary(o: {
   target?: string;
   outfile?: string;
 }): Promise<void> {
-  const target = o.target ?? `bun-${process.platform}-${process.arch}`;
-  const outfile = resolve(o.outfile ?? join(PKG, "dist/heybe"));
+  const target =
+    o.target ??
+    `bun-${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
+  const exe = target.startsWith("bun-windows-") ? "heybe.exe" : "heybe";
+  const outfile = resolve(o.outfile ?? join(PKG, "dist", exe));
   const sharp = await sharpNative(target);
 
   const ui = Bun.spawnSync(["pnpm", "--filter", "@heybe/dashboard", "build"], {
