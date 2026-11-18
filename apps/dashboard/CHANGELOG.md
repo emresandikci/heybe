@@ -1,3 +1,15 @@
+# [@heybe/dashboard-v1.1.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.0.0...@heybe/dashboard@1.1.0) (2026-11-18)
+
+
+### Features
+
+* **dashboard:** autocomplete rules and sql in code fields ([c4f027c](https://github.com/emresandikci/heybe/commit/c4f027c9d24b2cdbd09fc1004752f5fe5bd53fdd))
+* **dashboard:** color names, functions, operators and punctuation in code fields ([6594c40](https://github.com/emresandikci/heybe/commit/6594c40d2c3fb1bed3300a655c81d92cdc651c0a))
+* **dashboard:** confirm sql queries that delete or update rows ([e2786ad](https://github.com/emresandikci/heybe/commit/e2786ad25e7e4370b6b9e469490af92a56b0acf0))
+* **dashboard:** redesign the dashboard on a rebuilt @heybe/ui ([3bb3b25](https://github.com/emresandikci/heybe/commit/3bb3b25d96b528e0850b87349051ae4779d81b5a))
+* **dashboard:** use codemirror for code fields ([78bee90](https://github.com/emresandikci/heybe/commit/78bee90c4f7302c71005b8c76ed2982a5747782d))
+* **ui:** add @heybe/ui package with the dashboard components ([42a563f](https://github.com/emresandikci/heybe/commit/42a563f2478ad74d3846ca4616dc5fc48ac04e0d))
+
 # @heybe/dashboard-v1.0.0 (2026-11-16)
 
 
