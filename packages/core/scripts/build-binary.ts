@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import type { BunPlugin } from "bun";
 
@@ -11,6 +11,10 @@ function filesUnder(dir: string): string[] {
     .filter((f) => f.isFile())
     .map((f) => join(f.parentPath, f.name));
 }
+
+// embedded keys are URL-like paths, so Windows separators become "/"
+const key = (from: string, file: string) =>
+  relative(from, file).split(sep).join("/");
 
 async function sharpNative(target: string) {
   const platform = target
@@ -43,7 +47,7 @@ async function sharpNative(target: string) {
   const files = new Map<string, string>();
   for (const [name, dir] of [...packages, ...libvips])
     for (const file of filesUnder(join(dir, "lib")))
-      files.set(`${name}/${relative(dir, file)}`, file);
+      files.set(`${name}/${key(dir, file)}`, file);
   const entry = [...files.keys()].find((k) => k.endsWith(".node"));
   if (!entry) throw new Error(`no .node file in @img/sharp-${platform}`);
   return { files, entry, version };
@@ -102,7 +106,7 @@ export async function buildBinary(o: {
   });
   if (!ui.success) throw new Error("dashboard build failed");
   const dashboard = new Map(
-    filesUnder(UI_DIST).map((f) => [relative(UI_DIST, f), f]),
+    filesUnder(UI_DIST).map((f) => [key(UI_DIST, f), f]),
   );
 
   const embedPlugin: BunPlugin = {
