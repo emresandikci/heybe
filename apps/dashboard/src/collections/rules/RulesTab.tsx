@@ -1,7 +1,7 @@
 import { useCollections } from "../../app/queries";
 import type { CollectionDraft, EditorForm } from "../editor-state";
 import { RuleInput } from "./RuleInput";
-import { ruleChips, type RuleKey } from "./rule-chips";
+import { ruleChips, ruleSuggest, type RuleKey } from "./rule-chips";
 
 const RULES: { key: RuleKey; label: string; emptyHint?: string }[] = [
   { key: "listRule", label: "List/Search rule" },
@@ -48,6 +48,7 @@ export function RulesTab({
               errorPath={key}
               value={field.state.value ?? null}
               chips={ruleChips(draft, collections.data ?? [], key)}
+              suggest={ruleSuggest(draft, collections.data ?? [], key)}
               onChange={field.handleChange}
             />
           )}

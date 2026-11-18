@@ -3,17 +3,15 @@ import { Button } from "@heybe/ui";
 export function Pagination({
   page,
   totalPages,
-  totalItems,
   onPage,
 }: {
   page: number;
   totalPages: number;
-  totalItems: number;
   onPage: (page: number) => void;
 }) {
+  if (totalPages <= 1) return null;
   return (
-    <div className="flex items-center justify-between gap-2 text-sm">
-      <span>{totalItems} records</span>
+    <div className="flex items-center justify-end gap-2 text-sm">
       <div className="flex items-center gap-2">
         <Button disabled={page <= 1} onClick={() => onPage(page - 1)}>
           Previous

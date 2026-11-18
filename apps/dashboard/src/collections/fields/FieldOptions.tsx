@@ -1,14 +1,8 @@
 import { useEffect, useState } from "react";
+import { chipClass } from "../chip";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { useCollections } from "../../app/queries";
-import {
-  Button,
-  Checkbox,
-  CodeArea,
-  NumberField,
-  Select,
-  TextField,
-} from "@heybe/ui";
+import { Checkbox, CodeArea, NumberField, Select, TextField } from "@heybe/ui";
 import type { FieldModel } from "../editor-state";
 
 export interface OptionsProps {
@@ -228,9 +222,10 @@ function MimeTypes({ p }: { p: OptionsProps }) {
       <List p={p} k="mimeTypes" label="MIME types" hint="Comma separated." />
       <div className="flex flex-wrap gap-1">
         {Object.entries(MIME_PRESETS).map(([name, types]) => (
-          <Button
+          <button
             key={name}
-            variant="ghost"
+            type="button"
+            className={chipClass}
             onClick={() =>
               p.onChange({
                 mimeTypes: [
@@ -241,7 +236,7 @@ function MimeTypes({ p }: { p: OptionsProps }) {
             }
           >
             {name}
-          </Button>
+          </button>
         ))}
       </div>
     </div>
@@ -358,7 +353,7 @@ function TypeOptions({ p }: { p: OptionsProps }) {
 
 export function FieldOptions(p: OptionsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid items-end gap-3 sm:grid-cols-2">
       <TypeOptions p={p} />
       {p.field.type !== "autodate" && <Text p={p} k="help" label="Help text" />}
     </div>

@@ -1,11 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
+import { formatDate } from "../app/format";
 import { Button, CopyButton, Dialog } from "@heybe/ui";
 import { levelName } from "./level";
 
 const text = (value: unknown) =>
-  typeof value === "string" ? value : JSON.stringify(value);
+  value == null
+    ? ""
+    : typeof value === "string"
+      ? value
+      : JSON.stringify(value);
 
 export function LogDialog({ id, onClose }: { id: string; onClose(): void }) {
   const client = useClient();
@@ -16,7 +21,7 @@ export function LogDialog({ id, onClose }: { id: string; onClose(): void }) {
   const entries: [string, string][] = log.data
     ? [
         ["id", log.data.id],
-        ["created", log.data.created],
+        ["created", formatDate(log.data.created, "full")],
         ["level", levelName(log.data.level)],
         ["message", log.data.message],
         ...Object.entries(log.data.data).map(
@@ -24,6 +29,7 @@ export function LogDialog({ id, onClose }: { id: string; onClose(): void }) {
         ),
       ]
     : [];
+  const shown = entries.filter(([, value]) => value !== "");
   return (
     <Dialog
       open
@@ -34,6 +40,7 @@ export function LogDialog({ id, onClose }: { id: string; onClose(): void }) {
           {log.data && (
             <CopyButton
               label="Copy JSON"
+              showLabel
               text={JSON.stringify(log.data, null, 2)}
             />
           )}
@@ -42,11 +49,15 @@ export function LogDialog({ id, onClose }: { id: string; onClose(): void }) {
       }
     >
       {log.error && <p role="alert">{errorMessage(log.error)}</p>}
-      <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-        {entries.map(([key, value]) => (
+      <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+        {shown.map(([key, value]) => (
           <div key={key} className="contents">
-            <dt className="font-medium">{key}</dt>
-            <dd className="break-all whitespace-pre-wrap">{value}</dd>
+            <dt className="truncate font-medium text-muted" title={key}>
+              {key}
+            </dt>
+            <dd className="min-w-0 whitespace-pre-wrap font-mono text-xs [overflow-wrap:anywhere]">
+              {value}
+            </dd>
           </div>
         ))}
       </dl>

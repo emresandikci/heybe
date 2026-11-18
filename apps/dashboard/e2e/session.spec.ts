@@ -2,11 +2,13 @@ import { expect, test } from "@playwright/test";
 
 test("theme persists, sign out and keyboard sign in", async ({ page }) => {
   await page.goto("#/collections");
-  await page.getByLabel("Theme").selectOption("dark");
+  await page.getByRole("button", { name: "admin@example.com" }).click();
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "admin@example.com" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/#\/login$/);
 
   const email = page.getByLabel("Email");

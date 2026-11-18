@@ -2,7 +2,7 @@ import type { CollectionModel } from "@heybe/client";
 import { useState } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { useCollections } from "../../app/queries";
-import { Button, Checkbox, Section, Select } from "@heybe/ui";
+import { Button, Checkbox, Select } from "@heybe/ui";
 import {
   activeFields,
   finalIndexes,
@@ -11,13 +11,14 @@ import {
   type Provider,
 } from "../editor-state";
 import { parseIndex } from "../index-sql";
+import { ProviderLogo } from "../../settings/ProviderLogo";
 import { OAUTH2_PROVIDERS } from "../oauth2-providers";
 import { RuleInput } from "../rules/RuleInput";
-import { ruleChips } from "../rules/rule-chips";
+import { ruleChips, ruleSuggest } from "../rules/rule-chips";
 import { ProviderDialog } from "./ProviderDialog";
 import { TemplatesSection } from "./TemplatesSection";
 import { TokenOptions } from "./TokenOptions";
-import { BoolOpt, NumOpt, groupClass, type OptCtx } from "./opts";
+import { AuthSection, BoolOpt, NumOpt, groupClass, type OptCtx } from "./opts";
 
 export function AuthOptions({
   form,
@@ -34,21 +35,25 @@ export function AuthOptions({
   const c: OptCtx = { form, draft, clearError };
   return (
     <div className="flex flex-col gap-6">
-      <Section title="Password auth">
+      {draft.name !== "_superusers" && <OAuth2Section c={c} />}
+      <AuthSection
+        title="Password auth"
+        prefixes={["passwordAuth"]}
+        defaultOpen
+      >
         <BoolOpt
           c={c}
           path="passwordAuth.enabled"
           label="Enable password auth"
         />
         <IdentityFields c={c} />
-      </Section>
-      {draft.name !== "_superusers" && <OAuth2Section c={c} />}
-      <Section title="One-time password">
+      </AuthSection>
+      <AuthSection title="One-time password" prefixes={["otp"]}>
         <BoolOpt c={c} path="otp.enabled" label="Enable one-time password" />
         <NumOpt c={c} path="otp.duration" label="OTP duration (seconds)" />
         <NumOpt c={c} path="otp.length" label="OTP length" />
-      </Section>
-      <Section title="Multi-factor auth">
+      </AuthSection>
+      <AuthSection title="Multi-factor auth" prefixes={["mfa"]}>
         <BoolOpt
           c={c}
           path="mfa.enabled"
@@ -64,15 +69,16 @@ export function AuthOptions({
               value={field.state.value ?? ""}
               onChange={(rule) => field.handleChange(rule ?? "")}
               chips={ruleChips(draft, collections.data ?? [], "mfaRule")}
+              suggest={ruleSuggest(draft, collections.data ?? [], "mfaRule")}
               errorPath="mfa.rule"
               emptyHint="Empty rule: MFA applies to every account."
             />
           )}
         </form.Field>
-      </Section>
-      <Section title="Login alerts">
+      </AuthSection>
+      <AuthSection title="Login alerts" prefixes={["authAlert"]}>
         <BoolOpt c={c} path="authAlert.enabled" label="Send login alerts" />
-      </Section>
+      </AuthSection>
       <TokenOptions c={c} />
       <TemplatesSection c={c} saved={saved} />
     </div>
@@ -116,12 +122,10 @@ function IdentityFields({ c }: { c: OptCtx }) {
           />
         ))}
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+      <p className="text-xs text-muted">
         Fields with a single column unique index.
       </p>
-      {error && (
-        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-      )}
+      {error && <p className="text-xs text-danger-text">{error}</p>}
     </fieldset>
   );
 }
@@ -150,7 +154,7 @@ function OAuth2Section({ c }: { c: OptCtx }) {
   const fields = activeFields(c.draft).map((f) => f.name);
 
   return (
-    <Section title="OAuth2">
+    <AuthSection title="OAuth2" prefixes={["oauth2"]} defaultOpen>
       <BoolOpt c={c} path="oauth2.enabled" label="Enable OAuth2" />
       <ul className="flex flex-col gap-2">
         {providers.map((p, i) => (
@@ -231,7 +235,7 @@ function OAuth2Section({ c }: { c: OptCtx }) {
           }}
         />
       )}
-    </Section>
+    </AuthSection>
   );
 }
 
@@ -252,9 +256,10 @@ function ProviderRow({
     OAUTH2_PROVIDERS.find((p) => p.name === provider.name)?.displayName ||
     provider.name;
   return (
-    <li className="flex flex-col gap-1 rounded border border-slate-200 p-2 dark:border-slate-700">
+    <li className="flex flex-col gap-1 rounded border border-line p-2 dark:border-line">
       <div className="flex items-center gap-2">
-        <span className="flex-1 text-sm">{name}</span>
+        <ProviderLogo name={provider.name} displayName={name} />
+        <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
         <Button
           variant="ghost"
           aria-label={`Edit provider ${name}`}
@@ -271,7 +276,7 @@ function ProviderRow({
         </Button>
       </div>
       {errors.map(([path, message]) => (
-        <p key={path} className="text-xs text-red-600 dark:text-red-400">
+        <p key={path} className="text-xs text-danger-text">
           {path.slice(errorPath.length + 1)}: {message}
         </p>
       ))}

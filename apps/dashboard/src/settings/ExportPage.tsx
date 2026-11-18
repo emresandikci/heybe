@@ -2,11 +2,18 @@ import { useState } from "react";
 import { useCollections } from "../app/queries";
 import { Button, Checkbox, CopyButton } from "@heybe/ui";
 import { exportJson } from "./import-diff";
+import { QueryStatus } from "./QueryStatus";
+import { SettingsPage } from "./SettingsPage";
 
 export function ExportPage() {
   const collections = useCollections();
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
-  if (!collections.data) return null;
+  if (!collections.data)
+    return (
+      <SettingsPage title="Export collections">
+        <QueryStatus query={collections} />
+      </SettingsPage>
+    );
 
   const all = collections.data;
   const selected = all.filter((c) => !unselected.has(c.id));
@@ -30,9 +37,8 @@ export function ExportPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-        <legend className="mb-2 text-sm font-medium">Collections</legend>
+    <SettingsPage title="Export collections">
+      <div className="flex flex-col gap-3">
         <Checkbox
           label="Select all"
           checked={selected.length === all.length}
@@ -44,27 +50,58 @@ export function ExportPage() {
             )
           }
         />
-        {all.map((c) => (
-          <Checkbox
-            key={c.id}
-            label={c.name}
-            checked={!unselected.has(c.id)}
-            onChange={() => toggle(c.id)}
-          />
-        ))}
-      </fieldset>
-      <div className="flex gap-2">
-        <Button variant="primary" onClick={download}>
-          Download
-        </Button>
-        <CopyButton text={json} />
+        <CollectionGroup
+          legend="Collections"
+          items={all.filter((c) => !c.system)}
+          unselected={unselected}
+          onToggle={toggle}
+        />
+        <CollectionGroup
+          legend="System collections"
+          items={all.filter((c) => c.system)}
+          unselected={unselected}
+          onToggle={toggle}
+        />
+        <div className="flex items-center gap-2">
+          <Button variant="primary" onClick={download}>
+            Download
+          </Button>
+          <CopyButton text={json} label="Copy JSON" showLabel />
+        </div>
+        <pre
+          aria-label="Export preview"
+          className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-all rounded-control border border-line p-3 font-mono text-xs"
+        >
+          {json}
+        </pre>
       </div>
-      <pre
-        aria-label="Export preview"
-        className="max-h-[32rem] overflow-auto rounded border border-slate-200 p-3 text-xs dark:border-slate-700"
-      >
-        {json}
-      </pre>
-    </div>
+    </SettingsPage>
+  );
+}
+
+function CollectionGroup({
+  legend,
+  items,
+  unselected,
+  onToggle,
+}: {
+  legend: string;
+  items: { id: string; name: string }[];
+  unselected: Set<string>;
+  onToggle(id: string): void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
+      <legend className="mb-2 text-sm font-medium">{legend}</legend>
+      {items.map((c) => (
+        <Checkbox
+          key={c.id}
+          label={c.name}
+          checked={!unselected.has(c.id)}
+          onChange={() => onToggle(c.id)}
+        />
+      ))}
+    </fieldset>
   );
 }

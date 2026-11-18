@@ -3,9 +3,5 @@
 @import "@heybe/ui/theme.css";
 
 body {
-  @apply bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100;
-}
-
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.4);
+  @apply bg-bg font-sans text-sm text-text;
 }

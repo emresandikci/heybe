@@ -1,40 +1,117 @@
+import { Fragment, type ReactNode } from "react";
 import { Link, Outlet } from "@tanstack/react-router";
+import {
+  Archive,
+  Clock,
+  FileDown,
+  FileUp,
+  HardDrive,
+  KeyRound,
+  Mail,
+  SlidersHorizontal,
+  Terminal,
+} from "lucide-react";
 import { useHideControls } from "./use-settings";
 
-const links = [
-  { to: "/settings", label: "Application" },
-  { to: "/settings/mail", label: "Mail" },
-  { to: "/settings/storage", label: "File storage" },
-  { to: "/settings/backups", label: "Backups" },
-  { to: "/settings/crons", label: "Crons" },
-  { to: "/settings/export-collections", label: "Export collections" },
-  { to: "/settings/import-collections", label: "Import collections" },
-  { to: "/settings/sql", label: "SQL" },
-] as const;
+const iconProps = { size: 15, strokeWidth: 1.75 };
+
+const groups: {
+  title: string;
+  links: { to: string; label: string; icon: ReactNode }[];
+}[] = [
+  {
+    title: "System",
+    links: [
+      {
+        to: "/settings",
+        label: "Application",
+        icon: <SlidersHorizontal {...iconProps} />,
+      },
+      { to: "/settings/mail", label: "Mail", icon: <Mail {...iconProps} /> },
+      {
+        to: "/settings/storage",
+        label: "File storage",
+        icon: <HardDrive {...iconProps} />,
+      },
+      {
+        to: "/settings/backups",
+        label: "Backups",
+        icon: <Archive {...iconProps} />,
+      },
+      { to: "/settings/crons", label: "Crons", icon: <Clock {...iconProps} /> },
+    ],
+  },
+  {
+    title: "Sync",
+    links: [
+      {
+        to: "/settings/export-collections",
+        label: "Export collections",
+        icon: <FileDown {...iconProps} />,
+      },
+      {
+        to: "/settings/import-collections",
+        label: "Import collections",
+        icon: <FileUp {...iconProps} />,
+      },
+    ],
+  },
+  {
+    title: "Authentication",
+    links: [
+      {
+        to: "/settings/auth-providers",
+        label: "Auth providers",
+        icon: <KeyRound {...iconProps} />,
+      },
+    ],
+  },
+  {
+    title: "Debug",
+    links: [
+      { to: "/settings/sql", label: "SQL", icon: <Terminal {...iconProps} /> },
+    ],
+  },
+];
 
 export function SettingsLayout() {
   const hideControls = useHideControls();
   return (
     <div className="flex gap-6">
-      <nav aria-label="Settings" className="flex w-48 shrink-0 flex-col gap-1">
-        {links
-          .filter((l) => !(hideControls && l.label === "Import collections"))
-          .map((link) => (
-            <Link
-              key={link.to}
-              to={link.to}
-              activeOptions={{ exact: true }}
-              className="rounded px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-              activeProps={{
-                "aria-current": "page",
-                className: "font-semibold",
-              }}
+      <nav
+        aria-label="Settings"
+        className="sticky top-0 flex w-48 shrink-0 flex-col gap-0.5 self-start"
+      >
+        {groups.map((group, i) => (
+          <Fragment key={group.title}>
+            <h2
+              className={`px-2.5 pb-1 text-xs font-medium uppercase text-faint ${i > 0 ? "mt-3" : ""}`}
             >
-              {link.label}
-            </Link>
-          ))}
+              {group.title}
+            </h2>
+            {group.links
+              .filter(
+                (l) => !(hideControls && l.label === "Import collections"),
+              )
+              .map((link) => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  activeOptions={{ exact: true }}
+                  className="flex items-center gap-2 rounded-control px-2.5 py-1.5 text-muted hover:bg-hover/50 hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
+                  activeProps={{
+                    "aria-current": "page",
+                    className: "bg-hover font-medium text-text hover:bg-hover",
+                  }}
+                >
+                  {link.icon}
+                  {link.label}
+                </Link>
+              ))}
+          </Fragment>
+        ))}
       </nav>
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Outlet />
       </div>
     </div>

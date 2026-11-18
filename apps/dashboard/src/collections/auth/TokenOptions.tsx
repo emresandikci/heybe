@@ -1,6 +1,6 @@
-import { Button, Section } from "@heybe/ui";
+import { Button } from "@heybe/ui";
 import { randomSecret } from "../oauth2-providers";
-import { NumOpt, groupClass, type OptCtx } from "./opts";
+import { NumOpt, AuthSection, groupClass, type OptCtx } from "./opts";
 
 const TOKENS = [
   ["authToken", "Auth token"],
@@ -12,7 +12,7 @@ const TOKENS = [
 
 export function TokenOptions({ c }: { c: OptCtx }) {
   return (
-    <Section title="Tokens">
+    <AuthSection title="Tokens" prefixes={TOKENS.map(([key]) => key)}>
       {TOKENS.map(([key, label]) => {
         const pending = !!c.draft[key]?.secret;
         return (
@@ -43,6 +43,6 @@ export function TokenOptions({ c }: { c: OptCtx }) {
           </fieldset>
         );
       })}
-    </Section>
+    </AuthSection>
   );
 }

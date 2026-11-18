@@ -5,7 +5,7 @@ import { docRecord, docsServer } from "./editor-fixtures";
 
 const person = (id: string, name: string) => ({
   id,
-  collectionId: "_pb_users_auth_",
+  collectionId: "_hb_users_auth_",
   collectionName: "users",
   name,
 });
@@ -32,7 +32,7 @@ const create = () => {
     docRecord(),
   );
   return {
-    ...renderApp({ path: "/collections/pbc_docs?record=new", server }),
+    ...renderApp({ path: "/collections/hbc_docs?record=new", server }),
     server,
   };
 };
@@ -65,7 +65,7 @@ test("single relation replaces the selection", async () => {
   await user.click(picker().getByRole("button", { name: "Select" }));
   expect(owner.getByText("Bob")).toBeTruthy();
   expect(owner.queryByText("Ada")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   expect(server.find("POST", "/api/collections/docs/records")[0]!.body).toEqual(
     { owner: "u2" },
@@ -92,7 +92,7 @@ test("multiple relation stops at maxSelect and sends an array", async () => {
   ).toBe(false);
   await user.click(dialog.getByRole("checkbox", { name: "Cyd" }));
   await user.click(dialog.getByRole("button", { name: "Select" }));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   expect(server.find("POST", "/api/collections/docs/records")[0]!.body).toEqual(
     {
@@ -117,7 +117,7 @@ test("chips show presentable values from expand and can be removed", async () =>
     }),
   );
   const { user } = renderApp({
-    path: "/collections/pbc_docs?record=d1",
+    path: "/collections/hbc_docs?record=d1",
     server,
   });
   const owner = await group("owner");
@@ -131,7 +131,7 @@ test("chips show presentable values from expand and can be removed", async () =>
       .query.get("expand"),
   ).toBe("owner,friends");
   await user.click(friends.getByRole("button", { name: "Remove Bob" }));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("PATCH", "/api/collections/docs/records/:id")[0]!.body,
@@ -156,7 +156,7 @@ test("Load more fetches the next page", async () => {
     },
   );
   const { user } = renderApp({
-    path: "/collections/pbc_docs?record=new",
+    path: "/collections/hbc_docs?record=new",
     server,
   });
   const owner = await group("owner");
@@ -178,7 +178,7 @@ test("adding a record keeps the labels of the already selected ones", async () =
     }),
   );
   const { user } = renderApp({
-    path: "/collections/pbc_docs?record=d1",
+    path: "/collections/hbc_docs?record=d1",
     server,
   });
   const friends = await group("friends");

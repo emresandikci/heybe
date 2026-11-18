@@ -17,6 +17,12 @@ export function errorMessage(err: unknown): string {
   return "Something went wrong.";
 }
 
+export function filterError(err: unknown): string {
+  if ((err as { status?: number } | null)?.status === 400)
+    return "Invalid filter. Check the syntax and field names.";
+  return errorMessage(err);
+}
+
 export function flattenErrors(
   data: unknown,
   prefix = "",
@@ -108,10 +114,11 @@ export function UnclaimedErrors() {
   const rest = Object.entries(scope.errors).filter(
     ([path]) => !claimed.has(path),
   );
+  if (rest.length === 0 && Object.keys(scope.errors).length > 0) return null;
   return (
     <div
       role="alert"
-      className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
+      className="rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger-text"
     >
       <p>{scope.message}</p>
       {rest.length > 0 && (

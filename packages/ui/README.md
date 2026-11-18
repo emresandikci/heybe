@@ -22,7 +22,9 @@ window.heybe.dashboard.addPage({
 });
 ```
 
-`style.css` is compiled Tailwind without a reset. Dark mode follows `data-theme="dark"` on the root element.
+Use `@heybe/ui` for styled dashboard components and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`.
+
+`style.css` is compiled Tailwind without a reset. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
 
 Projects that use Tailwind v4 can import `@heybe/ui/theme.css` instead, which registers the dark variant, the code editor colors and the package sources.
 

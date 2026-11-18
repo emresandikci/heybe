@@ -60,7 +60,7 @@ export function SelectInput({
         />
       ))}
       {error && (
-        <p id={errorId} className="text-xs text-red-600 dark:text-red-400">
+        <p id={errorId} className="text-xs text-danger-text">
           {error}
         </p>
       )}

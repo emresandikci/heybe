@@ -49,7 +49,12 @@ const check = (name: string) => {
     required.push("package/dist/index.js", "package/dist/index.d.ts");
   }
   if (name === "@heybe/ui") {
-    required.push("package/dist/style.css", "package/src/theme.css");
+    required.push(
+      "package/dist/style.css",
+      "package/src/theme.css",
+      "package/dist/primitives/index.js",
+      "package/dist/primitives/index.d.ts",
+    );
     forbidden.push(/\.test\./);
   }
 
@@ -76,6 +81,16 @@ const check = (name: string) => {
     for (const dep of ["react", "react-dom"]) {
       if (!manifest.peerDependencies?.[dep]) {
         throw new Error(`${name}: missing ${dep} peer dependency`);
+      }
+    }
+    const style = run(["tar", "-xzOf", tarball, "package/dist/style.css"]);
+    for (const [label, pattern] of [
+      ["--hb-accent", /--hb-accent/],
+      ["backdrop-filter fallback", /@supports not .*backdrop-filter/],
+      ["reduced transparency fallback", /prefers-reduced-transparency/],
+    ] as const) {
+      if (!pattern.test(style)) {
+        throw new Error(`${name}: style.css missing ${label}`);
       }
     }
   }

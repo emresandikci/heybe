@@ -194,7 +194,7 @@ test("canBackup false disables create and restore", async () => {
 test("automatic backup cron and maxKeep are PATCHed under backups", async () => {
   const { user, server } = await openBackups();
   await user.selectOptions(
-    await screen.findByLabelText("Schedule"),
+    await screen.findByRole("combobox", { name: "Schedule" }),
     "0 0 * * *",
   );
   const keep = screen.getByLabelText("Keep the last");
@@ -209,7 +209,10 @@ test("automatic backup cron and maxKeep are PATCHed under backups", async () => 
 
 test("custom schedule shows a text input", async () => {
   const { user, server } = await openBackups();
-  await user.selectOptions(await screen.findByLabelText("Schedule"), "custom");
+  await user.selectOptions(
+    await screen.findByRole("combobox", { name: "Schedule" }),
+    "custom",
+  );
   await user.type(
     screen.getByLabelText("Custom cron expression"),
     "*/5 * * * *",
@@ -227,7 +230,9 @@ test("backups s3 secret is sent only when typed", async () => {
     user.click(screen.getByRole("button", { name: "Save changes" }));
   const sent = () =>
     server.find("PATCH", "/api/settings").map((r) => r.body as any);
-  await user.type(await screen.findByLabelText("Bucket"), "b");
+  await user.click(await screen.findByRole("button", { name: /S3 storage/ }));
+  await user.click(screen.getByRole("switch", { name: "Use S3 storage" }));
+  await user.type(screen.getByLabelText("Bucket"), "b");
   await save();
   await screen.findByText("Settings saved.");
   expect("secret" in sent()[0].backups.s3).toBe(false);
@@ -253,7 +258,9 @@ test("backups test connection is disabled while dirty and calls testS3('backups'
     screen.getByRole("button", {
       name: "Test connection",
     }) as HTMLButtonElement;
-  await user.type(await screen.findByLabelText("Bucket"), "b");
+  await user.click(await screen.findByRole("button", { name: /S3 storage/ }));
+  await user.click(screen.getByRole("switch", { name: "Use S3 storage" }));
+  await user.type(screen.getByLabelText("Bucket"), "b");
   expect(test().disabled).toBe(true);
   await user.click(screen.getByRole("button", { name: "Reset" }));
   await user.click(test());

@@ -1,12 +1,19 @@
 import { useEffect, useRef } from "react";
 import { useFieldError } from "../../app/errors";
-import { Button, Checkbox, CodeArea, type CodeAreaHandle } from "@heybe/ui";
+import { chipClass } from "../chip";
+import {
+  Checkbox,
+  CodeArea,
+  type CodeAreaHandle,
+  type CodeSuggest,
+} from "@heybe/ui";
 
 export function RuleInput({
   label,
   value,
   onChange,
   chips,
+  suggest,
   errorPath,
   emptyHint = "Empty rule: everyone, guests included.",
   lockable = true,
@@ -15,6 +22,7 @@ export function RuleInput({
   value: string | null;
   onChange: (value: string | null) => void;
   chips: string[];
+  suggest: CodeSuggest;
   errorPath: string;
   emptyHint?: string;
   lockable?: boolean;
@@ -30,13 +38,13 @@ export function RuleInput({
   const insert = (chip: string) => area.current?.insert(chip);
 
   return (
-    <fieldset className="flex flex-col gap-2 rounded border border-slate-200 p-3 dark:border-slate-700">
+    <fieldset className="flex flex-col gap-2 rounded border border-line p-3 dark:border-line">
       <legend className="sr-only">{label}</legend>
       <CodeArea
         ref={area}
         label={label}
         rows={3}
-        completions={chips}
+        suggest={suggest}
         value={value ?? ""}
         disabled={value === null}
         error={error}
@@ -58,16 +66,16 @@ export function RuleInput({
       )}
       {value !== null && (
         <>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {chips.map((chip) => (
-              <Button
+              <button
                 key={chip}
-                variant="ghost"
-                className="font-mono text-xs"
+                type="button"
+                className={`${chipClass} font-mono`}
                 onClick={() => insert(chip)}
               >
                 {chip}
-              </Button>
+              </button>
             ))}
           </div>
         </>

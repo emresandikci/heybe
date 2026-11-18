@@ -1,6 +1,7 @@
 import type { DeepKeysOfType } from "@tanstack/react-form";
-import { useFieldError } from "../../app/errors";
-import { Checkbox, NumberField, TextField } from "@heybe/ui";
+import { useState, type ReactNode } from "react";
+import { useErrorsUnder, useFieldError } from "../../app/errors";
+import { Checkbox, Disclosure, NumberField, TextField } from "@heybe/ui";
 import type { CollectionDraft, EditorForm } from "../editor-state";
 
 export function getIn(obj: unknown, path: string): unknown {
@@ -85,4 +86,31 @@ export function BoolOpt({ c, path, label, hint }: OptProps<boolean>) {
 }
 
 export const groupClass =
-  "flex flex-col gap-2 rounded border border-slate-200 p-3 dark:border-slate-700";
+  "flex flex-col gap-2 rounded border border-line p-3 dark:border-line";
+
+export function AuthSection({
+  title,
+  prefixes,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  prefixes: string[];
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const failed = useErrorsUnder("", false).some(([path]) =>
+    prefixes.some((p) => path === p || path.startsWith(`${p}.`)),
+  );
+  const [open, setOpen] = useState(defaultOpen || failed);
+  const [wasFailed, setWasFailed] = useState(failed);
+  if (failed !== wasFailed) {
+    setWasFailed(failed);
+    if (failed) setOpen(true);
+  }
+  return (
+    <Disclosure title={title} open={open} onOpenChange={setOpen}>
+      <div className="flex flex-col gap-3">{children}</div>
+    </Disclosure>
+  );
+}

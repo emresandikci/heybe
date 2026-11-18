@@ -7,6 +7,7 @@ import { createExtensionRegistry, loadExtensions } from "./app/extensions";
 import { createAppRouter } from "./app/router";
 import { isSuperuserSession, refreshSession } from "./auth/session";
 import { initTheme } from "./app/theme";
+import "@fontsource-variable/inter";
 import "./styles.css";
 
 initTheme();

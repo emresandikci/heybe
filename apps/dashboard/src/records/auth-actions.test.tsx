@@ -2,10 +2,11 @@ import { expect, test } from "bun:test";
 import { screen, waitFor, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../test/fake-server";
 import { SUPERUSER, fakeToken, renderApp } from "../test/render";
+import { openActions, pickAction } from "./editor-fixtures";
 
 const userRecord = {
   id: "u1",
-  collectionId: "_pb_users_auth_",
+  collectionId: "_hb_users_auth_",
   collectionName: "users",
   email: "a@b.c",
   emailVisibility: false,
@@ -18,7 +19,7 @@ const openUser = async (server: FakeServer = fakeServer(), extra = {}) => {
     ...extra,
   });
   const app = renderApp({
-    path: "/collections/_pb_users_auth_?record=u1",
+    path: "/collections/_hb_users_auth_?record=u1",
     server,
   });
   await screen.findByRole("dialog", { name: "Edit record" });
@@ -36,7 +37,7 @@ const openSelf = async (server: FakeServer = fakeServer()) => {
     verified: true,
   });
   const app = renderApp({
-    path: "/collections/pbc_3142635823?record=su1",
+    path: "/collections/hbc_3142635823?record=su1",
     server,
   });
   await screen.findByRole("dialog", { name: "Edit record" });
@@ -54,9 +55,7 @@ test("send verification posts the record email", async () => {
     () => undefined,
   );
   const { user, editor } = await openUser(server);
-  await user.click(
-    editor.getByRole("button", { name: "Send verification email" }),
-  );
+  await pickAction(user, editor, "Send verification email");
   expect(await screen.findByText("Verification email sent.")).toBeTruthy();
   expect(
     server.find("POST", "/api/collections/users/request-verification")[0]!.body,
@@ -64,12 +63,13 @@ test("send verification posts the record email", async () => {
 });
 
 test("send verification is hidden for verified records", async () => {
-  const { editor } = await openUser(fakeServer(), { verified: true });
+  const { user, editor } = await openUser(fakeServer(), { verified: true });
+  const menu = await openActions(user, editor);
   expect(
-    editor.getByRole("button", { name: "Send password reset email" }),
+    menu.getByRole("menuitem", { name: "Send password reset email" }),
   ).toBeTruthy();
   expect(
-    editor.queryByRole("button", { name: "Send verification email" }),
+    menu.queryByRole("menuitem", { name: "Send verification email" }),
   ).toBeNull();
 });
 
@@ -80,9 +80,7 @@ test("send password reset posts the record email", async () => {
     () => undefined,
   );
   const { user, editor } = await openUser(server);
-  await user.click(
-    editor.getByRole("button", { name: "Send password reset email" }),
-  );
+  await pickAction(user, editor, "Send password reset email");
   expect(await screen.findByText("Password reset email sent.")).toBeTruthy();
   expect(
     server.find("POST", "/api/collections/users/request-password-reset")[0]!
@@ -93,7 +91,7 @@ test("send password reset posts the record email", async () => {
 test("impersonate posts duration and shows the token with a copy button", async () => {
   const impersonated = fakeToken({
     id: "u1",
-    collectionId: "_pb_users_auth_",
+    collectionId: "_hb_users_auth_",
     refreshable: false,
   });
   const server = fakeServer().on(
@@ -103,7 +101,7 @@ test("impersonate posts duration and shows the token with a copy button", async 
   );
   const { user, editor, client } = await openUser(server);
   const superuserToken = client.authStore.token;
-  await user.click(editor.getByRole("button", { name: "Impersonate" }));
+  await pickAction(user, editor, "Impersonate");
   const dialog = within(
     await screen.findByRole("dialog", { name: "Impersonate a@b.c" }),
   );
@@ -134,7 +132,7 @@ test("impersonate failure shows the server message", async () => {
   );
   const { user, editor, client } = await openUser(server);
   const superuserToken = client.authStore.token;
-  await user.click(editor.getByRole("button", { name: "Impersonate" }));
+  await pickAction(user, editor, "Impersonate");
   const dialog = within(
     await screen.findByRole("dialog", { name: "Impersonate a@b.c" }),
   );
@@ -147,11 +145,11 @@ test("impersonate failure shows the server message", async () => {
 });
 
 test("auth actions are not shown for new records or base collections", async () => {
-  renderApp({ path: "/collections/_pb_users_auth_?record=new" });
+  renderApp({ path: "/collections/_hb_users_auth_?record=new" });
   const editor = within(
     await screen.findByRole("dialog", { name: "New record" }),
   );
-  expect(editor.queryByRole("button", { name: "Impersonate" })).toBeNull();
+  expect(editor.queryByRole("button", { name: "More actions" })).toBeNull();
 });
 
 test("deleting your own superuser signs you out", async () => {
@@ -165,7 +163,7 @@ test("deleting your own superuser signs you out", async () => {
     "GET",
     "/api/collections/_superusers/records",
   ).length;
-  await user.click(editor.getByRole("button", { name: "Delete" }));
+  await pickAction(user, editor, "Delete");
   const confirm = await screen.findByRole("dialog", { name: "Delete record" });
   await user.click(within(confirm).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
@@ -192,7 +190,7 @@ test("changing your own password signs you out after save", async () => {
   await user.click(editor.getByLabelText("Change password"));
   await user.type(editor.getByLabelText("Password"), "secret123");
   await user.type(editor.getByLabelText("Confirm password"), "secret123");
-  await user.click(editor.getByRole("button", { name: "Save" }));
+  await user.click(editor.getByRole("button", { name: "Save changes" }));
   await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
   expect(client.authStore.token).toBe("");
   expect(
@@ -210,10 +208,10 @@ test("saving your own record without a new password keeps you signed in", async 
     { ...SUPERUSER },
   );
   const { user, editor, client, router } = await openSelf(server);
-  await user.click(editor.getByLabelText("Public email"));
-  await user.click(editor.getByRole("button", { name: "Save" }));
+  await user.click(editor.getByLabelText("emailVisibility"));
+  await user.click(editor.getByRole("button", { name: "Save changes" }));
   expect(await screen.findByText("Record saved.")).toBeTruthy();
-  expect(router.state.location.pathname).toBe("/collections/pbc_3142635823");
+  expect(router.state.location.pathname).toBe("/collections/hbc_3142635823");
   expect(client.authStore.token).not.toBe("");
 });
 
@@ -221,7 +219,7 @@ test("Superusers link opens the _superusers records", async () => {
   const { user, router, server } = renderApp({ path: "/collections" });
   await user.click(await screen.findByRole("link", { name: "Superusers" }));
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/collections/pbc_3142635823"),
+    expect(router.state.location.pathname).toBe("/collections/hbc_3142635823"),
   );
   await waitFor(() =>
     expect(
@@ -231,13 +229,14 @@ test("Superusers link opens the _superusers records", async () => {
 });
 
 test("email actions are hidden when the record has no email", async () => {
-  const { editor } = await openUser(fakeServer(), { email: "" });
-  expect(editor.getByRole("button", { name: "Impersonate" })).toBeTruthy();
+  const { user, editor } = await openUser(fakeServer(), { email: "" });
+  const menu = await openActions(user, editor);
+  expect(menu.getByRole("menuitem", { name: "Impersonate" })).toBeTruthy();
   expect(
-    editor.queryByRole("button", { name: "Send verification email" }),
+    menu.queryByRole("menuitem", { name: "Send verification email" }),
   ).toBeNull();
   expect(
-    editor.queryByRole("button", { name: "Send password reset email" }),
+    menu.queryByRole("menuitem", { name: "Send password reset email" }),
   ).toBeNull();
 });
 
@@ -248,18 +247,19 @@ test("password reset is hidden when password auth is disabled", async () => {
   serveCollections(server, [
     { ...users(), passwordAuth: { enabled: false, identityFields: [] } },
   ]);
-  const { editor } = await openUser(server);
+  const { user, editor } = await openUser(server);
+  const menu = await openActions(user, editor);
   expect(
-    editor.getByRole("button", { name: "Send verification email" }),
+    menu.getByRole("menuitem", { name: "Send verification email" }),
   ).toBeTruthy();
   expect(
-    editor.queryByRole("button", { name: "Send password reset email" }),
+    menu.queryByRole("menuitem", { name: "Send password reset email" }),
   ).toBeNull();
 });
 
 test("impersonate rejects a non-integer duration inline", async () => {
   const { user, editor, server } = await openUser();
-  await user.click(editor.getByRole("button", { name: "Impersonate" }));
+  await pickAction(user, editor, "Impersonate");
   const dialog = within(
     await screen.findByRole("dialog", { name: "Impersonate a@b.c" }),
   );

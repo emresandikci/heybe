@@ -1,8 +1,10 @@
 import type { CollectionModel } from "@heybe/client";
 import { useQuery } from "@tanstack/react-query";
+import { Tooltip } from "@heybe/ui";
 import type { ReactNode } from "react";
 import { useClient } from "../app/context";
 import { keys, useCollections } from "../app/queries";
+import { formatDate } from "../app/format";
 
 export type CellField = {
   name: string;
@@ -24,11 +26,13 @@ function htmlText(html: string): string {
 }
 
 function DateCell({ value }: { value: string }) {
-  const local = new Date(value.replace(" ", "T"));
-  const title = Number.isNaN(local.getTime())
-    ? undefined
-    : local.toLocaleString();
-  return <span title={title}>{value}</span>;
+  const text = formatDate(value);
+  if (text === value) return <span>{value}</span>;
+  return (
+    <Tooltip content={value}>
+      <span tabIndex={0}>{text}</span>
+    </Tooltip>
+  );
 }
 
 export function useFileToken(field: CellField) {
@@ -113,7 +117,12 @@ function RelationCell({
   const labels = list(value).map((id) =>
     presentableLabel(target, expanded.get(id as string), String(id)),
   );
-  return <>{cut(labels.join(", "))}</>;
+  const text = cut(labels.join(", "));
+  return (
+    <span className="block truncate" title={text}>
+      {text}
+    </span>
+  );
 }
 
 export function CellValue({

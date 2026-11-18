@@ -13,7 +13,7 @@ test("installer creates the first superuser with the installer token and signs i
       record: SUPERUSER,
     });
   const { router, client, user } = renderApp({
-    path: `/pbinstall/${installerToken}`,
+    path: `/hbinstall/${installerToken}`,
     server,
     auth: "none",
   });
@@ -22,7 +22,7 @@ test("installer creates the first superuser with the installer token and signs i
   await user.type(screen.getByLabelText("Confirm password"), "secret12345");
   await user.click(screen.getByRole("button", { name: "Create superuser" }));
 
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   const [create] = server.find("POST", "/api/collections/_superusers/records");
   expect(create!.headers.get("authorization")).toBe(installerToken);
   expect(create!.body).toEqual({
@@ -36,7 +36,7 @@ test("installer creates the first superuser with the installer token and signs i
   );
   expect(login!.headers.get("authorization")).toBeNull();
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+    expect(router.state.location.pathname).toBe("/collections/hbc_posts"),
   );
   expect(client.authStore.token).toBe(fakeToken());
 });
@@ -53,7 +53,7 @@ test("installer shows create validation errors next to the inputs", async () => 
     400,
   );
   const { user } = renderApp({
-    path: `/pbinstall/${installerToken}`,
+    path: `/hbinstall/${installerToken}`,
     server,
     auth: "none",
   });
@@ -69,7 +69,7 @@ test("installer shows create validation errors next to the inputs", async () => 
 });
 
 test("an expired installer token shows the expiry message and no form", async () => {
-  renderApp({ path: `/pbinstall/${fakeToken({ exp: 1 })}`, auth: "none" });
+  renderApp({ path: `/hbinstall/${fakeToken({ exp: 1 })}`, auth: "none" });
   expect(
     await screen.findByText(
       "This installer link has expired. Restart the server to print a new one.",
@@ -79,16 +79,26 @@ test("an expired installer token shows the expiry message and no form", async ()
   expect(screen.queryByLabelText("Backup file")).toBeNull();
 });
 
+test("expired installer link shows its own title and a sign in link", async () => {
+  renderApp({ path: `/hbinstall/${fakeToken({ exp: 1 })}`, auth: "none" });
+  expect((await screen.findByRole("heading", { level: 1 })).textContent).toBe(
+    "Installer link expired",
+  );
+  expect(
+    screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
+  ).toContain("/login");
+});
+
 test("installer restore uploads then restores with the installer token", async () => {
   const server = fakeServer()
     .on("POST", "/api/backups/upload", () => undefined)
     .on("POST", "/api/backups/:key/restore", () => undefined);
   const { router, user } = renderApp({
-    path: `/pbinstall/${installerToken}`,
+    path: `/hbinstall/${installerToken}`,
     server,
     auth: "none",
   });
-  const file = new File(["zip"], "pb backup.zip", {
+  const file = new File(["zip"], "hb backup.zip", {
     type: "application/zip",
   });
   await user.upload(await screen.findByLabelText("Backup file"), file);
@@ -102,10 +112,10 @@ test("installer restore uploads then restores with the installer token", async (
   expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
   const [upload] = server.find("POST", "/api/backups/upload");
   expect(upload!.headers.get("authorization")).toBe(installerToken);
-  expect((upload!.form!.get("file") as File).name).toBe("pb backup.zip");
+  expect((upload!.form!.get("file") as File).name).toBe("hb backup.zip");
   const restores = server.requests.filter((r) => r.path.endsWith("/restore"));
   expect(restores.map((r) => r.path)).toEqual([
-    "/api/backups/pb%20backup.zip/restore",
+    "/api/backups/hb%20backup.zip/restore",
   ]);
   expect(restores[0]!.headers.get("authorization")).toBe(installerToken);
   expect(server.requests.indexOf(upload!)).toBeLessThan(

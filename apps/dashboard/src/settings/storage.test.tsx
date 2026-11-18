@@ -14,6 +14,7 @@ function serve(server = fakeServer()): FakeServer {
 async function openStorage(server = serve()) {
   const app = renderApp({ path: "/settings/storage", server });
   await screen.findByLabelText("Endpoint");
+  await app.user.click(screen.getByRole("button", { name: /S3 storage/ }));
   const save = () =>
     app.user.click(screen.getByRole("button", { name: "Save changes" }));
   const sent = () =>
@@ -33,6 +34,7 @@ test("shows the note about existing files", async () => {
 
 test("s3 secret is sent only when typed", async () => {
   const { user, save, sent } = await openStorage();
+  await user.click(screen.getByRole("switch", { name: "Use S3 storage" }));
   await user.type(screen.getByLabelText("Bucket"), "b");
   await save();
   await screen.findByText("Settings saved.");
@@ -60,6 +62,7 @@ test("storage test is disabled while dirty and calls testS3 when clean", async (
   );
   const { user } = await openStorage(server);
   expect(testButton().disabled).toBe(false);
+  await user.click(screen.getByRole("switch", { name: "Use S3 storage" }));
   await user.type(screen.getByLabelText("Secret"), "x");
   expect(testButton().disabled).toBe(true);
   await user.clear(screen.getByLabelText("Secret"));

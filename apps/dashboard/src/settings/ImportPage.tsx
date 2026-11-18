@@ -1,7 +1,7 @@
 import type { CollectionModel } from "@heybe/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { useId, useRef, useState, type ChangeEvent } from "react";
+import { useId, useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage, flattenErrors, responseData } from "../app/errors";
 import { keys, useCollections } from "../app/queries";
@@ -11,6 +11,7 @@ import {
   CodeArea,
   Dialog,
   EmptyState,
+  FileField,
   useConfirm,
   useToast,
 } from "@heybe/ui";
@@ -20,6 +21,8 @@ import {
   type CollectionChange,
   type ImportDiff,
 } from "./import-diff";
+import { QueryStatus } from "./QueryStatus";
+import { SettingsPage } from "./SettingsPage";
 import { useSettings } from "./use-settings";
 
 interface Review {
@@ -36,7 +39,6 @@ export function ImportPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<{ message: string; details: string[] }>();
   const [review, setReview] = useState<Review | null>(null);
 
@@ -49,13 +51,21 @@ export function ImportPage() {
     },
   });
 
-  if (!settings.data) return null;
+  if (!settings.data)
+    return (
+      <SettingsPage title="Import collections">
+        <QueryStatus query={settings} />
+      </SettingsPage>
+    );
   if (settings.data.meta.hideControls)
-    return <EmptyState title="Collection controls are hidden." />;
+    return (
+      <SettingsPage title="Import collections">
+        <EmptyState title="Collection controls are hidden." />
+      </SettingsPage>
+    );
 
-  const load = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
+  const load = async (files: File[]) => {
+    const file = files[0];
     if (!file) return;
     form.setFieldValue("text", await file.text());
     setError(undefined);
@@ -113,91 +123,93 @@ export function ImportPage() {
   };
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void form.handleSubmit({ step: "review" });
-      }}
-      className="flex flex-col gap-3"
-    >
-      <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
-        Imports do not write migration files. Run{" "}
-        <code>heybe migrate collections</code> afterwards to snapshot the
-        schema.
-      </p>
-      <div>
-        <Button onClick={() => fileInput.current?.click()}>
-          Load from file
-        </Button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".json,application/json"
-          aria-label="Collections file"
-          className="hidden"
-          onChange={(e) => void load(e)}
-        />
-      </div>
-      <form.Field name="text">
-        {(field) => (
-          <CodeArea
-            label="Collections JSON"
-            language="json"
-            rows={16}
-            value={field.state.value}
-            onChange={(value) => {
-              field.handleChange(value);
-              setError(undefined);
-            }}
-          />
-        )}
-      </form.Field>
-      <form.Field name="deleteMissing">
-        {(field) => (
-          <Checkbox
-            label="Delete collections and fields missing from the import"
-            hint="System collections and system fields are never deleted."
-            checked={field.state.value}
-            onChange={(e) => field.handleChange(e.target.checked)}
-          />
-        )}
-      </form.Field>
-      {error && (
-        <div
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200"
-        >
-          <p>{error.message}</p>
-          {error.details.map((d, i) => (
-            <pre key={i} className="mt-2 whitespace-pre-wrap text-xs">
-              {d}
-            </pre>
-          ))}
-        </div>
-      )}
-      <form.Subscribe
-        selector={(s) => [s.isSubmitting, !s.values.text.trim()] as const}
+    <SettingsPage title="Import collections">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void form.handleSubmit({ step: "review" });
+        }}
+        className="flex flex-col gap-3"
       >
-        {([isSubmitting, noText]) => (
-          <Button
-            type="submit"
-            className="self-start"
-            variant="primary"
-            loading={isSubmitting}
-            disabled={noText || !collections.data}
+        <p className="rounded-control border border-warning-line bg-warning-bg p-3 text-sm text-warning-text">
+          Imports do not write migration files. Run{" "}
+          <code>heybe migrate collections</code> afterwards to snapshot the
+          schema.
+        </p>
+        <div>
+          <FileField
+            label="Collections file"
+            accept=".json,application/json"
+            onChange={(files) => void load(files)}
+          />
+        </div>
+        <form.Field name="text">
+          {(field) => (
+            <CodeArea
+              label="Collections JSON"
+              language="json"
+              rows={16}
+              value={field.state.value}
+              onChange={(value) => {
+                field.handleChange(value);
+                setError(undefined);
+              }}
+            />
+          )}
+        </form.Field>
+        <form.Field name="deleteMissing">
+          {(field) => (
+            <Checkbox
+              label="Delete collections and fields missing from the import"
+              hint="System collections and system fields are never deleted."
+              checked={field.state.value}
+              onChange={(e) => field.handleChange(e.target.checked)}
+            />
+          )}
+        </form.Field>
+        {error && (
+          <div
+            role="alert"
+            className="rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger-text"
           >
-            Review
-          </Button>
+            <p>{error.message}</p>
+            {error.details.map((d, i) => (
+              <pre key={i} className="mt-2 whitespace-pre-wrap text-xs">
+                {d}
+              </pre>
+            ))}
+          </div>
         )}
-      </form.Subscribe>
-      {review && (
-        <ReviewDialog
-          diff={review.diff}
-          onCancel={() => setReview(null)}
-          onImport={() => void form.handleSubmit({ step: "import" })}
-        />
-      )}
-    </form>
+        <form.Subscribe
+          selector={(s) => [s.isSubmitting, !s.values.text.trim()] as const}
+        >
+          {([isSubmitting, noText]) => (
+            <div className="flex items-center gap-3">
+              <Button
+                type="submit"
+                variant="primary"
+                loading={isSubmitting}
+                disabled={noText || !collections.data}
+              >
+                Review
+              </Button>
+              {noText && (
+                <p className="text-xs text-muted">
+                  Paste or load a JSON file to enable Review.
+                </p>
+              )}
+            </div>
+          )}
+        </form.Subscribe>
+        {review && (
+          <ReviewDialog
+            diff={review.diff}
+            onCancel={() => setReview(null)}
+            onImport={() => void form.handleSubmit({ step: "import" })}
+          />
+        )}
+      </form>
+    </SettingsPage>
   );
 }
 
@@ -234,7 +246,7 @@ function ReviewDialog({
       <Section title="Changed" items={diff.changed.map(changeItem)} />
       <Section title="Deleted" items={diff.deleted.map((name) => ({ name }))} />
       {deletes && (
-        <p className="mt-3 text-sm text-red-700 dark:text-red-300">
+        <p className="mt-3 text-sm text-danger-text">
           Deleted collections and fields lose all their data.
         </p>
       )}
@@ -276,10 +288,7 @@ function Section({
           <li key={item.name}>
             <span className="font-mono">{item.name}</span>
             {item.lines?.map((line) => (
-              <p
-                key={line}
-                className="text-xs text-slate-600 dark:text-slate-400"
-              >
+              <p key={line} className="text-xs text-muted">
                 {line}
               </p>
             ))}

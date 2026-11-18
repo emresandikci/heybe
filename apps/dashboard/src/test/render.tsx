@@ -15,7 +15,7 @@ import { collectionsFixture, settingsFixture } from "./fixtures";
 
 export const SUPERUSER = {
   id: "su1",
-  collectionId: "pbc_3142635823",
+  collectionId: "hbc_3142635823",
   collectionName: "_superusers",
   email: "admin@example.com",
 } as const;
@@ -30,7 +30,7 @@ export function fakeToken(claims: Record<string, unknown> = {}): string {
   const payload = {
     id: "su1",
     type: "auth",
-    collectionId: "pbc_3142635823",
+    collectionId: "hbc_3142635823",
     exp: 4102444800,
     ...claims,
   };

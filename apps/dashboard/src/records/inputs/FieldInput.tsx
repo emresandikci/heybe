@@ -10,16 +10,9 @@ import { GeoPointInput, type GeoValue } from "./GeoPointInput";
 import { JsonInput } from "./JsonInput";
 import { SelectInput } from "./SelectInput";
 
-const AUTH_LABELS: Record<string, string> = {
-  email: "Email",
-  emailVisibility: "Public email",
-  verified: "Verified",
-};
-
 export function FieldInput({
   field,
   value,
-  authCollection,
   record,
   disabled,
   localError,
@@ -27,14 +20,13 @@ export function FieldInput({
 }: {
   field: CellField;
   value: unknown;
-  authCollection: boolean;
   record?: Record<string, unknown>;
   disabled: boolean;
   localError?: string;
   onChange: (value: unknown) => void;
 }) {
   const error = useFieldError(field.name) ?? localError;
-  const label = (authCollection && AUTH_LABELS[field.name]) || field.name;
+  const label = field.name;
   const text = value as string;
   switch (field.type) {
     case "text":
@@ -86,8 +78,6 @@ export function FieldInput({
           onChange={onChange}
         />
       );
-    case "autodate":
-      return <TextField label={label} value={text} readOnly />;
     case "select":
       return (
         <SelectInput

@@ -1,21 +1,24 @@
 import { tokenExpired } from "@heybe/client";
 import { useForm } from "@tanstack/react-form";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors } from "../app/errors";
-import { Button } from "@heybe/ui";
+import { Button, FileField } from "@heybe/ui";
 import { AuthCard, Field } from "./AuthCard";
 
 export function InstallerPage() {
-  const { token } = useParams({ from: "/pbinstall/$token" });
+  const { token } = useParams({ from: "/hbinstall/$token" });
   if (tokenExpired(token, Date.now()))
     return (
-      <AuthCard title="Create your first superuser">
+      <AuthCard title="Installer link expired">
         <p role="alert">
           This installer link has expired. Restart the server to print a new
           one.
         </p>
+        <Link to="/login" className="text-accent-text hover:underline">
+          Sign in
+        </Link>
       </AuthCard>
     );
   return <Installer token={token} />;
@@ -154,27 +157,21 @@ function Installer({ token }: { token: string }) {
             e.preventDefault();
             void restoreForm.handleSubmit();
           }}
-          className="flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-700"
+          className="flex flex-col gap-3 border-t border-line pt-4"
         >
           <h2 className="font-medium">Restore from a backup</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-muted">
             The backup is not validated. Only use files you trust.
           </p>
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Backup file
-            <restoreForm.Field name="file">
-              {(field) => (
-                <input
-                  type="file"
-                  accept=".zip,application/zip"
-                  required
-                  onChange={(e) =>
-                    field.handleChange(e.target.files?.[0] ?? null)
-                  }
-                />
-              )}
-            </restoreForm.Field>
-          </label>
+          <restoreForm.Field name="file">
+            {(field) => (
+              <FileField
+                label="Backup file"
+                accept=".zip,application/zip"
+                onChange={(files) => field.handleChange(files[0] ?? null)}
+              />
+            )}
+          </restoreForm.Field>
           <UnclaimedErrors />
           <restoreForm.Subscribe
             selector={(s) => [s.isSubmitting, s.values.file] as const}

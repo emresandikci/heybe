@@ -7,6 +7,7 @@ import {
   finalIndexes,
   type CollectionDraft,
 } from "./editor-state";
+import { indexCompletions } from "./sql-completions";
 import { buildIndex, parseIndex, randomIndexName } from "./index-sql";
 
 export function IndexesEditor({
@@ -75,7 +76,7 @@ function IndexRow({
   const error = useFieldError(errorPath);
   const parsed = parseIndex(sql);
   return (
-    <li className="flex flex-col gap-1 rounded border border-slate-200 p-2 dark:border-slate-700">
+    <li className="flex flex-col gap-1 rounded border border-line p-2 dark:border-line">
       <div className="flex items-center gap-2">
         <span className="flex-1 font-mono text-xs" title={sql}>
           {parsed
@@ -89,9 +90,7 @@ function IndexRow({
           Remove index
         </Button>
       </div>
-      {error && (
-        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-      )}
+      {error && <p className="text-xs text-danger-text">{error}</p>}
     </li>
   );
 }
@@ -186,6 +185,7 @@ function IndexDialog({
               label="Index SQL"
               language="sql"
               sqlSchema={{ [table]: columns }}
+              completions={indexCompletions(columns)}
               rows={4}
               value={field.state.value}
               onChange={field.handleChange}

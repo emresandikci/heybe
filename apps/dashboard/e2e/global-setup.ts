@@ -25,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export default async function globalSetup() {
   clearState();
   const tmp = mkdtempSync(join(tmpdir(), "heybe-e2e-"));
-  const dataDir = join(tmp, "pb_data");
+  const dataDir = join(tmp, "hb_data");
   const migrationsDir = join(tmp, "migrations");
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
@@ -59,7 +59,7 @@ export default async function globalSetup() {
     );
     const onData = (chunk: Buffer) => {
       output += chunk.toString();
-      const match = output.match(/\S+\/_\/#\/pbinstall\/\S+/);
+      const match = output.match(/\S+\/_\/#\/hbinstall\/\S+/);
       if (!match) return;
       clearTimeout(timer);
       resolve(match[0]);

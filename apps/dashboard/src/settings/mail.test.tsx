@@ -11,7 +11,10 @@ function echoSettings(server: FakeServer) {
   });
 }
 
+const smtpOn = { ...settingsFixture.smtp, enabled: true };
+
 async function openMail(server = echoSettings(fakeServer())) {
+  server.on("GET", "/api/settings", { ...settingsFixture, smtp: smtpOn });
   const app = renderApp({ path: "/settings/mail", server });
   await screen.findByLabelText("Host");
   const save = () =>
@@ -39,7 +42,7 @@ test("typing a password sends it, clearing it again sends no key", async () => {
   await save();
   await screen.findByText("Settings saved.");
   expect(sent()[0]).toEqual({
-    smtp: { ...settingsFixture.smtp, password: "hunter2" },
+    smtp: { ...smtpOn, password: "hunter2" },
   });
 
   await user.type(screen.getByLabelText("Host"), "x");
@@ -143,4 +146,15 @@ test("server error under the smtp host input", async () => {
   await user.type(screen.getByLabelText("Host"), "x");
   await save();
   expect(await screen.findAllByText("Invalid host.")).toHaveLength(1);
+});
+
+test("smtp fields are disabled until SMTP is switched on", async () => {
+  const server = echoSettings(fakeServer());
+  const app = renderApp({ path: "/settings/mail", server });
+  const host = (await screen.findByLabelText("Host")) as HTMLInputElement;
+  const group = host.closest("fieldset") as HTMLFieldSetElement;
+  expect(group.disabled).toBe(true);
+  await app.user.click(screen.getByRole("button", { name: /SMTP server/ }));
+  await app.user.click(screen.getByRole("switch", { name: "Use SMTP" }));
+  expect(group.disabled).toBe(false);
 });

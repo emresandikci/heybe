@@ -20,10 +20,12 @@ import {
 } from "../collections/CollectionsLayout";
 import { ExtensionPage } from "../extensions/ExtensionPage";
 import { validateRecordsSearch } from "../records/RecordsPage";
+import { NotFound } from "../layout/NotFound";
 import { Shell } from "../layout/Shell";
 import { ApplicationPage } from "../settings/ApplicationPage";
 import { LogsPage, validateLogsSearch } from "../logs/LogsPage";
 import { SqlPage } from "../settings/SqlPage";
+import { AuthProvidersPage } from "../settings/AuthProvidersPage";
 import { BackupsPage } from "../settings/BackupsPage";
 import { CronsPage } from "../settings/CronsPage";
 import { ExportPage } from "../settings/ExportPage";
@@ -62,7 +64,7 @@ const requestResetRoute = createRoute({
 
 export const installerRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/pbinstall/$token",
+  path: "/hbinstall/$token",
   beforeLoad: guestOnly,
   component: InstallerPage,
 });
@@ -135,6 +137,12 @@ const extensionRoute = createRoute({
   component: ExtensionPage,
 });
 
+const notFoundRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: "$",
+  component: NotFound,
+});
+
 const settingsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: "/settings",
@@ -162,6 +170,7 @@ const settingsPages = [
   settingsPage("export-collections", ExportPage),
   settingsPage("import-collections", ImportPage),
   settingsPage("sql", SqlPage),
+  settingsPage("auth-providers", AuthProvidersPage),
 ];
 
 export const routeTree = rootRoute.addChildren([
@@ -174,6 +183,7 @@ export const routeTree = rootRoute.addChildren([
     collectionsRoute.addChildren([collectionsIndexRoute, collectionRoute]),
     logsRoute,
     extensionRoute,
+    notFoundRoute,
     settingsRoute.addChildren([settingsIndexRoute, ...settingsPages]),
   ]),
 ]);

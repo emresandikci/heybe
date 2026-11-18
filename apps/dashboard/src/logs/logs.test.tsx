@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { render, screen, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../test/fake-server";
 import { settingsFixture } from "../test/fixtures";
+import { completionLabels } from "../test/editor";
 import { renderApp } from "../test/render";
 import { LogsChart } from "./LogsChart";
 
@@ -106,21 +107,19 @@ test("stats use the same filter", async () => {
   expect(lastQuery(server, "/api/logs/stats").get("filter")).toBe(EXCLUDE);
 });
 
-test("the chart draws one bar per entry with a title", async () => {
+test("the chart has a baseline, y ticks and one bar per hour in the range", async () => {
   renderApp({ path: "/logs", server: serve() });
   const chart = await screen.findByRole("img", {
     name: "Requests per hour, 9 in total",
   });
-  expect(chart.querySelectorAll("rect")).toHaveLength(2);
-  const titles = [...chart.querySelectorAll("title")].map((t) => t.textContent);
-  expect(titles).toEqual([
-    "2026-11-11 10:00:00 UTC: 3",
-    "2026-11-11 11:00:00 UTC: 6",
-  ]);
-  const heights = [...chart.querySelectorAll("rect")].map((r) =>
-    Number(r.getAttribute("height")),
-  );
-  expect(heights[1]).toBeGreaterThan(heights[0]!);
+  const bars = [...chart.querySelectorAll<HTMLElement>("[data-bar]")];
+  expect(bars).toHaveLength(24);
+  const heights = bars.map((b) => parseFloat(b.style.height));
+  expect(heights.filter((h) => h > 0)).toEqual([50, 100]);
+  expect(heights.slice(-2)).toEqual([50, 100]);
+  expect(within(chart).getByText("6")).toBeTruthy();
+  expect(within(chart).getByText("3")).toBeTruthy();
+  expect(within(chart).getByText("0")).toBeTruthy();
 });
 
 test("the chart shows an empty state", () => {
@@ -133,7 +132,7 @@ test("levels render as DEBUG, INFO, WARN and ERROR", async () => {
   const rows = await screen.findAllByRole("row");
   const text = rows.map((r) => r.textContent);
   expect(
-    text.some((t) => t!.includes("INFO") && t!.includes("GET /api/x")),
+    text.some((t) => t!.includes("INFO") && t!.includes("GET 200 /api/x")),
   ).toBe(true);
   expect(text.some((t) => t!.includes("ERROR") && t!.includes("boom"))).toBe(
     true,
@@ -142,15 +141,15 @@ test("levels render as DEBUG, INFO, WARN and ERROR", async () => {
   expect(text.some((t) => t!.includes("WARN"))).toBe(true);
 });
 
-test("the request column shows method, url and status", async () => {
+test("request logs show method, status and url once", async () => {
   renderApp({ path: "/logs", server: serve() });
-  expect(await screen.findByText("GET /api/x 200")).toBeTruthy();
+  expect(await screen.findByText("GET 200 /api/x")).toBeTruthy();
 });
 
 test("opening a log loads findOne and lists data keys as text", async () => {
   const server = serve();
   const { user } = renderApp({ path: "/logs", server });
-  await user.click(await screen.findByRole("button", { name: "GET /api/x" }));
+  await user.click(await screen.findByText("GET 200 /api/x"));
   const dialog = within(
     await screen.findByRole("dialog", { name: "Log details" }),
   );
@@ -169,7 +168,7 @@ test("a log id in the url opens the dialog", async () => {
   expect(await dialog.findByText("error")).toBeTruthy();
 });
 
-test("a bad filter shows the server message", async () => {
+test("a bad filter names the filter as invalid", async () => {
   const server = serve();
   server.on(
     "GET",
@@ -184,7 +183,7 @@ test("a bad filter shows the server message", async () => {
   renderApp({ path: "/logs?filter=%3D%3D", server });
   expect(
     await screen.findByText(
-      "Something went wrong while processing your request.",
+      "Invalid filter. Check the syntax and field names.",
     ),
   ).toBeTruthy();
 });
@@ -201,7 +200,9 @@ test("logs settings PATCH logs", async () => {
   await user.type(days, "30");
   await user.selectOptions(dialog.getByLabelText("Min level"), "4");
   await user.click(dialog.getByLabelText("Log IP addresses"));
-  await user.click(dialog.getByRole("button", { name: "Save changes" }));
+  const save = dialog.getByRole("button", { name: "Save changes" });
+  expect(save.closest("[data-part=footer]")).not.toBeNull();
+  await user.click(save);
   await screen.findByText("Settings saved.");
   expect(server.find("PATCH", "/api/settings")[0]!.body).toEqual({
     logs: { ...settingsFixture.logs, maxDays: 30, minLevel: 4, logIP: false },
@@ -228,7 +229,9 @@ test("Load more fetches the next page", async () => {
       totalItems: 51,
       totalPages: 2,
       items:
-        page === 1 ? logs : [{ ...logs[0], id: "l9", message: "second page" }],
+        page === 1
+          ? logs
+          : [{ ...logs[0], id: "l9", message: "second page", data: {} }],
     };
   });
   const { user } = renderApp({ path: "/logs", server });
@@ -236,4 +239,91 @@ test("Load more fetches the next page", async () => {
   await user.click(screen.getByRole("button", { name: "Load more" }));
   expect(await screen.findByText("second page")).toBeTruthy();
   expect(screen.getByText("boom")).toBeTruthy();
+});
+
+test("each log has a named button that opens details from the keyboard", async () => {
+  const { user } = renderApp({ path: "/logs", server: serve() });
+  const button = await screen.findByRole("button", { name: "boom" });
+  button.focus();
+  await user.keyboard("{Enter}");
+  expect(
+    await screen.findByRole("dialog", { name: "Log details" }),
+  ).toBeTruthy();
+});
+
+test("the filter placeholder is log specific", async () => {
+  renderApp({ path: "/logs", server: serve() });
+  await screen.findByLabelText("Filter logs");
+  expect(document.querySelector(".cm-placeholder")!.textContent).toBe(
+    "e.g. level >= 8 && data.status >= 400",
+  );
+});
+
+test("invalid filter shows the error and keeps the page", async () => {
+  const server = serve();
+  server.on(
+    "GET",
+    "/api/logs",
+    { status: 400, message: "Invalid filter.", data: {} },
+    400,
+  );
+  server.on(
+    "GET",
+    "/api/logs/stats",
+    { status: 400, message: "Invalid filter.", data: {} },
+    400,
+  );
+  renderApp({ path: "/logs?filter=%3D%3D", server });
+  expect(
+    await screen.findByText(
+      "Invalid filter. Check the syntax and field names.",
+    ),
+  ).toBeTruthy();
+  expect(screen.getByText("No logs for this filter.")).toBeTruthy();
+  expect(screen.getByRole("table", { name: "Logs" })).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 1, name: "Logs" })).toBeTruthy();
+});
+
+test("log details shows the full local date", async () => {
+  renderApp({ path: "/logs?log=l1", server: serve() });
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Log details" }),
+  );
+  expect(await dialog.findByText(/^Nov 11, 2026, .*:00 /)).toBeTruthy();
+});
+
+test("log details hides empty values", async () => {
+  const server = serve();
+  server.on("GET", "/api/logs/l1", {
+    ...logs[0],
+    data: { auth: "", status: 200, empty: null },
+  });
+  renderApp({ path: "/logs?log=l1", server });
+  const dialog = within(
+    await screen.findByRole("dialog", { name: "Log details" }),
+  );
+  await dialog.findByText("status");
+  expect(dialog.queryByText("auth")).toBeNull();
+  expect(dialog.queryByText("empty")).toBeNull();
+});
+
+test("message cell is flexible", async () => {
+  renderApp({ path: "/logs", server: serve() });
+  const button = await screen.findByRole("button", { name: "boom" });
+  expect(button.className).toContain("truncate");
+  expect(button.closest("td")!.className).toContain("max-w-0");
+});
+
+test("the footer shows the total", async () => {
+  renderApp({ path: "/logs", server: serve() });
+  await screen.findByText("boom");
+  expect(screen.getByText("Total: 4")).toBeTruthy();
+});
+
+test("the logs filter suggests log fields", async () => {
+  renderApp({ path: "/logs", server: serve() });
+  const input = await screen.findByLabelText("Filter logs");
+  expect(await completionLabels(input, "data.st")).toContain(
+    "data.status number",
+  );
 });

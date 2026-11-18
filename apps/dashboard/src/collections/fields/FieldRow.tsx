@@ -1,8 +1,29 @@
 import { useEffect, useState } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
-import { Button, Checkbox, TextField } from "@heybe/ui";
+import {
+  ArrowDown,
+  ArrowUp,
+  AtSign,
+  Braces,
+  Calendar,
+  Clock,
+  FileText,
+  Hash,
+  Link,
+  Link2,
+  List,
+  Lock,
+  MapPin,
+  MoreHorizontal,
+  Paperclip,
+  ToggleLeft,
+  Trash2,
+  Type,
+  type LucideIcon,
+} from "lucide-react";
+import { Badge, Button, Checkbox, Menu, TextField } from "@heybe/ui";
 import type { FieldModel } from "../editor-state";
-import { fieldTypeLabel } from "../field-types";
+import { fieldTypeLabel, type FieldType } from "../field-types";
 import { FieldOptions } from "./FieldOptions";
 
 export interface FieldRowProps {
@@ -16,8 +37,25 @@ export interface FieldRowProps {
   onRestore: () => void;
 }
 
+const TYPE_ICONS: Record<FieldType, LucideIcon> = {
+  text: Type,
+  editor: FileText,
+  number: Hash,
+  bool: ToggleLeft,
+  email: AtSign,
+  url: Link,
+  date: Calendar,
+  autodate: Clock,
+  select: List,
+  file: Paperclip,
+  relation: Link2,
+  json: Braces,
+  geoPoint: MapPin,
+  password: Lock,
+};
+
 const rowClass =
-  "flex flex-col gap-2 rounded border border-slate-200 p-3 dark:border-slate-700";
+  "flex flex-col gap-2 rounded border border-line p-3 dark:border-line";
 
 export function FieldRow(props: FieldRowProps) {
   const { field } = props;
@@ -42,6 +80,7 @@ function ActiveRow({
   onMove,
   onRemove,
 }: FieldRowProps) {
+  const Icon = TYPE_ICONS[field.type];
   const nameError = useFieldError(`${errorPath}.name`);
   const [open, setOpen] = useState(!field.id);
   const optionErrors = useErrorsUnder(`${errorPath}.`, false).filter(
@@ -53,8 +92,9 @@ function ActiveRow({
   }, [hasOptionErrors]);
   return (
     <fieldset aria-label={field.name || "New field"} className={rowClass}>
-      <div className="flex items-start gap-2">
-        <div className="flex-1">
+      <div className="grid grid-cols-[auto_1fr_9rem_auto] items-center gap-2">
+        <Icon size={15} strokeWidth={1.75} aria-hidden className="text-muted" />
+        <div className="[&_label]:sr-only">
           <TextField
             label="Field name"
             value={field.name}
@@ -63,10 +103,51 @@ function ActiveRow({
             onChange={(e) => onChange({ name: e.target.value })}
           />
         </div>
-        <span className="pt-7 text-xs text-slate-500 dark:text-slate-400">
-          {fieldTypeLabel(field.type)}
-          {field.system && " (system)"}
+        <span className="justify-self-end">
+          <Badge tone="neutral">
+            {fieldTypeLabel(field.type)}
+            {field.system && " (system)"}
+          </Badge>
         </span>
+        <Menu
+          trigger={
+            <Button
+              variant="ghost"
+              aria-label={`Actions for ${field.name || "new field"}`}
+              icon={<MoreHorizontal size={15} strokeWidth={1.75} />}
+              className="w-9 px-0"
+            />
+          }
+          items={[
+            {
+              key: "up",
+              label: "Move up",
+              icon: <ArrowUp size={15} strokeWidth={1.75} />,
+              disabled: !canMoveUp,
+            },
+            {
+              key: "down",
+              label: "Move down",
+              icon: <ArrowDown size={15} strokeWidth={1.75} />,
+              disabled: !canMoveDown,
+            },
+            ...(field.system
+              ? []
+              : [
+                  { separator: true as const },
+                  {
+                    key: "remove",
+                    label: "Remove field",
+                    icon: <Trash2 size={15} strokeWidth={1.75} />,
+                    danger: true,
+                  },
+                ]),
+          ]}
+          onAction={(key) =>
+            key === "remove" ? onRemove() : onMove(key === "up" ? -1 : 1)
+          }
+          placement="bottom-start"
+        />
       </div>
       <div className="flex flex-wrap items-center gap-4">
         {field.type !== "autodate" && (
@@ -86,36 +167,14 @@ function ActiveRow({
           checked={field.presentable}
           onChange={(e) => onChange({ presentable: e.target.checked })}
         />
-        <div className="ml-auto flex gap-1">
-          <Button
-            variant="ghost"
-            aria-expanded={open}
-            onClick={() => setOpen(!open)}
-          >
-            Options
-          </Button>
-          <Button
-            variant="ghost"
-            aria-label="Move up"
-            disabled={!canMoveUp}
-            onClick={() => onMove(-1)}
-          >
-            ↑
-          </Button>
-          <Button
-            variant="ghost"
-            aria-label="Move down"
-            disabled={!canMoveDown}
-            onClick={() => onMove(1)}
-          >
-            ↓
-          </Button>
-          {!field.system && (
-            <Button variant="ghost" onClick={onRemove}>
-              Remove field
-            </Button>
-          )}
-        </div>
+        <Button
+          variant="ghost"
+          className="ml-auto"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          Options
+        </Button>
       </div>
       {open && (
         <FieldOptions field={field} errorPath={errorPath} onChange={onChange} />

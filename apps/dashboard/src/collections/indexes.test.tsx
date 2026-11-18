@@ -44,7 +44,7 @@ test("adding an index sends the built SQL in indexes", async () => {
   expect(indexRows()[0]!.textContent).toContain("title, views");
   await save();
   await screen.findByText("Collection saved.");
-  const [patch] = server.find("PATCH", "/api/collections/pbc_posts");
+  const [patch] = server.find("PATCH", "/api/collections/hbc_posts");
   expect((patch!.body as { indexes: string[] }).indexes).toEqual([sql]);
 });
 
@@ -65,7 +65,7 @@ test("index SQL can be edited by hand and removed", async () => {
   );
   await save();
   await screen.findByText("Collection saved.");
-  const [patch] = server.find("PATCH", "/api/collections/pbc_posts");
+  const [patch] = server.find("PATCH", "/api/collections/hbc_posts");
   expect((patch!.body as { indexes: string[] }).indexes).toEqual([
     "CREATE INDEX idx_t ON posts (title DESC)",
   ]);
@@ -118,7 +118,7 @@ test("renaming a field, then editing indexes, then renaming again keeps every in
     ),
   );
   await screen.findByText("Collection saved.");
-  const [patch] = server.find("PATCH", "/api/collections/pbc_posts");
+  const [patch] = server.find("PATCH", "/api/collections/hbc_posts");
   expect((patch!.body as { indexes: string[] }).indexes).toEqual([
     "CREATE INDEX `idx_t` ON `posts` (`headline`)",
     added.replace("`views`", "`hits`"),
@@ -147,15 +147,15 @@ test("indexes with SQL the checkboxes cannot show keep their SQL", async () => {
   await user.click(within(dialog).getByRole("button", { name: "Save index" }));
   await save();
   await screen.findByText("Collection saved.");
-  const [patch] = server.find("PATCH", "/api/collections/pbc_posts");
+  const [patch] = server.find("PATCH", "/api/collections/hbc_posts");
   expect((patch!.body as { indexes: string[] }).indexes).toEqual([sql]);
 });
 
 test("switching a new collection from auth to base drops the auth indexes after an index edit", async () => {
   const server = fakeServer()
     .on("GET", "/api/collections/meta/scaffolds", scaffoldsFixture)
-    .on("POST", "/api/collections", { ...posts, id: "pbc_members" });
-  const { user } = renderApp({ path: "/collections/pbc_posts", server });
+    .on("POST", "/api/collections", { ...posts, id: "hbc_members" });
+  const { user } = renderApp({ path: "/collections/hbc_posts", server });
   await user.click(
     await screen.findByRole("button", { name: "New collection" }),
   );

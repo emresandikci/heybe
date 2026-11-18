@@ -10,7 +10,7 @@ const group = async (name: string) => {
 
 const openDoc = (server = docsServer(), record = docRecord()) => {
   server.on("GET", "/api/collections/docs/records/:id", record);
-  return renderApp({ path: "/collections/pbc_docs?record=d1", server });
+  return renderApp({ path: "/collections/hbc_docs?record=d1", server });
 };
 
 const png = (name: string) => new File(["x"], name, { type: "image/png" });
@@ -22,13 +22,13 @@ test("create sends the File under the field name as multipart", async () => {
     docRecord(),
   );
   const { user } = renderApp({
-    path: "/collections/pbc_docs?record=new",
+    path: "/collections/hbc_docs?record=new",
     server,
   });
   const cover = await group("cover");
   await user.upload(cover.getByLabelText("Add files"), png("cat 1.png"));
   expect(cover.getByText("cat 1.png")).toBeTruthy();
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   const [req] = server.find("POST", "/api/collections/docs/records");
   const sent = req!.form!.get("cover") as File;
@@ -43,7 +43,7 @@ test("create with several files sends each under the field name", async () => {
     docRecord(),
   );
   const { user } = renderApp({
-    path: "/collections/pbc_docs?record=new",
+    path: "/collections/hbc_docs?record=new",
     server,
   });
   const gallery = await group("gallery");
@@ -51,7 +51,7 @@ test("create with several files sends each under the field name", async () => {
     png("a.png"),
     png("b.png"),
   ]);
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   const files = server
     .find("POST", "/api/collections/docs/records")[0]!
@@ -71,7 +71,7 @@ test("update sends gallery+ for new files and gallery- for removed names", async
   await user.click(gallery.getByRole("button", { name: "Remove a.png" }));
   expect(gallery.getByRole("button", { name: "Restore a.png" })).toBeTruthy();
   await user.upload(gallery.getByLabelText("Add files"), png("c.png"));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   const [req] = server.find("PATCH", "/api/collections/docs/records/:id");
   expect((req!.form!.getAll("gallery+") as File[]).map((f) => f.name)).toEqual([
@@ -95,7 +95,7 @@ test("restoring a removed file sends nothing", async () => {
     await gallery.findByRole("button", { name: "Remove a.png" }),
   );
   await user.click(gallery.getByRole("button", { name: "Restore a.png" }));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("PATCH", "/api/collections/docs/records/:id")[0]!.body,
@@ -112,7 +112,7 @@ test("a single file replaces the stored one", async () => {
   const cover = await group("cover");
   await cover.findByAltText("old.png");
   await user.upload(cover.getByLabelText("Add files"), png("new.png"));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   const form = server.find("PATCH", "/api/collections/docs/records/:id")[0]!
     .form!;
@@ -131,7 +131,7 @@ test("removing the single stored file sends cover-", async () => {
   await user.click(
     await cover.findByRole("button", { name: "Remove old.png" }),
   );
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("PATCH", "/api/collections/docs/records/:id")[0]!.body,
@@ -142,7 +142,7 @@ test("removing the single stored file sends cover-", async () => {
 
 test("a new file can be dropped before saving", async () => {
   const { user } = renderApp({
-    path: "/collections/pbc_docs?record=new",
+    path: "/collections/hbc_docs?record=new",
     server: docsServer(),
   });
   const gallery = await group("gallery");

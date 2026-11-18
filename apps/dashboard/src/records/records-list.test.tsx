@@ -1,14 +1,26 @@
 import { expect, test } from "bun:test";
 import { screen, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../test/fake-server";
-import { serveCollections } from "../test/editor";
+import { completionLabels, serveCollections } from "../test/editor";
 import { collectionsFixture } from "../test/fixtures";
 import { renderApp } from "../test/render";
+import { setCode, codeValue } from "../test/editor";
 import { validateRecordsSearch } from "./RecordsPage";
+
+const applyFilter = async (
+  user: { keyboard: (keys: string) => Promise<void> },
+  text: string,
+) => {
+  const input = await screen.findByLabelText("Filter records");
+  setCode(input, text);
+  input.focus();
+  await user.keyboard("{Enter}");
+  return input;
+};
 
 const record = (id: string, extra: object = {}) => ({
   id,
-  collectionId: "pbc_posts",
+  collectionId: "hbc_posts",
   collectionName: "posts",
   title: `Post ${id}`,
   created: "2026-01-01 00:00:00.000Z",
@@ -29,7 +41,7 @@ function serve(
   }));
 }
 
-const open = (server: FakeServer, path = "/collections/pbc_posts") =>
+const open = (server: FakeServer, path = "/collections/hbc_posts") =>
   renderApp({ path, server });
 
 test("list requests page 1, perPage 40, sort -@rowid and the relation expand", async () => {
@@ -41,7 +53,7 @@ test("list requests page 1, perPage 40, sort -@rowid and the relation expand", a
   expect(req!.query.get("perPage")).toBe("40");
   expect(req!.query.get("sort")).toBe("-@rowid");
   expect(req!.query.get("expand")).toBe("author");
-  expect(screen.getByText("2 records")).toBeTruthy();
+  expect(screen.getByText("Total: 2")).toBeTruthy();
 });
 
 test("view collection: no default sort and no New record", async () => {
@@ -49,11 +61,11 @@ test("view collection: no default sort and no New record", async () => {
     {
       id: "v1",
       collectionName: "stats",
-      collectionId: "pbc_stats",
+      collectionId: "hbc_stats",
       title: "T",
     },
   ]);
-  open(server, "/collections/pbc_stats");
+  open(server, "/collections/hbc_stats");
   await screen.findByText("T");
   const [req] = server.find("GET", "/api/collections/stats/records");
   expect(req!.query.has("sort")).toBe(false);
@@ -63,8 +75,7 @@ test("view collection: no default sort and no New record", async () => {
 test("Enter in the filter sends it raw and writes ?filter=", async () => {
   const server = serve();
   const { user, router } = open(server);
-  const input = await screen.findByLabelText("Filter records");
-  await user.type(input, 'title ~ "a b" && views > 1{Enter}');
+  await applyFilter(user, 'title ~ "a b" && views > 1');
   await screen.findByText("Post a");
   expect(router.state.location.search).toMatchObject({
     filter: 'title ~ "a b" && views > 1',
@@ -146,13 +157,13 @@ test("hidden columns persist per collection", async () => {
   await user.click(screen.getByRole("checkbox", { name: "views" }));
   expect(screen.queryByRole("columnheader", { name: "views" })).toBeNull();
   expect(screen.getByRole("columnheader", { name: "title" })).toBeTruthy();
-  expect(JSON.parse(localStorage.getItem("heybe_columns_pbc_posts")!)).toEqual([
+  expect(JSON.parse(localStorage.getItem("heybe_columns_hbc_posts")!)).toEqual([
     "views",
   ]);
 });
 
 test("stored hidden columns apply on load", async () => {
-  localStorage.setItem("heybe_columns_pbc_posts", JSON.stringify(["title"]));
+  localStorage.setItem("heybe_columns_hbc_posts", JSON.stringify(["title"]));
   open(serve());
   await screen.findByRole("columnheader", { name: "views" });
   expect(screen.queryByRole("columnheader", { name: "title" })).toBeNull();
@@ -170,13 +181,9 @@ test("a filter 400 shows the message under the search", async () => {
     400,
   );
   const { user } = open(server);
-  await user.type(
-    await screen.findByLabelText("Filter records"),
-    "nope{Enter}",
-  );
-  const input = await screen.findByLabelText("Filter records");
+  const input = await applyFilter(user, "nope");
   const message = await screen.findByText(
-    "Something went wrong while processing your request.",
+    "Invalid filter. Check the syntax and field names.",
   );
   expect(input.getAttribute("aria-describedby")).toBe(message.id);
 });
@@ -184,21 +191,18 @@ test("a filter 400 shows the message under the search", async () => {
 test("recent filters keep the last 10", async () => {
   const { user } = open(serve());
   const input = await screen.findByLabelText("Filter records");
-  for (let i = 1; i <= 11; i++) {
-    await user.clear(input);
-    await user.type(input, `views > ${i}{Enter}`);
-  }
+  for (let i = 1; i <= 11; i++) await applyFilter(user, `views > ${i}`);
   expect(
     JSON.parse(localStorage.getItem("heybe_filter_history")!),
   ).toHaveLength(10);
   await user.click(screen.getByRole("button", { name: "Recent filters" }));
-  const menu = screen.getByRole("list", { name: "Recent filters" });
-  const items = within(menu).getAllByRole("button");
+  const menu = screen.getByRole("menu", { name: "Recent filters" });
+  const items = within(menu).getAllByRole("menuitem");
   expect(items).toHaveLength(10);
   expect(items[0]!.textContent).toBe("views > 11");
   expect(within(menu).queryByText("views > 1")).toBeNull();
   await user.click(items[1]!);
-  expect((input as HTMLInputElement).value).toBe("views > 10");
+  expect(codeValue(input)).toBe("views > 10");
 });
 
 test("New record and row click open ?record=", async () => {
@@ -223,10 +227,7 @@ test("sorting clears the selection", async () => {
 const searchFilter = async (text: string) => {
   const server = serve();
   const { user } = open(server);
-  await user.type(
-    await screen.findByLabelText("Filter records"),
-    `${text}{Enter}`,
-  );
+  await applyFilter(user, text);
   await screen.findByText("Post a");
   return server
     .find("GET", "/api/collections/posts/records")
@@ -340,4 +341,74 @@ test("Space on a focused row opens the record", async () => {
   row.focus();
   await user.keyboard(" ");
   expect(router.state.location.search).toMatchObject({ record: "a" });
+});
+
+test("bulk delete keeps failed ids selected and reports the count", async () => {
+  const server = serve([record("a"), record("b")])
+    .on("DELETE", "/api/collections/posts/records/a", () => undefined, 204)
+    .on(
+      "DELETE",
+      "/api/collections/posts/records/b",
+      { code: 400, message: "Nope.", data: {} },
+      400,
+    );
+  const { user } = open(server);
+  await screen.findByText("Post a");
+  await user.click(screen.getByRole("checkbox", { name: "Select all" }));
+  await user.click(screen.getByRole("button", { name: "Delete selected (2)" }));
+  await user.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }),
+  );
+  await screen.findByText("Deleted 1 of 2 records, 1 failed.");
+  expect(
+    screen.getByRole("button", { name: "Delete selected (1)" }),
+  ).toBeTruthy();
+});
+
+test("a failing filter replaces the table with an error state", async () => {
+  let fail = false;
+  const server = fakeServer().on("GET", "/api/collections/:c/records", () => {
+    if (fail) throw { code: 400, message: "Bad filter.", data: {} };
+    return {
+      page: 1,
+      perPage: 40,
+      totalItems: 1,
+      totalPages: 1,
+      items: [record("a")],
+    };
+  });
+  const { user } = open(server);
+  await screen.findByText("Post a");
+  fail = true;
+  await applyFilter(user, "x");
+  await screen.findByText("Could not load records");
+  expect(screen.queryByText("Post a")).toBeNull();
+});
+
+test("an empty collection offers New record, an empty filter enables Clear", async () => {
+  const empty = {
+    page: 1,
+    perPage: 40,
+    totalItems: 0,
+    totalPages: 1,
+    items: [],
+  };
+  const { user } = open(
+    fakeServer().on("GET", "/api/collections/:c/records", empty),
+  );
+  await screen.findByText("No records yet");
+  await applyFilter(user, "x");
+  await screen.findByText("No records match this filter");
+  expect(
+    (screen.getByRole("button", { name: "Clear" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(false);
+});
+
+test("the records filter suggests the collection fields", async () => {
+  open(serve());
+  const input = await screen.findByLabelText("Filter records");
+  const list = await completionLabels(input, "tit");
+  expect(list).toContain("title text");
+  expect(list.some((l) => l.startsWith("@request"))).toBe(false);
 });

@@ -44,7 +44,7 @@ test("collection create, field rename and delete write automigrate files", async
     .uncheck();
   await create.getByRole("button", { name: "Create", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "posts", level: 2 }),
+    page.getByRole("heading", { name: "posts", level: 1 }),
   ).toBeVisible();
 
   await expect.poll(() => migrations("created")).toHaveLength(1);

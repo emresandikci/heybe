@@ -34,9 +34,9 @@ export const OAUTH2_PROVIDERS: ProviderInfo[] = [
   { name: "livechat", displayName: "LiveChat", needsURLs: false },
   { name: "mailcow", displayName: "mailcow", needsURLs: true },
   { name: "planningcenter", displayName: "Planning Center", needsURLs: false },
-  { name: "oidc", displayName: "OIDC", needsURLs: true },
-  { name: "oidc2", displayName: "OIDC", needsURLs: true },
-  { name: "oidc3", displayName: "OIDC", needsURLs: true },
+  { name: "oidc", displayName: "OpenID Connect", needsURLs: true },
+  { name: "oidc2", displayName: "OpenID Connect 2", needsURLs: true },
+  { name: "oidc3", displayName: "OpenID Connect 3", needsURLs: true },
 ];
 
 const ALPHABET =

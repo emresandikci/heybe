@@ -1,7 +1,7 @@
 import { HeybeError } from "@heybe/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
-import { useRef, useState, type ChangeEvent } from "react";
+import { useState } from "react";
 import { useClient } from "../app/context";
 import {
   ErrorScope,
@@ -13,6 +13,8 @@ import { keys } from "../app/queries";
 import {
   Button,
   Dialog,
+  EmptyState,
+  FileField,
   Section,
   Select,
   Table,
@@ -24,6 +26,9 @@ import {
 } from "@heybe/ui";
 import { formatBytes } from "./format";
 import { NumberInput, TextInput, type FieldLike } from "./inputs";
+import { QueryStatus } from "./QueryStatus";
+import { FormFooter } from "./FormFooter";
+import { SettingsPage } from "./SettingsPage";
 import { S3Fields, TestS3Button } from "./S3Fields";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
@@ -31,10 +36,16 @@ import { useSettingsForm } from "./use-settings-form";
 export function BackupsPage() {
   const settings = useSettings();
   return (
-    <div className="flex flex-col gap-6">
-      <BackupsList />
-      {settings.data && <AutomaticBackups settings={settings.data} />}
-    </div>
+    <SettingsPage title="Backups">
+      <div className="flex flex-col gap-6">
+        <BackupsList />
+        {settings.data ? (
+          <AutomaticBackups settings={settings.data} />
+        ) : (
+          <QueryStatus query={settings} />
+        )}
+      </div>
+    </SettingsPage>
   );
 }
 
@@ -43,7 +54,6 @@ function BackupsList() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const confirm = useConfirm();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const backups = useQuery({
@@ -67,9 +77,8 @@ function BackupsList() {
       queryClient.invalidateQueries({ queryKey: keys.health }),
     ]);
 
-  const upload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
+  const upload = async (files: File[]) => {
+    const file = files[0];
     if (!file) return;
     try {
       await client.backups.upload(file);
@@ -127,11 +136,11 @@ function BackupsList() {
   };
 
   return (
-    <section aria-label="Backups" className="flex flex-col gap-3">
+    <Section title="Backup files">
       {restoring && (
         <div
           role="status"
-          className="flex items-center gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+          className="flex items-center gap-3 rounded border border-warning-line bg-warning-bg p-3 text-sm text-warning-text"
         >
           <p>
             Restore started. The server restarts with the restored data; reload
@@ -140,26 +149,28 @@ function BackupsList() {
           <Button onClick={() => window.location.reload()}>Reload</Button>
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col items-start gap-3">
         <Button disabled={busy} onClick={() => setCreating(true)}>
           Create backup
         </Button>
-        <Button onClick={() => fileInput.current?.click()}>
-          Upload backup
-        </Button>
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".zip"
-          aria-label="Backup file"
-          className="hidden"
-          onChange={(e) => void upload(e)}
-        />
+        <div className="w-full">
+          <FileField
+            label="Backup file"
+            accept=".zip"
+            onChange={(files) => void upload(files)}
+          />
+        </div>
         {busy && (
           <p className="text-sm">A backup or restore is already running.</p>
         )}
       </div>
-      {backups.data && (
+      {!backups.data ? (
+        <QueryStatus query={backups} />
+      ) : backups.data.length === 0 ? (
+        <EmptyState title="No backups yet.">
+          <p>Create a backup or upload a backup file.</p>
+        </EmptyState>
+      ) : (
         <Table caption="Backups">
           <thead>
             <tr>
@@ -199,7 +210,7 @@ function BackupsList() {
           onCreated={() => void refresh()}
         />
       )}
-    </section>
+    </Section>
   );
 }
 
@@ -231,8 +242,30 @@ function CreateDialog({
 
   return (
     <ErrorScope error={error}>
-      <Dialog open onClose={onClose} title="Create backup">
+      <Dialog
+        open
+        onClose={onClose}
+        title="Create backup"
+        footer={
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <form.Subscribe selector={(s) => s.isSubmitting}>
+              {(isSubmitting) => (
+                <Button
+                  type="submit"
+                  form="create-backup"
+                  variant="primary"
+                  loading={isSubmitting}
+                >
+                  Create
+                </Button>
+              )}
+            </form.Subscribe>
+          </>
+        }
+      >
         <form
+          id="create-backup"
           onSubmit={(e) => {
             e.preventDefault();
             void form.handleSubmit();
@@ -248,16 +281,6 @@ function CreateDialog({
               />
             )}
           </form.Field>
-          <div className="flex justify-end gap-2">
-            <Button onClick={onClose}>Cancel</Button>
-            <form.Subscribe selector={(s) => s.isSubmitting}>
-              {(isSubmitting) => (
-                <Button type="submit" variant="primary" loading={isSubmitting}>
-                  Create
-                </Button>
-              )}
-            </form.Subscribe>
-          </div>
         </form>
       </Dialog>
     </ErrorScope>
@@ -331,16 +354,10 @@ function ScheduleSelect({
 }
 
 function AutomaticBackups({ settings }: { settings: SettingsModel }) {
-  const { form, dirty, version, save, submit, reset } =
-    useSettingsForm(settings);
+  const { form, dirty, save, submit, reset } = useSettingsForm(settings);
   return (
     <ErrorScope error={save.error}>
-      <form
-        key={version}
-        onSubmit={submit}
-        className="flex max-w-2xl flex-col gap-4"
-      >
-        <UnclaimedErrors />
+      <form onSubmit={submit} className="flex flex-col gap-4">
         <Section title="Automatic backups">
           <form.Field name="settings.backups.cron">
             {(field) => <CronField field={field} />}
@@ -357,12 +374,7 @@ function AutomaticBackups({ settings }: { settings: SettingsModel }) {
           <S3Fields form={form} prefix="backups.s3" />
           <TestS3Button filesystem="backups" disabled={dirty} />
         </Section>
-        <div className="flex gap-2">
-          <Button type="submit" variant="primary" loading={save.isPending}>
-            Save changes
-          </Button>
-          <Button onClick={reset}>Reset</Button>
-        </div>
+        <FormFooter dirty={dirty} saving={save.isPending} onReset={reset} />
       </form>
     </ErrorScope>
   );

@@ -1,6 +1,8 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterEach, expect } from "bun:test";
 
+(globalThis as { __HEYBE_VERSION__?: string }).__HEYBE_VERSION__ = "1.2.3";
+
 GlobalRegistrator.register({ url: "http://localhost/_/" });
 
 const { cleanup } = await import("@testing-library/react");

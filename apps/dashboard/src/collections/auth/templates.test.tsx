@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { fakeServer } from "../../test/fake-server";
 import {
   codeValue,
@@ -14,7 +14,11 @@ import { readSource, stripSource, withSource } from "./mjml";
 import { mjmlStarter } from "./mjml-starters";
 
 const users = collectionsFixture.find((c) => c.name === "users")!;
-const group = (name: string) => within(screen.getByRole("group", { name }));
+const group = (name: string) => {
+  const toggle = screen.getByRole("button", { name: "Email templates" });
+  if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
+  return within(screen.getByRole("group", { name }));
+};
 const SOURCE =
   "<mjml><mj-body><mj-section><mj-column><mj-text>Saved {APP_NAME}</mj-text></mj-column></mj-section></mj-body></mjml>";
 
@@ -27,9 +31,7 @@ async function openTemplates(collection = users) {
     collection,
   );
   const app = await openEditor(collection.name, server);
-  await app.user.click(
-    within(app.dialog).getByRole("tab", { name: "Options" }),
-  );
+  await app.user.click(within(app.dialog).getByRole("tab", { name: "Auth" }));
   const saveButton = within(app.dialog).getByRole("button", {
     name: "Save changes",
   }) as HTMLButtonElement;
@@ -137,15 +139,15 @@ test("new auth collections start their templates in MJML", async () => {
         verificationTemplate: { subject: "Verify", body: "<p>Verify</p>" },
       },
     })
-    .on("POST", "/api/collections", { ...users, id: "pbc_members" });
-  const { user } = renderApp({ path: "/collections/pbc_posts", server });
+    .on("POST", "/api/collections", { ...users, id: "hbc_members" });
+  const { user } = renderApp({ path: "/collections/hbc_posts", server });
   await user.click(
     await screen.findByRole("button", { name: "New collection" }),
   );
   const dialog = within(screen.getByRole("dialog", { name: "New collection" }));
   await user.type(await dialog.findByLabelText("Name"), "members");
   await user.selectOptions(dialog.getByLabelText("Type"), "auth");
-  await user.click(dialog.getByRole("tab", { name: "Options" }));
+  await user.click(dialog.getByRole("tab", { name: "Auth" }));
   const starter = mjmlStarter("verification", false);
   expect(
     codeValue(group("Verification email").getByLabelText("Body (MJML)")),
@@ -163,7 +165,7 @@ test("new auth collections start their templates in MJML", async () => {
 });
 
 test("_superusers templates convert to the superuser starters", async () => {
-  const { user } = renderApp({ path: "/collections/pbc_3142635823" });
+  const { user } = renderApp({ path: "/collections/hbc_3142635823" });
   await user.click(await screen.findByRole("button", { name: "System" }));
   await user.click(
     screen.getByRole("button", { name: "Edit collection _superusers" }),
@@ -171,7 +173,7 @@ test("_superusers templates convert to the superuser starters", async () => {
   const dialog = within(
     screen.getByRole("dialog", { name: "Edit _superusers" }),
   );
-  await user.click(dialog.getByRole("tab", { name: "Options" }));
+  await user.click(dialog.getByRole("tab", { name: "Auth" }));
   const reset = group("Password reset email");
   await user.click(reset.getByRole("button", { name: "Convert to MJML" }));
   await user.click(

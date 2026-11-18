@@ -5,6 +5,7 @@ import {
   ErrorScope,
   UnclaimedErrors,
   errorMessage,
+  filterError,
   flattenErrors,
   useFieldError,
 } from "./errors";
@@ -22,6 +23,24 @@ describe("errors", () => {
       "fields.2.name": "Cannot be blank.",
       "indexes.0": "Bad index.",
     });
+  });
+
+  test("filterError names a rejected filter and keeps other errors", () => {
+    expect(
+      filterError(
+        new HeybeError({
+          status: 400,
+          response: {
+            message: "Something went wrong while processing your request.",
+          },
+        }),
+      ),
+    ).toBe("Invalid filter. Check the syntax and field names.");
+    expect(
+      filterError(
+        new HeybeError({ status: 500, response: { message: "Down." } }),
+      ),
+    ).toBe("Down.");
   });
 
   test("errorMessage prefers the response message", () => {
@@ -56,6 +75,32 @@ describe("errors", () => {
     expect(alert.textContent).toContain("Failed.");
     expect(alert.textContent).toContain("fields.0.name: Bad.");
     expect(alert.textContent).not.toContain("Taken.");
+  });
+
+  test("UnclaimedErrors hides the banner when every key is claimed inline", () => {
+    const error = new HeybeError({
+      response: { message: "Failed.", data: { name: { message: "Taken." } } },
+    });
+    function Input() {
+      return <p>claimed: {useFieldError("name")}</p>;
+    }
+    render(
+      <ErrorScope error={error}>
+        <Input />
+        <UnclaimedErrors />
+      </ErrorScope>,
+    );
+    expect(screen.getByText("claimed: Taken.")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("UnclaimedErrors shows a message that has no field errors", () => {
+    render(
+      <ErrorScope error={new HeybeError({ response: { message: "Down." } })}>
+        <UnclaimedErrors />
+      </ErrorScope>,
+    );
+    expect(screen.getByRole("alert").textContent).toContain("Down.");
   });
 });
 

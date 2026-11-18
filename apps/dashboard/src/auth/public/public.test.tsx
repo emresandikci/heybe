@@ -3,7 +3,7 @@ import { screen } from "@testing-library/react";
 import { fakeServer } from "../../test/fake-server";
 import { fakeToken, renderApp } from "../../test/render";
 
-const USERS = "_pb_users_auth_";
+const USERS = "_hb_users_auth_";
 const token = fakeToken({ collectionId: USERS });
 
 test("verification confirms once on mount with the token's collection", async () => {
@@ -60,7 +60,7 @@ test("superuser password reset links to sign in", async () => {
   const superToken = fakeToken();
   const server = fakeServer().on(
     "POST",
-    "/api/collections/pbc_3142635823/confirm-password-reset",
+    "/api/collections/hbc_3142635823/confirm-password-reset",
     new Response(null, { status: 204 }),
   );
   const { user } = renderApp({

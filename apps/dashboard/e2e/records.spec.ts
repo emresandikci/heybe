@@ -20,7 +20,7 @@ test("record create with a file, filter, edit and delete", async ({ page }) => {
   });
 
   await page.goto("#/collections/notes");
-  await page.getByRole("button", { name: "New record" }).click();
+  await page.getByRole("button", { name: "New record" }).first().click();
   const create = page.getByRole("dialog", { name: "New record" });
   await create.getByLabel("title", { exact: true }).fill("hello");
   await create.getByLabel("Add files").setInputFiles({
@@ -28,7 +28,7 @@ test("record create with a file, filter, edit and delete", async ({ page }) => {
     mimeType: "image/png",
     buffer: PNG,
   });
-  await create.getByRole("button", { name: "Save", exact: true }).click();
+  await create.getByRole("button", { name: "Create", exact: true }).click();
   await expect(create).toBeHidden();
 
   const table = page.getByRole("table", { name: "notes records" });
@@ -44,26 +44,25 @@ test("record create with a file, filter, edit and delete", async ({ page }) => {
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await filter.fill('title = "x"');
   await filter.press("Enter");
-  await expect(page.getByText("No records found")).toBeVisible();
-  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page.getByText("No records match this filter")).toBeVisible();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
 
   await table.getByRole("cell", { name: "hello", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "Edit record" });
   await edit.getByLabel("title", { exact: true }).fill("hello again");
-  await edit.getByRole("button", { name: "Save", exact: true }).click();
+  await edit.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(edit).toBeHidden();
   await expect(
     table.getByRole("cell", { name: "hello again", exact: true }),
   ).toBeVisible();
 
   await table.getByRole("cell", { name: "hello again", exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "Edit record" })
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  const drawer = page.getByRole("dialog", { name: "Edit record" });
+  await drawer.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   await page
     .getByRole("dialog", { name: "Delete record" })
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(page.getByText("No records found")).toBeVisible();
+  await expect(page.getByText("No records yet")).toBeVisible();
 });

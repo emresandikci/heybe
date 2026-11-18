@@ -28,7 +28,7 @@ test("password sign-in stores the superuser session and opens the redirect path"
   await user.type(screen.getByLabelText("Password"), "secret123");
   await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   expect(router.state.location.pathname).toBe("/settings/mail");
   expect(client.authStore.token).toBe(authReply.token);
   expect(server.find("POST", `${base}/auth-with-password`)[0]!.body).toEqual({
@@ -52,9 +52,9 @@ test("an external redirect value falls back to /collections", async () => {
   await user.type(screen.getByLabelText("Password"), "secret123");
   await user.click(screen.getByRole("button", { name: "Sign in" }));
 
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+    expect(router.state.location.pathname).toBe("/collections/hbc_posts"),
   );
 });
 
@@ -117,14 +117,14 @@ test("MFA requests an OTP for the email and finishes with mfaId", async () => {
   });
   await user.click(screen.getByRole("button", { name: "Verify" }));
 
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   expect(server.find("POST", `${base}/auth-with-otp`)[0]!.body).toEqual({
     otpId: "otp1",
     password: "123456",
     mfaId: "mfa1",
   });
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+    expect(router.state.location.pathname).toBe("/collections/hbc_posts"),
   );
   expect(client.authStore.token).toBe(authReply.token);
 });
@@ -141,13 +141,13 @@ test("OTP-only methods show the send code form and no password input", async () 
   await user.type(await screen.findByLabelText("One-time password"), "123456");
   await user.click(screen.getByRole("button", { name: "Verify" }));
 
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   expect(server.find("POST", `${base}/auth-with-otp`)[0]!.body).toEqual({
     otpId: "otp1",
     password: "123456",
   });
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+    expect(router.state.location.pathname).toBe("/collections/hbc_posts"),
   );
 });
 
@@ -177,7 +177,7 @@ test("a rate-limited new code request keeps the previous OTP", async () => {
   ).toBe(true);
   await user.type(screen.getByLabelText("One-time password"), "123456");
   await user.click(screen.getByRole("button", { name: "Verify" }));
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   expect(server.find("POST", `${base}/auth-with-otp`)[0]!.body).toEqual({
     otpId: "otp1",
     password: "123456",
@@ -200,9 +200,9 @@ test("each sign-in step focuses its first input", async () => {
 
 test("a signed-in superuser opening /login lands on /collections", async () => {
   const { router } = renderApp({ path: "/login" });
-  await screen.findByRole("button", { name: "Sign out" });
+  await screen.findByRole("button", { name: "admin@example.com" });
   await waitFor(() =>
-    expect(router.state.location.pathname).toBe("/collections/pbc_posts"),
+    expect(router.state.location.pathname).toBe("/collections/hbc_posts"),
   );
 });
 

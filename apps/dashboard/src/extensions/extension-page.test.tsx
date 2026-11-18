@@ -28,6 +28,9 @@ test("addPage adds a sidebar link and /ext/<path> mounts it with the client", as
   const { user } = renderApp({ path: "/settings", extensions });
   await user.click(await screen.findByRole("link", { name: "Demo" }));
   expect(await screen.findByText("Demo for admin@example.com")).toBeTruthy();
+  expect(
+    screen.getByRole("heading", { level: 1, name: "Extensions / Demo" }),
+  ).toBeTruthy();
   await waitFor(() => expect(document.title).toBe("Demo - Heybe"));
 });
 
@@ -50,6 +53,9 @@ test("the cleanup runs when navigating away", async () => {
 test("an unknown extension path shows not found", async () => {
   renderApp({ path: "/ext/nope", extensions: setup(() => {}) });
   expect(await screen.findByText("Page not found.")).toBeTruthy();
+  expect(
+    screen.getByRole("heading", { level: 1, name: "Extensions" }),
+  ).toBeTruthy();
 });
 
 test("a throwing extension shows an error and keeps the dashboard working", async () => {
@@ -64,15 +70,18 @@ test("a throwing extension shows an error and keeps the dashboard working", asyn
   );
   renderApp({ path: "/ext/bad", extensions });
   expect(await screen.findByText(/boom/)).toBeTruthy();
+  expect(
+    screen.getByRole("heading", { level: 1, name: "Extensions / Bad" }),
+  ).toBeTruthy();
   expect(screen.getByRole("link", { name: "Logs" })).toBeTruthy();
 });
 
 test("external links open in a new tab with noopener", async () => {
   const extensions = setup((api) =>
-    api.addLink({ label: "Docs", href: "https://docs.example.com" }),
+    api.addLink({ label: "Guides", href: "https://docs.example.com" }),
   );
   renderApp({ path: "/settings", extensions });
-  const link = await screen.findByRole("link", { name: "Docs" });
+  const link = await screen.findByRole("link", { name: "Guides" });
   expect(link.getAttribute("href")).toBe("https://docs.example.com");
   expect(link.getAttribute("target")).toBe("_blank");
   expect(link.getAttribute("rel")).toBe("noopener noreferrer");

@@ -2,14 +2,19 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
-import { errorMessage } from "../app/errors";
+import { filterError } from "../app/errors";
+import { formatDate } from "../app/format";
+import { Page } from "../layout/Page";
+import { createSuggest, logsSchema } from "../filter-language";
 import { SearchBar } from "../records/SearchBar";
+
+const suggest = createSuggest(logsSchema);
 import { useSettings } from "../settings/use-settings";
 import { Button, Checkbox, Table, Td, Th } from "@heybe/ui";
 import { LogDialog } from "./LogDialog";
 import { LogsChart } from "./LogsChart";
 import { LogsSettingsDialog } from "./LogsSettingsDialog";
-import { levelName } from "./level";
+import { LevelBadge } from "./LevelBadge";
 
 export type LogsSearch = {
   filter?: string;
@@ -37,6 +42,16 @@ function effectiveFilter({ filter, superusers }: LogsSearch): string {
 }
 
 const text = (value: unknown) => (value == null ? "" : String(value));
+
+function summary(log: { message: string; data: Record<string, unknown> }) {
+  const { method, url, status, execTime } = log.data;
+  if (!method) return log.message;
+  const duration =
+    typeof execTime === "number" ? `${Math.round(execTime)}ms` : "";
+  return [text(method), text(status), duration, text(url)]
+    .filter(Boolean)
+    .join(" ");
+}
 
 export function LogsPage() {
   const client = useClient();
@@ -71,10 +86,12 @@ export function LogsPage() {
   const items = list.data?.pages.flatMap((p) => p.items);
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Logs</h2>
-        <div className="flex gap-2">
+    <Page
+      crumbs={[{ label: "Logs" }]}
+      width="full"
+      footer={list.data && `Total: ${list.data.pages[0]!.totalItems}`}
+      actions={
+        <>
           <Button
             onClick={() => {
               void list.refetch();
@@ -89,12 +106,15 @@ export function LogsPage() {
           >
             Logs settings
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
       <SearchBar
         label="Filter logs"
+        suggest={suggest}
+        placeholder="e.g. level >= 8 && data.status >= 400"
         filter={search.filter ?? ""}
-        error={list.error ? errorMessage(list.error) : undefined}
+        error={list.error ? filterError(list.error) : undefined}
         onSearch={(next) => void update({ filter: next || undefined })}
       />
       <Checkbox
@@ -104,42 +124,50 @@ export function LogsPage() {
           void update({ superusers: e.target.checked || undefined })
         }
       />
-      {stats.data && <LogsChart stats={stats.data} />}
-      {items && (
+      {(stats.data || list.error) && <LogsChart stats={stats.data ?? []} />}
+      {(items || list.error) && (
         <Table caption="Logs">
           <thead>
             <tr>
               <Th>Level</Th>
               <Th>Message</Th>
-              <Th>Request</Th>
               <Th>Created</Th>
             </tr>
           </thead>
           <tbody>
-            {items.map((log) => {
-              const { method, url, status } = log.data;
-              const request = method
-                ? [text(method), text(url), text(status)]
-                    .filter(Boolean)
-                    .join(" ")
-                : "";
-              return (
-                <tr key={log.id}>
-                  <Td>{levelName(log.level)}</Td>
-                  <Td>
-                    <button
-                      type="button"
-                      className="text-left underline"
-                      onClick={() => void update({ log: log.id })}
-                    >
-                      {log.message}
-                    </button>
-                  </Td>
-                  <Td>{request}</Td>
-                  <Td>{log.created}</Td>
-                </tr>
-              );
-            })}
+            {(items ?? []).map((log) => (
+              <tr
+                key={log.id}
+                className="cursor-pointer hover:bg-hover"
+                onClick={() => void update({ log: log.id })}
+              >
+                <Td>
+                  <LevelBadge level={log.level} />
+                </Td>
+                {/* Td caps width at max-w-xs; this cell must take the remaining width */}
+                <td className="w-full max-w-0 border-b border-line px-3 py-2">
+                  <button
+                    type="button"
+                    title={summary(log)}
+                    className="block w-full truncate text-left font-mono text-xs focus-visible:outline-2 focus-visible:outline-focus"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void update({ log: log.id });
+                    }}
+                  >
+                    {summary(log)}
+                  </button>
+                </td>
+                <Td>
+                  <span
+                    title={log.created}
+                    className="whitespace-nowrap text-muted"
+                  >
+                    {formatDate(log.created)}
+                  </span>
+                </Td>
+              </tr>
+            ))}
           </tbody>
         </Table>
       )}
@@ -164,6 +192,6 @@ export function LogsPage() {
           onClose={() => setEditingSettings(false)}
         />
       )}
-    </div>
+    </Page>
   );
 }

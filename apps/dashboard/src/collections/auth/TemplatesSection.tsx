@@ -1,10 +1,17 @@
 import type { CollectionModel } from "@heybe/client";
 import { useState } from "react";
-import { Button, Section } from "@heybe/ui";
+import { Button } from "@heybe/ui";
 import type { TemplateKind } from "./mjml-starters";
 import { TemplateBody } from "./TemplateBody";
 import { TestEmailDialog } from "./TestEmailDialog";
-import { TextOpt, getIn, groupClass, type OptCtx, type OptPath } from "./opts";
+import {
+  AuthSection,
+  TextOpt,
+  getIn,
+  groupClass,
+  type OptCtx,
+  type OptPath,
+} from "./opts";
 import type { EmailTemplate } from "../editor-state";
 
 const TEMPLATES: {
@@ -54,7 +61,10 @@ export function TemplatesSection({
 }) {
   const [testing, setTesting] = useState<string | null>(null);
   return (
-    <Section title="Email templates">
+    <AuthSection
+      title="Email templates"
+      prefixes={TEMPLATES.map((t) => t.path)}
+    >
       {TEMPLATES.map(({ path, label, kind, template }) => {
         const changed =
           JSON.stringify(c.form.getFieldValue(path)) !==
@@ -69,19 +79,24 @@ export function TemplatesSection({
               label={label}
               kind={kind}
               superuser={c.draft.name === "_superusers"}
+              actions={
+                saved && (
+                  <>
+                    <Button
+                      disabled={changed}
+                      onClick={() => setTesting(template)}
+                    >
+                      Send test email
+                    </Button>
+                    {changed && (
+                      <span className="self-center text-xs text-muted">
+                        Save first: the test email uses the saved template.
+                      </span>
+                    )}
+                  </>
+                )
+              }
             />
-            {saved && (
-              <div className="flex items-center gap-2">
-                <Button disabled={changed} onClick={() => setTesting(template)}>
-                  Send test email
-                </Button>
-                {changed && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    Save first: the test email uses the saved template.
-                  </span>
-                )}
-              </div>
-            )}
           </fieldset>
         );
       })}
@@ -92,6 +107,6 @@ export function TemplatesSection({
           onClose={() => setTesting(null)}
         />
       )}
-    </Section>
+    </AuthSection>
   );
 }

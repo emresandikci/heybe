@@ -15,8 +15,29 @@ export function LogsSettingsDialog({
   const { form, save, submit } = useSettingsForm(settings, onClose);
   return (
     <ErrorScope error={save.error}>
-      <Dialog open onClose={onClose} title="Logs settings">
-        <form onSubmit={submit} className="flex flex-col gap-3">
+      <Dialog
+        open
+        onClose={onClose}
+        title="Logs settings"
+        footer={
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button
+              type="submit"
+              form="logs-settings"
+              variant="primary"
+              loading={save.isPending}
+            >
+              Save changes
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="logs-settings"
+          onSubmit={submit}
+          className="flex flex-col gap-3"
+        >
           <UnclaimedErrors />
           <form.Field name="settings.logs.maxDays">
             {(field) => (
@@ -53,12 +74,6 @@ export function LogsSettingsDialog({
               />
             )}
           </form.Field>
-          <div className="flex justify-end gap-2">
-            <Button onClick={onClose}>Cancel</Button>
-            <Button type="submit" variant="primary" loading={save.isPending}>
-              Save changes
-            </Button>
-          </div>
         </form>
       </Dialog>
     </ErrorScope>

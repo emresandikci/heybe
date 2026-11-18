@@ -1,4 +1,5 @@
-import { act, screen, within } from "@testing-library/react";
+import { expect } from "bun:test";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import type { UserEvent } from "@testing-library/user-event";
 import type { CollectionModel } from "@heybe/client";
@@ -82,4 +83,32 @@ export async function paste(user: UserEvent, el: HTMLElement, text: string) {
     // number inputs have no selection
   }
   await user.paste(text);
+}
+
+export async function completionLabels(el: HTMLElement, text: string) {
+  const view = EditorView.findFromDOM(el)!;
+  act(() => {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      selection: { anchor: text.length },
+    });
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: " ",
+        code: "Space",
+        ctrlKey: true,
+        bubbles: true,
+      }),
+    );
+  });
+  await waitFor(() =>
+    expect(view.dom.querySelector(".cm-tooltip-autocomplete li")).toBeTruthy(),
+  );
+  return [...view.dom.querySelectorAll(".cm-tooltip-autocomplete li")].map(
+    (li) =>
+      [".cm-completionLabel", ".cm-completionDetail"]
+        .map((sel) => li.querySelector(sel)?.textContent ?? "")
+        .join(" ")
+        .trim(),
+  );
 }

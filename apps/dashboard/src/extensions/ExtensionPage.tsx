@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useClient, useExtensions } from "../app/context";
 import { EmptyState } from "@heybe/ui";
+import { Page } from "../layout/Page";
 
 export function ExtensionPage() {
   const path = useParams({ strict: false })._splat ?? "";
@@ -28,12 +29,29 @@ export function ExtensionPage() {
     }
   }, [page, client]);
 
-  if (!page) return <EmptyState title="Page not found." />;
+  if (!page)
+    return (
+      <Page crumbs={[{ label: "Extensions" }]} width="full">
+        <EmptyState title="Page not found." />
+      </Page>
+    );
   if (error)
     return (
-      <p role="alert" className="text-red-600">
-        Extension "{page.title}" failed: {error}
-      </p>
+      <Page
+        crumbs={[{ label: "Extensions" }, { label: page.title }]}
+        width="full"
+      >
+        <p role="alert" className="text-danger-text">
+          Extension "{page.title}" failed: {error}
+        </p>
+      </Page>
     );
-  return <div ref={el} />;
+  return (
+    <Page
+      crumbs={[{ label: "Extensions" }, { label: page.title }]}
+      width="full"
+    >
+      <div ref={el} />
+    </Page>
+  );
 }

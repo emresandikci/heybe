@@ -3,16 +3,13 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button, useToast } from "@heybe/ui";
+import { useToast, type MenuItem } from "@heybe/ui";
 import { ImpersonateDialog } from "./ImpersonateDialog";
 
-export function AuthActions({
-  collection,
-  record,
-}: {
-  collection: CollectionModel;
-  record: { id: string; email?: unknown; verified?: unknown };
-}) {
+export function useAuthActions(
+  collection: CollectionModel,
+  record: { id: string; email?: unknown; verified?: unknown },
+) {
   const client = useClient();
   const toast = useToast();
   const [impersonating, setImpersonating] = useState(false);
@@ -35,30 +32,26 @@ export function AuthActions({
     onError: (err) => toast.error(errorMessage(err)),
   });
 
-  return (
-    <>
-      {email && !record.verified && (
-        <Button
-          disabled={send.isPending}
-          onClick={() => send.mutate("verification")}
-        >
-          Send verification email
-        </Button>
-      )}
-      {email && passwordAuth?.enabled !== false && (
-        <Button disabled={send.isPending} onClick={() => send.mutate("reset")}>
-          Send password reset email
-        </Button>
-      )}
-      <Button onClick={() => setImpersonating(true)}>Impersonate</Button>
-      {impersonating && (
-        <ImpersonateDialog
-          collection={collection}
-          recordId={record.id}
-          label={email || record.id}
-          onClose={() => setImpersonating(false)}
-        />
-      )}
-    </>
-  );
+  const items: MenuItem[] = [];
+  if (email && !record.verified)
+    items.push({ key: "verification", label: "Send verification email" });
+  if (email && passwordAuth?.enabled !== false)
+    items.push({ key: "reset", label: "Send password reset email" });
+  items.push({ key: "impersonate", label: "Impersonate" });
+
+  const run = (key: string) => {
+    if (key === "verification" || key === "reset") send.mutate(key);
+    else if (key === "impersonate") setImpersonating(true);
+  };
+
+  const dialog = impersonating ? (
+    <ImpersonateDialog
+      collection={collection}
+      recordId={record.id}
+      label={email || record.id}
+      onClose={() => setImpersonating(false)}
+    />
+  ) : null;
+
+  return { items, run, dialog };
 }

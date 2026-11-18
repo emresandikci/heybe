@@ -46,7 +46,7 @@ export function ChangesDialog({
         )}
       </ul>
       {deletedFields.length > 0 && (
-        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+        <p className="mt-2 text-sm text-danger-text">
           Deleted fields lose all their data.
         </p>
       )}

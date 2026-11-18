@@ -1,13 +1,24 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 const src = (pkg: string) =>
   fileURLToPath(new URL(`../../packages/${pkg}/src/index.ts`, import.meta.url));
 
+const { version } = JSON.parse(
+  readFileSync(
+    fileURLToPath(
+      new URL("../../packages/heybe/package.json", import.meta.url),
+    ),
+    "utf8",
+  ),
+) as { version: string };
+
 export default defineConfig({
   base: "/_/",
+  define: { __HEYBE_VERSION__: JSON.stringify(version) },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: [

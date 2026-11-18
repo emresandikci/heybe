@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useCollections } from "../app/queries";
 import { useHideControls } from "../settings/use-settings";
 import { RecordsPage } from "../records/RecordsPage";
-import { Button, EmptyState } from "@heybe/ui";
-import { ApiPreview } from "./ApiPreview";
+import { EmptyState } from "@heybe/ui";
+import { Page } from "../layout/Page";
 import { CollectionEditor } from "./CollectionEditor";
 import {
   CollectionsSidebar,
@@ -49,16 +49,17 @@ export function CollectionsIndex() {
       />
     );
   return (
-    <EmptyState title="No collections yet">
-      {!hideControls && <NewCollectionButton />}
-    </EmptyState>
+    <Page crumbs={[{ label: "Collections" }]} width="full">
+      <EmptyState title="No collections yet">
+        {!hideControls && <NewCollectionButton />}
+      </EmptyState>
+    </Page>
   );
 }
 
 export function CollectionPage() {
   const { collectionId } = useParams({ strict: false });
   const collections = useCollections();
-  const [preview, setPreview] = useState(false);
   const [rechecked, setRechecked] = useState<string>();
   const collection = collections.data?.find(
     (c) => c.id === collectionId || c.name === collectionId,
@@ -72,18 +73,17 @@ export function CollectionPage() {
   }, [missing, rechecked, collectionId, refetch]);
   if (!collection) {
     const settled = rechecked === collectionId && !collections.isFetching;
-    return settled ? <EmptyState title="Collection not found" /> : null;
+    return settled ? (
+      <Page
+        crumbs={[
+          { label: "Collections", to: "/collections" },
+          { label: "Not found" },
+        ]}
+        width="full"
+      >
+        <EmptyState title="Collection not found" />
+      </Page>
+    ) : null;
   }
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{collection.name}</h2>
-        <Button onClick={() => setPreview(true)}>API preview</Button>
-      </div>
-      <RecordsPage key={collection.id} collection={collection} />
-      {preview && (
-        <ApiPreview collection={collection} onClose={() => setPreview(false)} />
-      )}
-    </div>
-  );
+  return <RecordsPage key={collection.id} collection={collection} />;
 }

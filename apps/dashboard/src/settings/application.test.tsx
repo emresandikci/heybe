@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../test/fake-server";
 import { settingsFixture } from "../test/fixtures";
 import { renderApp } from "../test/render";
@@ -10,6 +10,9 @@ function echoSettings(server: FakeServer) {
     ...(req.body as object),
   }));
 }
+
+const disclose = (user: { click(el: Element): Promise<void> }, name: RegExp) =>
+  user.click(screen.getByRole("button", { name }));
 
 async function openApplication(server = echoSettings(fakeServer())) {
   const app = renderApp({ path: "/settings", server });
@@ -35,6 +38,8 @@ test("saving the app name PATCHes only meta", async () => {
 
 test("rate limit rules add, edit and remove round trip", async () => {
   const { user, save, sent } = await openApplication();
+  await disclose(user, /Rate limiting/);
+  await user.click(screen.getByRole("switch", { name: "Enable rate limits" }));
   await user.click(screen.getByRole("button", { name: "Add rule" }));
   const row = within(screen.getAllByRole("row")[1]!);
   await user.type(row.getByLabelText("Label"), "/api/");
@@ -47,7 +52,7 @@ test("rate limit rules add, edit and remove round trip", async () => {
   await screen.findByText("Settings saved.");
   expect(sent()[0]).toEqual({
     rateLimits: {
-      enabled: false,
+      enabled: true,
       excludedIPs: [],
       rules: [
         { label: "/api/", audience: "@guest", duration: 10, maxRequests: 30 },
@@ -59,7 +64,7 @@ test("rate limit rules add, edit and remove round trip", async () => {
   await save();
   await screen.findAllByText("Settings saved.");
   expect(sent()[1]).toEqual({
-    rateLimits: { enabled: false, excludedIPs: [], rules: [] },
+    rateLimits: { enabled: true, excludedIPs: [], rules: [] },
   });
 });
 
@@ -81,6 +86,8 @@ test("server error under the rule input", async () => {
     400,
   );
   const { user, save } = await openApplication(server);
+  await disclose(user, /Rate limiting/);
+  await user.click(screen.getByRole("switch", { name: "Enable rate limits" }));
   await user.click(screen.getByRole("button", { name: "Add rule" }));
   await save();
   const label = await screen.findByLabelText("Label");
@@ -109,41 +116,32 @@ test("an error no input claims shows in the form error list", async () => {
   expect(await screen.findByText("logs.minLevel: Out of range.")).toBeTruthy();
 });
 
-test("accent color change updates --accent after save", async () => {
-  const { save } = await openApplication();
-  expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
-    "#1055c9",
-  );
-  fireEvent.change(screen.getByLabelText("Accent color"), {
-    target: { value: "#ff0000" },
-  });
-  await save();
-  await screen.findByText("Settings saved.");
-  expect(document.documentElement.style.getPropertyValue("--accent")).toBe(
-    "#ff0000",
-  );
+test("the accent color field is gone", async () => {
+  await openApplication();
+  expect(screen.queryByLabelText("Accent color")).toBeNull();
 });
 
 test("Reset restores loaded values", async () => {
   const { user } = await openApplication();
   await user.type(screen.getByLabelText("Application name"), "zzz");
-  await user.click(screen.getByLabelText("Hide collection controls"));
+  await user.click(
+    screen.getByRole("switch", { name: "Hide collection controls" }),
+  );
   await user.click(screen.getByRole("button", { name: "Reset" }));
   expect(
     (screen.getByLabelText("Application name") as HTMLInputElement).value,
   ).toBe("Heybe");
   expect(
-    (screen.getByLabelText("Hide collection controls") as HTMLInputElement)
-      .checked,
-  ).toBe(false);
+    screen
+      .getByRole("switch", { name: "Hide collection controls" })
+      .getAttribute("aria-checked"),
+  ).toBe("false");
 });
 
-test("list inputs send one entry per line and skip blank lines", async () => {
+test("list inputs send one entry per comma and skip blanks", async () => {
   const { user, save, sent } = await openApplication();
-  await user.type(
-    screen.getByLabelText("Superuser IPs"),
-    "10.0.0.1{Enter}{Enter}10.0.0.2",
-  );
+  await disclose(user, /Superuser IPs/);
+  await user.type(screen.getByLabelText("Allowed IPs"), "10.0.0.1, ,10.0.0.2");
   await save();
   await screen.findByText("Settings saved.");
   expect(sent()).toEqual([{ superuserIPs: ["10.0.0.1", "10.0.0.2"] }]);
@@ -161,7 +159,7 @@ test("the settings nav hides Import collections with hideControls", async () => 
   expect(nav.queryByRole("link", { name: "Import collections" })).toBeNull();
 });
 
-test("per-line errors show next to the list input", async () => {
+test("per-item errors show next to the list input", async () => {
   const server = fakeServer().on(
     "PATCH",
     "/api/settings",
@@ -175,14 +173,16 @@ test("per-line errors show next to the list input", async () => {
     400,
   );
   const { user, save } = await openApplication(server);
-  await user.type(screen.getByLabelText("Superuser IPs"), "10.0.0.1{Enter}bad");
+  await disclose(user, /Superuser IPs/);
+  await user.type(screen.getByLabelText("Allowed IPs"), "10.0.0.1,bad");
   await save();
-  expect(await screen.findByText("Line 2: Invalid IP.")).toBeTruthy();
+  expect(await screen.findByText("Item 2: Invalid IP.")).toBeTruthy();
   expect(screen.queryByText("superuserIPs.1: Invalid IP.")).toBeNull();
 });
 
 test("decimals in integer inputs are truncated", async () => {
   const { user, save, sent } = await openApplication();
+  await disclose(user, /Batch API/);
   const input = screen.getByLabelText("Max requests");
   await user.clear(input);
   await user.type(input, "7.9");
@@ -195,6 +195,7 @@ test("decimals in integer inputs are truncated", async () => {
 
 test("clearing an integer input stays empty and sends 0", async () => {
   const { user, save, sent } = await openApplication();
+  await disclose(user, /Batch API/);
   const input = screen.getByLabelText("Max requests") as HTMLInputElement;
   await user.clear(input);
   expect(input.value).toBe("");
@@ -212,4 +213,15 @@ test("a background refetch keeps a dirty draft", async () => {
   expect(
     (screen.getByLabelText("Application name") as HTMLInputElement).value,
   ).toBe("Heybezzz");
+});
+
+test("the rate limit rules are disabled while rate limits are off", async () => {
+  const { user } = await openApplication();
+  await disclose(user, /Rate limiting/);
+  const group = screen
+    .getByRole("button", { name: "Add rule" })
+    .closest("fieldset") as HTMLFieldSetElement;
+  expect(group.disabled).toBe(true);
+  await user.click(screen.getByRole("switch", { name: "Enable rate limits" }));
+  expect(group.disabled).toBe(false);
 });

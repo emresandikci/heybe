@@ -76,7 +76,7 @@ export function ImpersonateDialog({
           )}
         </form.Subscribe>
         {generate.isError && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-sm text-danger-text">
             {errorMessage(generate.error)}
           </p>
         )}
@@ -93,9 +93,7 @@ export function ImpersonateDialog({
               </div>
               <CopyButton label="Copy token" text={generate.data} />
             </div>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              This token is not refreshable.
-            </p>
+            <p className="text-sm text-muted">This token is not refreshable.</p>
           </div>
         )}
       </form>

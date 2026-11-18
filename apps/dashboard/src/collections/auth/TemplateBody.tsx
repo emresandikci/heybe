@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useFieldError } from "../../app/errors";
 import { Button, CodeArea, useConfirm } from "@heybe/ui";
 import { compileMjml, readSource, stripSource, withSource } from "./mjml";
@@ -51,12 +58,14 @@ export function TemplateBody({
   label,
   kind,
   superuser,
+  actions,
 }: {
   c: OptCtx;
   path: OptPath<EmailTemplate>;
   label: string;
   kind: TemplateKind;
   superuser: boolean;
+  actions?: ReactNode;
 }) {
   const store = useContext(TemplateStoreContext)!;
   const confirm = useConfirm();
@@ -142,13 +151,14 @@ export function TemplateBody({
         <Button aria-expanded={preview} onClick={() => setPreview(!preview)}>
           {preview ? "Hide preview" : "Show preview"}
         </Button>
+        {actions}
       </div>
       {preview && (
         <iframe
           sandbox=""
           title={`${label} preview`}
           srcDoc={html}
-          className="h-72 w-full rounded border border-slate-200 bg-white dark:border-slate-700"
+          className="h-72 w-full rounded border border-line-strong bg-surface"
         />
       )}
     </>

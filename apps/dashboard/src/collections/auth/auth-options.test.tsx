@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../../test/fake-server";
 import {
+  completionLabels,
   echoPatch,
   openEditor,
   serveCollections,
@@ -11,15 +12,21 @@ import { collectionsFixture, scaffoldsFixture } from "../../test/fixtures";
 import { renderApp } from "../../test/render";
 
 const users = collectionsFixture.find((c) => c.name === "users")!;
-const region = (name: string) => within(screen.getByRole("region", { name }));
-const group = (name: string) => within(screen.getByRole("group", { name }));
+const openSection = (name: string) => {
+  const button = screen.getByRole("button", { name });
+  if (button.getAttribute("aria-expanded") === "false") fireEvent.click(button);
+  return document.getElementById(button.getAttribute("aria-controls")!)!;
+};
+const region = (name: string) => within(openSection(name));
+const group = (name: string, section: string) => {
+  openSection(section);
+  return within(screen.getByRole("group", { name }));
+};
 
 async function openOptions(name = "users", server = fakeServer()) {
   echoPatch(server, users);
   const app = await openEditor(name, server);
-  await app.user.click(
-    within(app.dialog).getByRole("tab", { name: "Options" }),
-  );
+  await app.user.click(within(app.dialog).getByRole("tab", { name: "Auth" }));
   const saved = async () => {
     await app.save();
     await screen.findByText("Collection saved.");
@@ -88,7 +95,7 @@ test("removing a provider drops it", async () => {
 test("a provider without default endpoints asks for them", async () => {
   const { user } = await openOptions();
   await addProvider(user, "oidc");
-  const dialog = providerDialog("OIDC provider");
+  const dialog = providerDialog("OpenID Connect provider");
   for (const label of ["Auth URL", "Token URL", "User info URL"])
     expect((dialog.getByLabelText(label) as HTMLInputElement).required).toBe(
       true,
@@ -131,7 +138,7 @@ test("apple generate fills clientSecret from the response", async () => {
 test("invalidate sets a new 50 character secret on authToken only", async () => {
   const { user, saved } = await openOptions();
   await user.click(
-    group("Auth token").getByRole("button", {
+    group("Auth token", "Tokens").getByRole("button", {
       name: "Invalidate all issued tokens",
     }),
   );
@@ -183,13 +190,15 @@ test('test email posts collection, email and template "password-reset"', async (
   );
   const { user } = await openOptions("users", server);
   await user.click(
-    group("Password reset email").getByRole("button", {
+    group("Password reset email", "Email templates").getByRole("button", {
       name: "Send test email",
     }),
   );
   const dialog = providerDialog("Send test email");
   await paste(user, dialog.getByLabelText("Email"), "me@example.com");
-  await user.click(dialog.getByRole("button", { name: "Send" }));
+  const send = dialog.getByRole("button", { name: "Send" });
+  expect(send.closest("[data-part=footer]")).not.toBeNull();
+  await user.click(send);
   await screen.findByText("Test email sent.");
   expect(server.find("POST", "/api/settings/test/email")[0]!.body).toEqual({
     collection: "users",
@@ -200,7 +209,7 @@ test('test email posts collection, email and template "password-reset"', async (
 
 test("templates write subject and body", async () => {
   const { user, saved } = await openOptions();
-  const verify = group("Verification email");
+  const verify = group("Verification email", "Email templates");
   await user.clear(verify.getByLabelText("Subject"));
   await user.type(verify.getByLabelText("Subject"), "Hi");
   expect(verify.getByText(/\{RECORD:<field>\}/)).toBeTruthy();
@@ -211,17 +220,15 @@ test("templates write subject and body", async () => {
 });
 
 test("_superusers hides the OAuth2 section", async () => {
-  const { user } = renderApp({ path: "/collections/pbc_3142635823" });
+  const { user } = renderApp({ path: "/collections/hbc_3142635823" });
   await user.click(await screen.findByRole("button", { name: "System" }));
   await user.click(
     screen.getByRole("button", { name: "Edit collection _superusers" }),
   );
   const dialog = screen.getByRole("dialog", { name: "Edit _superusers" });
-  await user.click(within(dialog).getByRole("tab", { name: "Options" }));
-  expect(
-    within(dialog).getByRole("region", { name: "Password auth" }),
-  ).toBeTruthy();
-  expect(within(dialog).queryByRole("region", { name: "OAuth2" })).toBeNull();
+  await user.click(within(dialog).getByRole("tab", { name: "Auth" }));
+  expect(openSection("Password auth")).toBeTruthy();
+  expect(within(dialog).queryByRole("button", { name: "OAuth2" })).toBeNull();
 });
 
 test("provider error shows in the dialog", async () => {
@@ -241,7 +248,7 @@ test("provider error shows in the dialog", async () => {
   );
   const app = await openEditor("users", server);
   await app.save();
-  const oauth2 = within(await screen.findByRole("region", { name: "OAuth2" }));
+  const oauth2 = region("OAuth2");
   expect(oauth2.getByText(/Cannot be blank\./)).toBeTruthy();
   await app.user.click(
     oauth2.getByRole("button", { name: "Edit provider Google" }),
@@ -251,9 +258,7 @@ test("provider error shows in the dialog", async () => {
     "true",
   );
   expect(dialog.getByText("Cannot be blank.")).toBeTruthy();
-  expect(within(app.dialog).getByRole("alert").textContent).not.toContain(
-    "oauth2",
-  );
+  expect(within(app.dialog).queryByRole("alert")).toBeNull();
 });
 
 test("leaving the auth type while on Options falls back to Fields", async () => {
@@ -262,14 +267,14 @@ test("leaving the auth type while on Options falls back to Fields", async () => 
     "/api/collections/meta/scaffolds",
     scaffoldsFixture,
   );
-  const { user } = renderApp({ path: "/collections/pbc_posts", server });
+  const { user } = renderApp({ path: "/collections/hbc_posts", server });
   await user.click(
     await screen.findByRole("button", { name: "New collection" }),
   );
   const dialog = within(screen.getByRole("dialog", { name: "New collection" }));
   await user.selectOptions(await dialog.findByLabelText("Type"), "auth");
-  await user.click(dialog.getByRole("tab", { name: "Options" }));
-  expect(dialog.getByRole("region", { name: "Password auth" })).toBeTruthy();
+  await user.click(dialog.getByRole("tab", { name: "Auth" }));
+  expect(openSection("Password auth")).toBeTruthy();
   await user.selectOptions(dialog.getByLabelText("Type"), "base");
   expect(
     dialog.getByRole("tab", { name: "Fields" }).getAttribute("aria-selected"),
@@ -285,7 +290,7 @@ test("sending a test email does not save the collection", async () => {
   );
   const { user } = await openOptions("users", server);
   await user.click(
-    group("Password reset email").getByRole("button", {
+    group("Password reset email", "Email templates").getByRole("button", {
       name: "Send test email",
     }),
   );
@@ -339,12 +344,12 @@ test("removing a provider clears index-based provider errors", async () => {
   );
   const app = await openEditor("users", server);
   await app.save();
-  const oauth2 = within(await screen.findByRole("region", { name: "OAuth2" }));
+  const oauth2 = region("OAuth2");
   await oauth2.findByText(/Cannot be blank/);
   await app.user.click(
     oauth2.getByRole("button", { name: "Remove provider Google" }),
   );
-  expect(oauth2.queryByText(/Cannot be blank/)?.textContent ?? null).toBe(null);
+  expect(region("OAuth2").queryByText(/Cannot be blank/)).toBeNull();
 });
 
 test("apple generate errors show on their inputs", async () => {
@@ -390,7 +395,7 @@ test("hidden fields are not offered as identity fields", async () => {
 
 test("Undo keeps the token secret unchanged", async () => {
   const { user, saved } = await openOptions();
-  const auth = group("Auth token");
+  const auth = group("Auth token", "Tokens");
   await user.click(
     auth.getByRole("button", { name: "Invalidate all issued tokens" }),
   );
@@ -399,4 +404,60 @@ test("Undo keeps the token secret unchanged", async () => {
     auth.getByRole("button", { name: "Invalidate all issued tokens" }),
   ).toBeTruthy();
   expect((await saved()).authToken).toEqual({ duration: 604800 });
+});
+
+test("the Auth tab starts with the OAuth2 section", async () => {
+  const { dialog } = await openOptions();
+  expect(within(dialog).queryByRole("tab", { name: "Options" })).toBeNull();
+  const first = dialog.querySelector("button[aria-expanded]")!;
+  expect(first.textContent).toBe("OAuth2");
+});
+
+test("Auth tab sections are disclosures", async () => {
+  await openOptions();
+  for (const name of [
+    "OAuth2",
+    "Password auth",
+    "One-time password",
+    "Multi-factor auth",
+    "Login alerts",
+    "Tokens",
+    "Email templates",
+  ])
+    expect(
+      screen.getByRole("button", { name }).getAttribute("aria-expanded"),
+    ).not.toBeNull();
+});
+
+test("a collapsed section with a server error opens in place and stays open while typing", async () => {
+  const server = fakeServer().on(
+    "PATCH",
+    "/api/collections/:id",
+    {
+      code: 400,
+      message: "Failed to update collection.",
+      data: { otp: { duration: { message: "Too short." } } },
+    },
+    400,
+  );
+  const { user, dialog, save } = await openEditor("users", server);
+  await user.click(within(dialog).getByRole("tab", { name: "Auth" }));
+  const toggle = () =>
+    screen.getByRole("button", { name: "One-time password" });
+  const before = toggle();
+  expect(before.getAttribute("aria-expanded")).toBe("false");
+  await save();
+  await screen.findByText("Too short.");
+  expect(toggle() === before).toBe(true);
+  expect(toggle().getAttribute("aria-expanded")).toBe("true");
+  await user.type(screen.getByLabelText("OTP duration (seconds)"), "1");
+  expect(toggle().getAttribute("aria-expanded")).toBe("true");
+});
+
+test("the MFA rule suggests request params and fields", async () => {
+  await openOptions();
+  const mfa = region("Multi-factor auth");
+  expect(
+    await completionLabels(mfa.getByLabelText("MFA rule"), "@request.auth.ver"),
+  ).toContain("@request.auth.verified bool");
 });

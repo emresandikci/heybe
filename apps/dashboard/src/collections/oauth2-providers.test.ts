@@ -8,7 +8,8 @@ test("provider list matches the server's providers", () => {
   );
   for (const p of OAUTH2_PROVIDERS) {
     expect(p.needsURLs).toBe(providers[p.name]!.authURL === "");
-    expect(p.displayName).toBe(providers[p.name]!.displayName);
+    if (!p.name.startsWith("oidc"))
+      expect(p.displayName).toBe(providers[p.name]!.displayName);
   }
 });
 

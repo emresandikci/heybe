@@ -1,5 +1,5 @@
 import type { CollectionModel } from "@heybe/client";
-import { CopyButton, Dialog, Table, Td, Th } from "@heybe/ui";
+import { Badge, CodeArea, CopyButton, Dialog, Table, Td, Th } from "@heybe/ui";
 
 function ruleText(rule: unknown): string {
   if (rule === null || rule === undefined) return "Superusers only";
@@ -40,7 +40,7 @@ export function ApiPreview({
   ].join("\n");
 
   return (
-    <Dialog open onClose={onClose} title="API preview">
+    <Dialog open size="lg" onClose={onClose} title="API preview">
       <Table caption={`${c.name} endpoints`}>
         <thead>
           <tr>
@@ -52,11 +52,18 @@ export function ApiPreview({
         </thead>
         <tbody>
           {endpoints.map(([action, method, path, rule]) => (
-            <tr key={action}>
+            <tr key={action} className="h-11">
               <Td>{action}</Td>
-              <Td>{method}</Td>
               <Td>
-                <code>{path}</code>
+                <Badge tone="neutral">{method}</Badge>
+              </Td>
+              <Td wrap>
+                <span className="flex items-center gap-1">
+                  <code className="min-w-0 max-w-md truncate" title={path}>
+                    {path}
+                  </code>
+                  <CopyButton text={path} label={`Copy ${action} path`} />
+                </span>
               </Td>
               <Td>{ruleText(rule)}</Td>
             </tr>
@@ -67,9 +74,15 @@ export function ApiPreview({
         <h3 className="text-sm font-medium">Client</h3>
         <CopyButton text={snippet} label="Copy snippet" />
       </div>
-      <pre className="mt-1 overflow-auto rounded bg-slate-100 p-3 text-xs dark:bg-slate-800">
-        <code>{snippet}</code>
-      </pre>
+      <div className="mt-1">
+        <CodeArea
+          label="Client snippet"
+          hideLabel
+          language="javascript"
+          readOnly
+          value={snippet}
+        />
+      </div>
     </Dialog>
   );
 }

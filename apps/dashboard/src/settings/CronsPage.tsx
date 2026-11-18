@@ -3,6 +3,9 @@ import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { keys } from "../app/queries";
 import { Button, Table, Td, Th, useToast } from "@heybe/ui";
+import { describeCron } from "./cron-text";
+import { QueryStatus } from "./QueryStatus";
+import { SettingsPage } from "./SettingsPage";
 
 export function CronsPage() {
   const client = useClient();
@@ -21,29 +24,42 @@ export function CronsPage() {
     }
   };
 
-  if (!crons.data) return null;
+  if (!crons.data)
+    return (
+      <SettingsPage title="Crons">
+        <QueryStatus query={crons} />
+      </SettingsPage>
+    );
   return (
-    <Table caption="Crons">
-      <thead>
-        <tr>
-          <Th>ID</Th>
-          <Th>Schedule</Th>
-          <Th>
-            <span className="sr-only">Actions</span>
-          </Th>
-        </tr>
-      </thead>
-      <tbody>
-        {crons.data.map((cron) => (
-          <tr key={cron.id}>
-            <Td>{cron.id}</Td>
-            <Td>{cron.expression}</Td>
-            <Td>
-              <Button onClick={() => void run(cron.id)}>Run now</Button>
-            </Td>
+    <SettingsPage title="Crons">
+      <Table caption="Crons">
+        <thead>
+          <tr>
+            <Th>ID</Th>
+            <Th>Schedule</Th>
+            <Th align="right">Action</Th>
           </tr>
-        ))}
-      </tbody>
-    </Table>
+        </thead>
+        <tbody>
+          {crons.data.map((cron) => {
+            const text = describeCron(cron.expression);
+            return (
+              <tr key={cron.id}>
+                <Td>
+                  <span className="font-mono text-xs">{cron.id}</span>
+                </Td>
+                <Td>
+                  <span className="font-mono text-xs">{cron.expression}</span>
+                  {text && <span className="ml-2 text-muted">{text}</span>}
+                </Td>
+                <Td align="right">
+                  <Button onClick={() => void run(cron.id)}>Run now</Button>
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </Table>
+    </SettingsPage>
   );
 }

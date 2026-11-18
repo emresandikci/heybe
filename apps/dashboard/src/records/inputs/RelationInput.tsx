@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import { useCollections } from "../../app/queries";
+import { X } from "lucide-react";
 import { Button } from "@heybe/ui";
 import { expandedRecords, presentableLabel, type CellField } from "../cell";
 import { isMulti } from "../record-form";
@@ -53,7 +54,7 @@ export function RelationInput({
           return (
             <li
               key={id}
-              className="flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-600"
+              className="flex items-center gap-1 rounded-control border border-line bg-field py-0.5 pl-2.5 pr-1 text-sm"
             >
               <span>{label}</span>
               <button
@@ -61,8 +62,9 @@ export function RelationInput({
                 disabled={disabled}
                 aria-label={`Remove ${label}`}
                 onClick={() => set(ids.filter((x) => x !== id))}
+                className="inline-flex size-5 items-center justify-center rounded-control text-muted hover:bg-hover hover:text-text focus-visible:outline-2 focus-visible:outline-focus"
               >
-                x
+                <X size={13} strokeWidth={1.75} aria-hidden />
               </button>
             </li>
           );
@@ -76,7 +78,7 @@ export function RelationInput({
         Choose records
       </Button>
       {error && (
-        <p id={errorId} className="text-xs text-red-600 dark:text-red-400">
+        <p id={errorId} className="text-xs text-danger-text">
           {error}
         </p>
       )}

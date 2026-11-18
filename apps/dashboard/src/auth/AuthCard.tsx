@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useFieldError } from "../app/errors";
 import { TextField } from "@heybe/ui";
+import { Logo } from "../layout/Logo";
 
 export function AuthCard({
   title,
@@ -10,9 +11,12 @@ export function AuthCard({
   children: ReactNode;
 }) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-4 p-4">
-      <h1 className="text-xl font-semibold">{title}</h1>
-      {children}
+    <main className="flex min-h-dvh items-center justify-center bg-bg p-4">
+      <div className="flex w-full max-w-sm flex-col gap-4 rounded-base border border-line bg-raised p-6">
+        <Logo size={40} />
+        <h1 className="text-xl font-semibold">{title}</h1>
+        {children}
+      </div>
     </main>
   );
 }

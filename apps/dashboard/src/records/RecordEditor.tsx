@@ -2,12 +2,21 @@ import type { CollectionModel, WriteData } from "@heybe/client";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, errorMessage } from "../app/errors";
 import { signOut } from "../auth/session";
-import { Button, CopyButton, Dialog, useConfirm, useToast } from "@heybe/ui";
-import { AuthActions } from "./AuthActions";
+import { MoreHorizontal } from "lucide-react";
+import {
+  Button,
+  Dialog,
+  Menu,
+  useConfirm,
+  useToast,
+  type MenuItem,
+} from "@heybe/ui";
+import { formatDate } from "../app/format";
+import { useAuthActions } from "./AuthActions";
 import type { CellField } from "./cell";
 import { FieldInput, hasInput } from "./inputs/FieldInput";
 import { PasswordInputs } from "./inputs/PasswordInputs";
@@ -153,6 +162,19 @@ function EditorForm({
     }
   };
 
+  const authActions = useAuthActions(collection, record ?? { id: "" });
+
+  useEffect(() => {
+    if (!error && Object.keys(localErrors).length === 0) return;
+    const invalid = document
+      .getElementById(formId)
+      ?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    const target = invalid?.matches("input, select, textarea, button")
+      ? invalid
+      : invalid?.querySelector<HTMLElement>("input, select, textarea, button");
+    target?.focus();
+  }, [error, localErrors, formId]);
+
   const form = useForm({
     defaultValues: initial,
     onSubmit: ({ value }) => save(value),
@@ -175,7 +197,7 @@ function EditorForm({
   const remove = async () => {
     const ok = await confirm({
       title: "Delete record",
-      message: "Delete this record? This cannot be undone.",
+      message: `Delete record ${record!.id}? This cannot be undone.`,
       confirmLabel: "Delete",
       danger: true,
     });
@@ -200,8 +222,41 @@ function EditorForm({
   const fields = fieldsOf(collection).filter((f: CellField) =>
     f.type === "password"
       ? !readOnly
-      : !f.hidden && hasInput(f) && (isNew || f.name !== "id"),
+      : !f.hidden &&
+        f.type !== "autodate" &&
+        hasInput(f) &&
+        (isNew || f.name !== "id"),
   );
+  const actions: MenuItem[] = [];
+  if (record && !isNew) {
+    if (!readOnly) actions.push({ key: "duplicate", label: "Duplicate" });
+    actions.push({ key: "copy", label: "Copy JSON" });
+    if (isAuth) actions.push(...authActions.items);
+    if (!readOnly)
+      actions.push(
+        { separator: true },
+        { key: "delete", label: "Delete", danger: true },
+      );
+  }
+  const runAction = (key: string) => {
+    if (key === "duplicate")
+      void confirmDiscard().then(
+        (ok) => ok && onDuplicate(duplicateOf(collection, record!)),
+      );
+    else if (key === "copy")
+      navigator.clipboard.writeText(JSON.stringify(record, null, 2)).then(
+        () => toast.success("Copied."),
+        () => toast.error("Could not copy."),
+      );
+    else if (key === "delete") void remove();
+    else authActions.run(key);
+  };
+  const meta = isNew
+    ? []
+    : fieldsOf(collection).filter(
+        (f: CellField) =>
+          f.type === "autodate" && !f.hidden && record?.[f.name],
+      );
 
   return (
     <ErrorScope error={error}>
@@ -213,31 +268,17 @@ function EditorForm({
         footer={
           <>
             {record && !isNew && (
-              <div className="mr-auto flex gap-2">
-                {!readOnly && (
-                  <Button
-                    onClick={() =>
-                      void confirmDiscard().then(
-                        (ok) =>
-                          ok && onDuplicate(duplicateOf(collection, record)),
-                      )
-                    }
-                  >
-                    Duplicate
-                  </Button>
-                )}
-                <CopyButton
-                  label="Copy JSON"
-                  text={JSON.stringify(record, null, 2)}
+              <div className="mr-auto">
+                <Menu
+                  trigger={
+                    <Button icon={<MoreHorizontal size={15} aria-hidden />}>
+                      More actions
+                    </Button>
+                  }
+                  placement="top-start"
+                  items={actions}
+                  onAction={runAction}
                 />
-                {isAuth && (
-                  <AuthActions collection={collection} record={record} />
-                )}
-                {!readOnly && (
-                  <Button variant="danger" onClick={() => void remove()}>
-                    Delete
-                  </Button>
-                )}
               </div>
             )}
             <Button onClick={() => void requestClose()}>
@@ -252,7 +293,7 @@ function EditorForm({
                     variant="primary"
                     loading={isSubmitting}
                   >
-                    Save
+                    {isNew ? "Create" : "Save changes"}
                   </Button>
                 )}
               </form.Subscribe>
@@ -302,7 +343,6 @@ function EditorForm({
                     <FieldInput
                       field={f}
                       value={field.state.value}
-                      authCollection={isAuth}
                       record={record}
                       disabled={readOnly}
                       localError={localErrors[f.name]}
@@ -313,8 +353,23 @@ function EditorForm({
               ),
             )}
           </div>
+          {!isNew && (
+            <dl className="flex flex-col gap-1 border-t border-line pt-3 text-xs text-muted">
+              <div className="flex gap-2">
+                <dt>id</dt>
+                <dd className="font-mono">{record!.id}</dd>
+              </div>
+              {meta.map((f) => (
+                <div key={f.name} className="flex gap-2">
+                  <dt>{f.name}</dt>
+                  <dd>{formatDate(String(record![f.name]))}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
           <UnclaimedErrors />
         </form>
+        {authActions.dialog}
       </Dialog>
     </ErrorScope>
   );

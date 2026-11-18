@@ -4,7 +4,7 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { signOutOnUnauthorized } from "../auth/session";
-import { EmptyState } from "@heybe/ui";
+import { NotFound } from "../layout/NotFound";
 import type { AppContext } from "./context";
 import { routeTree } from "./routes";
 
@@ -13,7 +13,7 @@ export function createAppRouter(ctx: AppContext, history?: RouterHistory) {
     routeTree,
     context: ctx,
     history: history ?? createHashHistory(),
-    defaultNotFoundComponent: () => <EmptyState title="Page not found" />,
+    defaultNotFoundComponent: NotFound,
   });
   signOutOnUnauthorized(ctx, router);
   return router;

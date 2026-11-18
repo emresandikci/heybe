@@ -2,7 +2,8 @@ import type { CollectionModel } from "@heybe/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-form";
-import { useId, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { useClient } from "../app/context";
 import {
   ErrorScope,
@@ -12,11 +13,12 @@ import {
   responseData,
   useFieldError,
 } from "../app/errors";
-import { keys, useSqlSchema } from "../app/queries";
+import { keys, useCollections, useSqlSchema } from "../app/queries";
 import {
   Button,
   CodeArea,
   Dialog,
+  Menu,
   Select,
   Tabs,
   TextField,
@@ -46,6 +48,7 @@ import { FIELD_TYPES } from "./field-types";
 import { FieldRow } from "./fields/FieldRow";
 import { IndexesEditor } from "./IndexesEditor";
 import { parseIndex } from "./index-sql";
+import { viewCompletions } from "./sql-completions";
 import { RULE_KEYS, RulesTab } from "./rules/RulesTab";
 import { AuthOptions } from "./auth/AuthOptions";
 import { TemplateStoreProvider, useTemplateStore } from "./auth/TemplateBody";
@@ -266,7 +269,7 @@ function Editor({
   const tabs = [
     { value: "fields", label: draft.type === "view" ? "Query" : "Fields" },
     { value: "rules", label: "API rules" },
-    ...(draft.type === "auth" ? [{ value: "options", label: "Options" }] : []),
+    ...(draft.type === "auth" ? [{ value: "options", label: "Auth" }] : []),
   ];
   const tab = tabs.some((t) => t.value === selectedTab)
     ? selectedTab
@@ -286,9 +289,20 @@ function Editor({
                 <div className="mr-auto flex gap-2">
                   <Button onClick={() => void duplicate()}>Duplicate</Button>
                   {!system && source.type !== "view" && (
-                    <Button variant="danger" onClick={() => void truncate()}>
-                      Truncate
-                    </Button>
+                    <Menu
+                      trigger={
+                        <Button
+                          aria-label="More actions"
+                          icon={<MoreHorizontal size={15} strokeWidth={1.75} />}
+                          className="w-9 px-0"
+                        />
+                      }
+                      items={[
+                        { key: "truncate", label: "Truncate", danger: true },
+                      ]}
+                      onAction={() => void truncate()}
+                      placement="top-start"
+                    />
                   )}
                   {!system && (
                     <Button variant="danger" onClick={() => void remove()}>
@@ -298,7 +312,7 @@ function Editor({
                 </div>
               )}
               {templates.invalid && (
-                <span className="self-center text-sm text-red-600 dark:text-red-400">
+                <span className="self-center text-sm text-danger-text">
                   Fix the MJML errors in the email templates before saving.
                 </span>
               )}
@@ -328,8 +342,8 @@ function Editor({
             className="flex flex-col gap-4"
           >
             <UnclaimedErrors />
-            <div className="flex gap-3">
-              <div className="flex-1">
+            <div className="grid grid-cols-[1fr_9rem] items-start gap-3">
+              <div>
                 <form.Field name="name">
                   {(field) => (
                     <ScopedTextField
@@ -426,6 +440,11 @@ function ViewQuery({
 }) {
   const error = useFieldError("viewQuery");
   const schema = useSqlSchema();
+  const collections = useCollections();
+  const completions = useMemo(
+    () => viewCompletions(collections.data ?? []),
+    [collections.data],
+  );
   return (
     <div className="flex flex-col gap-3">
       <form.Field name="viewQuery">
@@ -434,6 +453,7 @@ function ViewQuery({
             label="Select query"
             language="sql"
             sqlSchema={schema}
+            completions={completions}
             rows={8}
             value={field.state.value ?? ""}
             error={error}
@@ -448,7 +468,7 @@ function ViewQuery({
             {draft.fields.map((f) => (
               <li
                 key={f._key}
-                className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs dark:bg-slate-800"
+                className="rounded bg-hover px-2 py-0.5 font-mono text-xs "
               >
                 {f.name}
               </li>

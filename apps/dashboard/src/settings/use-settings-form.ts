@@ -25,12 +25,10 @@ const initial = (settings: SettingsModel) => ({
 export function useSettingsForm(settings: SettingsModel, onSaved?: () => void) {
   const toast = useToast();
   const save = useSaveSettings();
-  const [version, setVersion] = useState(0);
 
   const load = (next: SettingsModel) => {
     loaded.current = next;
     form.reset(initial(next), { keepDefaultValues: true });
-    setVersion((v) => v + 1);
   };
 
   const [initial0] = useState(() => initial(settings));
@@ -84,7 +82,7 @@ export function useSettingsForm(settings: SettingsModel, onSaved?: () => void) {
     load(settings);
   };
 
-  return { form, dirty, version, save, submit, reset };
+  return { form, dirty, save, submit, reset };
 }
 
 export type SettingsForm = ReturnType<typeof useSettingsForm>["form"];

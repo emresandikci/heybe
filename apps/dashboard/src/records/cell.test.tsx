@@ -34,10 +34,10 @@ test("bool, select, geoPoint and password", () => {
   expect(cell("password", "secret").textContent).toBe("******");
 });
 
-test("date shows the UTC string with the local time in a title", () => {
+test("date shows a short local time instead of the UTC string", () => {
   const c = cell("date", "2026-11-11 10:20:30.000Z");
-  expect(c.textContent).toBe("2026-11-11 10:20:30.000Z");
-  expect(c.querySelector("[title]")).not.toBeNull();
+  expect(c.textContent).not.toContain("000Z");
+  expect(c.textContent).toContain("2026");
 });
 
 test("empty values render nothing", () => {

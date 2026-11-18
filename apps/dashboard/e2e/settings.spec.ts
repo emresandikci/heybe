@@ -10,9 +10,7 @@ test("application name, SQL runner, logs and backups", async ({ page }) => {
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Settings saved.")).toBeVisible();
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "E2E App", level: 1 }),
-  ).toBeVisible();
+  await expect(page.getByLabel("Application name")).toHaveValue("E2E App");
 
   await page.goto("#/settings/sql");
   await page.getByLabel("SQL query").fill("select 1 as one");
@@ -40,5 +38,24 @@ test("application name, SQL runner, logs and backups", async ({ page }) => {
     page.getByRole("table", { name: "Backups" }).getByRole("cell", {
       name: /\.zip$/,
     }),
+  ).toBeVisible();
+});
+
+test("auth providers: configure GitHub", async ({ page }) => {
+  await page.goto("#/settings/auth-providers");
+  await page.getByRole("switch", { name: "Enable OAuth2" }).click();
+  await expect(page.getByText("Auth providers saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Configure GitHub" }).click();
+  const dialog = page.getByRole("dialog", { name: "GitHub provider" });
+  await dialog.getByLabel("Client ID").fill("gh-id");
+  await dialog.getByLabel("Client secret").fill("gh-secret");
+  await dialog.getByRole("button", { name: "Save provider" }).click();
+  await expect(page.getByText("Auth providers saved.")).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Enabled providers" })
+      .getByRole("listitem")
+      .filter({ hasText: "GitHub" })
+      .getByText("Enabled"),
   ).toBeVisible();
 });

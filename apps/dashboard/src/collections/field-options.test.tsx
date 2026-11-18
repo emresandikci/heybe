@@ -84,13 +84,13 @@ test("relation picks collectionId and cascadeDelete", async () => {
   const { user, group, saved } = await addField("relation");
   const target = group.getByLabelText("Collection");
   expect(within(target).queryByRole("option", { name: "stats" })).toBeNull();
-  await user.selectOptions(target, "_pb_users_auth_");
+  await user.selectOptions(target, "_hb_users_auth_");
   await user.click(group.getByLabelText("Cascade delete"));
   await user.click(group.getByLabelText("Allow multiple"));
   await user.type(group.getByLabelText("Min select"), "1");
   expect(await saved()).toMatchObject({
     type: "relation",
-    collectionId: "_pb_users_auth_",
+    collectionId: "_hb_users_auth_",
     cascadeDelete: true,
     maxSelect: 999,
     minSelect: 1,
@@ -196,7 +196,7 @@ test("an option error on a saved field opens its options next to the input", asy
   await save();
   await group.findByText("Too small.");
   expect(group.getByLabelText("Max").getAttribute("aria-invalid")).toBe("true");
-  expect(within(dialog).getByRole("alert").textContent).not.toContain("max");
+  expect(within(dialog).queryByRole("alert")).toBeNull();
 });
 
 test("list item errors show on the list input", async () => {
@@ -227,9 +227,7 @@ test("list item errors show on the list input", async () => {
   expect(group.getByLabelText("Thumb sizes").getAttribute("aria-invalid")).toBe(
     "true",
   );
-  expect(within(app.dialog).getByRole("alert").textContent).not.toContain(
-    "thumbs",
-  );
+  expect(within(app.dialog).queryByRole("alert")).toBeNull();
 });
 
 test("email only domains and except domains are exclusive", async () => {
@@ -273,8 +271,11 @@ test("Move down swaps fields and keeps ids", async () => {
   const server = echoPatch(fakeServer(), posts);
   const { user, save } = await openEditor("posts", server);
   await user.click(
-    within(fieldGroup("title")).getByRole("button", { name: "Move down" }),
+    within(fieldGroup("title")).getByRole("button", {
+      name: "Actions for title",
+    }),
   );
+  await user.click(screen.getByRole("menuitem", { name: "Move down" }));
   await save();
   await screen.findByText("Collection saved.");
   expect(
@@ -303,7 +304,7 @@ test("view collection sends viewQuery and no fields edits", async () => {
   setCode(query, "SELECT id FROM posts");
   await save();
   await screen.findByText("Collection saved.");
-  const [patch] = server.find("PATCH", "/api/collections/pbc_stats");
+  const [patch] = server.find("PATCH", "/api/collections/hbc_stats");
   expect(patch!.body).toMatchObject({ viewQuery: "SELECT id FROM posts" });
   expect(patch!.body).not.toHaveProperty("fields");
 });

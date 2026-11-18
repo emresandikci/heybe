@@ -9,7 +9,7 @@ import { collectionIdOf } from "./collection";
 import { InvalidLink } from "./InvalidLink";
 
 const TITLE = "Reset password";
-const SUPERUSERS_ID = "pbc_3142635823";
+const SUPERUSERS_ID = "hbc_3142635823";
 
 export function ConfirmPasswordResetPage() {
   const { token } = useParams({ from: "/auth/confirm-password-reset/$token" });

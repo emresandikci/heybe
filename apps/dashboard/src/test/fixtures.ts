@@ -45,7 +45,7 @@ const base = {
 
 const posts: CollectionModel = {
   ...base,
-  id: "pbc_posts",
+  id: "hbc_posts",
   name: "posts",
   type: "base",
   fields: [
@@ -62,7 +62,7 @@ const posts: CollectionModel = {
     }),
     field("cover", "file", { maxSelect: 1, maxSize: 0, mimeTypes: [] }),
     field("author", "relation", {
-      collectionId: "_pb_users_auth_",
+      collectionId: "_hb_users_auth_",
       maxSelect: 1,
       cascadeDelete: false,
     }),
@@ -117,7 +117,7 @@ const authOptions = {
 const users: CollectionModel = {
   ...base,
   ...authOptions,
-  id: "_pb_users_auth_",
+  id: "_hb_users_auth_",
   name: "users",
   type: "auth",
   fields: [
@@ -157,7 +157,7 @@ const users: CollectionModel = {
 
 const stats: CollectionModel = {
   ...base,
-  id: "pbc_stats",
+  id: "hbc_stats",
   name: "stats",
   type: "view",
   viewQuery: "SELECT id, title FROM posts",
@@ -169,7 +169,7 @@ const superusers: CollectionModel = {
   ...base,
   ...authOptions,
   oauth2: { ...authOptions.oauth2, enabled: false, providers: [] },
-  id: "pbc_3142635823",
+  id: "hbc_3142635823",
   name: "_superusers",
   type: "auth",
   system: true,

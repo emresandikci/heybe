@@ -3,13 +3,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
-import { errorMessage } from "../app/errors";
-import { keys } from "../app/queries";
-import { Button, EmptyState, useConfirm, useToast } from "@heybe/ui";
+import { filterError } from "../app/errors";
+import { keys, useCollections } from "../app/queries";
+import { Inbox, SearchX, Settings } from "lucide-react";
+import { Button, EmptyState, Tooltip, useConfirm, useToast } from "@heybe/ui";
+import { Page } from "../layout/Page";
+import { ApiPreview } from "../collections/ApiPreview";
+import { useOpenEditor } from "../collections/CollectionsSidebar";
+import { useHideControls } from "../settings/use-settings";
 import { ColumnsMenu } from "./ColumnsMenu";
 import { Pagination } from "./Pagination";
 import { RecordEditor } from "./RecordEditor";
 import { RecordsTable } from "./RecordsTable";
+import { createSuggest } from "../filter-language";
 import { SearchBar } from "./SearchBar";
 import type { CellField } from "./cell";
 import { normalizeSearchFilter } from "./search-filter";
@@ -42,6 +48,9 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const toast = useToast();
+  const openEditor = useOpenEditor();
+  const hideControls = useHideControls();
+  const [preview, setPreview] = useState(false);
   const navigate = useNavigate();
   const search: RecordsSearch = useSearch({ strict: false });
   const isView = collection.type === "view";
@@ -61,6 +70,12 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
   const searchFields = allFields
     .filter((f) => f.type !== "password")
     .map((f) => f.name);
+  const collections = useCollections();
+  const suggest = createSuggest({
+    collectionId: collection.id,
+    fields: allFields,
+    collections: collections.data,
+  });
   const query = { page, filter, sort };
 
   const records = useQuery({
@@ -110,83 +125,144 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
       danger: true,
     });
     if (!ok) return;
-    try {
-      await Promise.all(
-        ids.map((id) => client.records(collection.name).delete(id)),
+    const results = await Promise.allSettled(
+      ids.map((id) => client.records(collection.name).delete(id)),
+    );
+    const failed = new Set(
+      ids.filter((_, i) => results[i]!.status === "rejected"),
+    );
+    if (failed.size === 0) toast.success("Records deleted.");
+    else {
+      const deleted = ids.length - failed.size;
+      toast.error(
+        `Deleted ${deleted} of ${ids.length} records, ${failed.size} failed.`,
       );
-      toast.success("Records deleted.");
-    } catch (err) {
-      toast.error(errorMessage(err));
     }
-    setSelected(new Set());
+    setSelected(failed);
     await queryClient.invalidateQueries({
       queryKey: ["records", collection.id],
     });
+  };
+
+  const newRecord = () => {
+    setPrefill(undefined);
+    update({ record: "new" });
   };
 
   const rows = (records.data?.items ?? []) as (Record<string, unknown> & {
     id: string;
   })[];
 
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {selected.size > 0 && (
-          <Button variant="danger" onClick={deleteSelected}>
-            Delete selected ({selected.size})
-          </Button>
-        )}
-        <ColumnsMenu
-          names={allFields.map((f) => f.name)}
-          hidden={hidden}
-          onToggle={toggleColumn}
+  const content = () => {
+    if (records.isError)
+      return (
+        <EmptyState title="Could not load records">
+          {filter && (
+            <Button onClick={() => update({ filter: "", page: 1 })}>
+              Clear filter
+            </Button>
+          )}
+        </EmptyState>
+      );
+    if (!records.data) return null;
+    if (rows.length === 0)
+      return filter ? (
+        <EmptyState
+          title="No records match this filter"
+          icon={<SearchX size={15} strokeWidth={1.75} aria-hidden />}
         />
-        {!isView && (
-          <Button
-            variant="primary"
-            onClick={() => {
-              setPrefill(undefined);
-              update({ record: "new" });
-            }}
-          >
-            New record
-          </Button>
-        )}
-      </div>
+      ) : (
+        <EmptyState
+          title="No records yet"
+          icon={<Inbox size={15} strokeWidth={1.75} aria-hidden />}
+        >
+          {!isView && (
+            <Button variant="primary" onClick={newRecord}>
+              New record
+            </Button>
+          )}
+        </EmptyState>
+      );
+    return (
+      <RecordsTable
+        caption={`${collection.name} records`}
+        fields={fields}
+        rows={rows}
+        sort={sort}
+        selected={selected}
+        onSort={(value) => {
+          setSelected(new Set());
+          update({ sort: value, page: 1 });
+        }}
+        selectable={!isView}
+        onSelect={toggleSelected}
+        onSelectAll={(all) =>
+          setSelected(new Set(all ? rows.map((r) => r.id) : []))
+        }
+        onOpen={(id) => update({ record: id })}
+      />
+    );
+  };
+
+  return (
+    <Page
+      width="full"
+      crumbs={[
+        { label: "Collections", to: "/collections" },
+        { label: collection.name },
+      ]}
+      footer={
+        records.data && !records.isError
+          ? `Total: ${records.data.totalItems}`
+          : undefined
+      }
+      actions={
+        <>
+          {selected.size > 0 && (
+            <Button variant="danger" onClick={deleteSelected}>
+              Delete selected ({selected.size})
+            </Button>
+          )}
+          <Button onClick={() => setPreview(true)}>API preview</Button>
+          <ColumnsMenu
+            names={allFields.map((f) => f.name)}
+            hidden={hidden}
+            onToggle={toggleColumn}
+          />
+          {!isView && (
+            <Button variant="primary" onClick={newRecord}>
+              New record
+            </Button>
+          )}
+          {!hideControls && (
+            <Tooltip content={`Edit ${collection.name}`}>
+              <Button
+                aria-label={`Edit ${collection.name}`}
+                onClick={() => openEditor(collection)}
+                icon={<Settings aria-hidden size={15} strokeWidth={1.75} />}
+              />
+            </Tooltip>
+          )}
+        </>
+      }
+    >
       <SearchBar
         filter={filter}
-        error={records.error ? errorMessage(records.error) : undefined}
+        suggest={suggest}
+        error={records.error ? filterError(records.error) : undefined}
         onSearch={(value) => {
           setSelected(new Set());
           update({ filter: value, page: 1 });
         }}
       />
-      {records.data &&
-        (rows.length === 0 ? (
-          <EmptyState title="No records found" />
-        ) : (
-          <RecordsTable
-            caption={`${collection.name} records`}
-            fields={fields}
-            rows={rows}
-            sort={sort}
-            selected={selected}
-            onSort={(value) => {
-              setSelected(new Set());
-              update({ sort: value, page: 1 });
-            }}
-            onSelect={toggleSelected}
-            onSelectAll={(all) =>
-              setSelected(new Set(all ? rows.map((r) => r.id) : []))
-            }
-            onOpen={(id) => update({ record: id })}
-          />
-        ))}
-      {records.data && (
+      {content()}
+      {preview && (
+        <ApiPreview collection={collection} onClose={() => setPreview(false)} />
+      )}
+      {records.data && !records.isError && (
         <Pagination
           page={records.data.page}
           totalPages={records.data.totalPages}
-          totalItems={records.data.totalItems}
           onPage={(value) => {
             setSelected(new Set());
             update({ page: value });
@@ -206,6 +282,6 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
           }}
         />
       )}
-    </div>
+    </Page>
   );
 }

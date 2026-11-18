@@ -4,7 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { EditorView } from "@codemirror/view";
 import { fakeServer } from "../../test/fake-server";
-import { codeValue, echoPatch, openEditor, setCode } from "../../test/editor";
+import {
+  codeValue,
+  completionLabels,
+  echoPatch,
+  openEditor,
+  setCode,
+} from "../../test/editor";
 import { collectionsFixture } from "../../test/fixtures";
 import { RuleInput } from "./RuleInput";
 
@@ -49,7 +55,7 @@ test('locked rule is sent as null and an unlocked empty rule as ""', async () =>
     ),
   );
   await screen.findByText("Collection saved.");
-  const [patch] = server.find("PATCH", "/api/collections/pbc_posts");
+  const [patch] = server.find("PATCH", "/api/collections/hbc_posts");
   expect(patch!.body).toMatchObject({
     listRule: "",
     viewRule: "id != ''",
@@ -69,6 +75,7 @@ test("a chip inserts at the cursor", async () => {
         value={value}
         onChange={setValue}
         chips={["@now", "title"]}
+        suggest={() => null}
         errorPath="listRule"
       />
     );
@@ -120,9 +127,7 @@ test("server rule error shows under its rule", async () => {
       .getByRole("tab", { name: "API rules" })
       .getAttribute("aria-selected"),
   ).toBe("true");
-  expect(within(dialog).getByRole("alert").textContent).not.toContain(
-    "listRule",
-  );
+  expect(within(dialog).queryByRole("alert")).toBeNull();
 });
 
 test("lock then unlock restores the typed rule", async () => {
@@ -151,4 +156,24 @@ test("auth and manage rules explain their own empty value", async () => {
       "Empty rule: any account with valid credentials can sign in.",
     ),
   ).toBeTruthy();
+});
+
+test("rule fields suggest request params, and the body only for create and update", async () => {
+  const { user } = await openRules("posts");
+  const list = rule("List/Search rule");
+  await user.click(list.getByLabelText("Superusers only"));
+  const listArea = list.getByLabelText("List/Search rule");
+  expect(await completionLabels(listArea, "@request.au")).toContain(
+    "@request.auth.id text",
+  );
+  expect(
+    (await completionLabels(listArea, "@request.")).some((l) =>
+      l.startsWith("@request.body."),
+    ),
+  ).toBe(false);
+  const create = rule("Create rule");
+  await user.click(create.getByLabelText("Superusers only"));
+  expect(
+    await completionLabels(create.getByLabelText("Create rule"), "@request.bo"),
+  ).toContain("@request.body.title text");
 });

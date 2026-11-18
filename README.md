@@ -1,3 +1,5 @@
+<p><img src="docs/assets/logo.svg" width="64" height="64" alt=""></p>
+
 # Heybe
 
 Heybe is an open source backend in a single binary, built with TypeScript on [Bun](https://bun.sh). It brings the feature set of [PocketBase](https://ganigeorgiev.com/pocketbase/pocketbase) to the JavaScript ecosystem, so you can extend and read it without leaving TypeScript.
@@ -185,6 +187,8 @@ window.heybe.dashboard.addPage({
   },
 });
 ```
+
+Use `@heybe/ui` for styled components and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybe/ui/style.css` for compiled styles or `@heybe/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
 
 ## License
 

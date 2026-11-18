@@ -33,8 +33,30 @@ export function TestEmailDialog({
 
   return (
     <ErrorScope error={error}>
-      <Dialog open onClose={onClose} title="Send test email">
+      <Dialog
+        open
+        onClose={onClose}
+        title="Send test email"
+        footer={
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <form.Subscribe selector={(s) => s.isSubmitting}>
+              {(isSubmitting) => (
+                <Button
+                  type="submit"
+                  form="test-email"
+                  variant="primary"
+                  loading={isSubmitting}
+                >
+                  Send
+                </Button>
+              )}
+            </form.Subscribe>
+          </>
+        }
+      >
         <form
+          id="test-email"
           onSubmit={(e) => {
             e.preventDefault();
             void form.handleSubmit();
@@ -50,16 +72,6 @@ export function TestEmailDialog({
               />
             )}
           </form.Field>
-          <div className="flex justify-end gap-2">
-            <Button onClick={onClose}>Cancel</Button>
-            <form.Subscribe selector={(s) => s.isSubmitting}>
-              {(isSubmitting) => (
-                <Button type="submit" variant="primary" loading={isSubmitting}>
-                  Send
-                </Button>
-              )}
-            </form.Subscribe>
-          </div>
         </form>
       </Dialog>
     </ErrorScope>

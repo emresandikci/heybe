@@ -1,6 +1,6 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useClient } from "../../app/context";
-import { Button } from "@heybe/ui";
+import { Button, FileField } from "@heybe/ui";
 import { IMAGE, list, useFileToken, type CellField } from "../cell";
 import { FilePreview } from "../FilePreview";
 import { isMulti, type FileValue } from "../record-form";
@@ -24,7 +24,6 @@ export function FileInput({
 }) {
   const client = useClient();
   const token = useFileToken(field);
-  const errorId = useId();
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [inputKey, setInputKey] = useState(0);
   const multi = isMulti(field);
@@ -62,10 +61,10 @@ export function FileInput({
           const removed = value.removed.includes(file);
           return (
             <li key={file} className="flex items-center gap-2">
-              <span className={removed ? "line-through opacity-50" : ""}>
-                {waiting ? (
-                  file
-                ) : IMAGE.test(file) ? (
+              <span
+                className={`flex min-w-0 flex-1 items-center gap-2 ${removed ? "line-through opacity-50" : ""}`}
+              >
+                {!waiting && IMAGE.test(file) && (
                   <button
                     type="button"
                     aria-label={`Preview ${file}`}
@@ -78,21 +77,38 @@ export function FileInput({
                       height={48}
                     />
                   </button>
+                )}
+                {waiting || IMAGE.test(file) ? (
+                  <span className="min-w-0 truncate" title={file}>
+                    {file}
+                  </span>
                 ) : (
-                  <a href={url(file)} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={url(file)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 truncate"
+                    title={file}
+                  >
                     {file}
                   </a>
                 )}
               </span>
-              <Button disabled={disabled} onClick={() => toggle(file)}>
-                {removed ? `Restore ${file}` : `Remove ${file}`}
+              <Button
+                aria-label={`${removed ? "Restore" : "Remove"} ${file}`}
+                disabled={disabled}
+                onClick={() => toggle(file)}
+              >
+                {removed ? "Restore" : "Remove"}
               </Button>
             </li>
           );
         })}
         {value.added.map((file, i) => (
           <li key={`${file.name}-${i}`} className="flex items-center gap-2">
-            <span>{file.name}</span>
+            <span className="min-w-0 flex-1 truncate" title={file.name}>
+              {file.name}
+            </span>
             <Button
               aria-label={`Remove new ${file.name}`}
               disabled={disabled}
@@ -108,23 +124,16 @@ export function FileInput({
           </li>
         ))}
       </ul>
-      <label className="flex flex-col gap-1 text-sm">
-        Add files
-        <input
+      <div className="[&_label]:sr-only">
+        <FileField
           key={inputKey}
-          type="file"
+          label="Add files"
           multiple={multi}
           disabled={disabled || full}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errorId : undefined}
-          onChange={(e) => pick([...(e.target.files ?? [])])}
+          error={error}
+          onChange={pick}
         />
-      </label>
-      {error && (
-        <p id={errorId} className="text-xs text-red-600 dark:text-red-400">
-          {error}
-        </p>
-      )}
+      </div>
       {previewing && (
         <FilePreview
           name={previewing}

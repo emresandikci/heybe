@@ -1,5 +1,4 @@
-const OPERATOR_CHARS = ["=", "~", ">", "<"];
-
+const OPERATOR_CHARS = ["=", "~", ">", "<", "(", ")", "&", "|"];
 export function normalizeSearchFilter(text: string, fields: string[]): string {
   const term = text.trim();
   if (!term || fields.length === 0) return term;

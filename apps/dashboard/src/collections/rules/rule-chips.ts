@@ -1,4 +1,5 @@
 import type { CollectionModel } from "@heybe/client";
+import { createSuggest } from "../../filter-language";
 import { activeFields, type CollectionDraft } from "../editor-state";
 
 export type RuleKey =
@@ -44,4 +45,17 @@ export function ruleChips(
       .map((c) => `@collection.${c.name}.`),
     ...MACROS,
   ];
+}
+
+export function ruleSuggest(
+  d: CollectionDraft,
+  all: CollectionModel[],
+  key: RuleKey | "mfaRule",
+) {
+  return createSuggest({
+    collectionId: d.id,
+    fields: activeFields(d).filter((f) => f.name),
+    collections: all,
+    request: { body: key === "createRule" || key === "updateRule" },
+  });
 }

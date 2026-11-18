@@ -1,6 +1,18 @@
-import { useState, type ChangeEvent, type InputHTMLAttributes } from "react";
+import {
+  useState,
+  type ChangeEvent,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { useErrorsUnder, useFieldError } from "../app/errors";
-import { Checkbox, CodeArea, NumberField, TextField } from "@heybe/ui";
+import {
+  Badge,
+  Checkbox,
+  Disclosure,
+  NumberField,
+  Switch,
+  TextField,
+} from "@heybe/ui";
 
 export interface FieldLike<T> {
   state: { value: T };
@@ -50,13 +62,11 @@ export function IntInput({
   value,
   onChange,
   ...rest
-}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
+}: Omit<ComponentProps<typeof NumberField>, "value" | "onChange"> & {
   value: number;
   onChange(value: number): void;
 }) {
-  return (
-    <input type="number" step={1} {...rest} {...useIntText(value, onChange)} />
-  );
+  return <NumberField step={1} {...rest} {...useIntText(value, onChange)} />;
 }
 
 export function NumberInput({
@@ -69,11 +79,11 @@ export function NumberInput({
   field: FieldLike<number>;
 }) {
   return (
-    <NumberField
+    <IntInput
       label={label}
-      step={1}
       error={useFieldError(path)}
-      {...useIntText(field.state.value, field.handleChange)}
+      value={field.state.value}
+      onChange={field.handleChange}
     />
   );
 }
@@ -97,39 +107,70 @@ export function CheckInput({
   );
 }
 
-export function LinesInput({
+export function SwitchInput({
+  path,
+  label,
+  field,
+}: {
+  path: string;
+  label: string;
+  field: FieldLike<boolean>;
+}) {
+  return (
+    <Switch
+      label={label}
+      checked={field.state.value}
+      error={useFieldError(path)}
+      onChange={field.handleChange}
+    />
+  );
+}
+
+const parseList = (text: string) =>
+  text
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const sameList = (a: string[], b: string[]) => a.join("\n") === b.join("\n");
+
+export function ListInput({
   path,
   label,
   field,
   hint,
+  disabled,
 }: {
   path: string;
   label: string;
   field: FieldLike<string[]>;
   hint?: string;
+  disabled?: boolean;
 }) {
-  const [text, setText] = useState(() => field.state.value.join("\n"));
+  const [typed, setText] = useState(() => field.state.value.join(", "));
+  const text = sameList(parseList(typed), field.state.value)
+    ? typed
+    : field.state.value.join(", ");
   const own = useFieldError(path);
-  const lineErrors = useErrorsUnder(`${path}.`).map(
+  const itemErrors = useErrorsUnder(`${path}.`).map(
     ([key, message]) =>
-      `Line ${Number(key.slice(path.length + 1).split(".")[0]) + 1}: ${message}`,
+      `Item ${Number(key.slice(path.length + 1).split(".")[0]) + 1}: ${message}`,
   );
-  const error = [own, ...lineErrors].filter(Boolean).join(" ") || undefined;
+  const error = [own, ...itemErrors].filter(Boolean).join(" ") || undefined;
   return (
-    <CodeArea
+    <TextField
       label={label}
-      hint={hint}
-      rows={3}
+      hint={
+        hint
+          ? `${hint} Separate entries with commas.`
+          : "Separate entries with commas."
+      }
+      disabled={disabled}
       value={text}
       error={error}
-      onChange={(next) => {
-        setText(next);
-        field.handleChange(
-          next
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean),
-        );
+      onChange={(e) => {
+        setText(e.target.value);
+        field.handleChange(parseList(e.target.value));
       }}
     />
   );
@@ -154,4 +195,46 @@ export function SecretInput({
       field={field}
     />
   );
+}
+
+export function DependentFields({
+  enabled,
+  children,
+}: {
+  enabled: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset
+      disabled={!enabled}
+      className="flex min-w-0 flex-col gap-3 transition-opacity disabled:opacity-60"
+    >
+      {children}
+    </fieldset>
+  );
+}
+
+export function EnabledBadge({ on }: { on: boolean }) {
+  return (
+    <Badge tone={on ? "success" : "neutral"}>
+      {on ? "Enabled" : "Disabled"}
+    </Badge>
+  );
+}
+
+export function SectionDisclosure({
+  errorPrefix,
+  defaultOpen,
+  ...props
+}: Omit<ComponentProps<typeof Disclosure>, "open" | "onOpenChange"> & {
+  errorPrefix: string;
+}) {
+  const failed = useErrorsUnder(errorPrefix, false).length > 0;
+  const [open, setOpen] = useState(!!defaultOpen || failed);
+  const [wasFailed, setWasFailed] = useState(failed);
+  if (failed !== wasFailed) {
+    setWasFailed(failed);
+    if (failed) setOpen(true);
+  }
+  return <Disclosure {...props} open={open} onOpenChange={setOpen} />;
 }

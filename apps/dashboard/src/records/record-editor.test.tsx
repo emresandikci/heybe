@@ -3,10 +3,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { fakeServer, type FakeServer } from "../test/fake-server";
 import { setCode } from "../test/editor";
 import { renderApp } from "../test/render";
+import { openActions, pickAction } from "./editor-fixtures";
 
 const saved = (extra: object = {}) => ({
   id: "r1",
-  collectionId: "pbc_posts",
+  collectionId: "hbc_posts",
   collectionName: "posts",
   title: "Hello",
   views: 3,
@@ -23,11 +24,11 @@ const saved = (extra: object = {}) => ({
 const open = (
   record: string,
   server: FakeServer = fakeServer(),
-  c = "pbc_posts",
+  c = "hbc_posts",
 ) => {
   server.on(
     "GET",
-    `/api/collections/${c === "pbc_posts" ? "posts" : c}/records/:id`,
+    `/api/collections/${c === "hbc_posts" ? "posts" : c}/records/:id`,
     saved(),
   );
   return renderApp({ path: `/collections/${c}?record=${record}`, server });
@@ -46,7 +47,7 @@ test("create posts filled fields with select multiple as an array and single as 
     saved(),
   );
   const { user, router } = renderApp({
-    path: "/collections/pbc_posts?record=new",
+    path: "/collections/hbc_posts?record=new",
     server,
   });
   const d = await dialog("New record");
@@ -54,7 +55,7 @@ test("create posts filled fields with select multiple as an array and single as 
   await user.selectOptions(d.getByLabelText("status"), "live");
   await user.type(d.getByLabelText("views"), "5");
   await user.click(d.getByLabelText("published"));
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("POST", "/api/collections/posts/records")[0]!.body,
@@ -73,7 +74,7 @@ test("multi select sends an array", async () => {
   const { serveCollections } = await import("../test/editor");
   const tags = {
     ...collectionsFixture[0]!,
-    id: "pbc_tags",
+    id: "hbc_tags",
     name: "tags",
     fields: [
       collectionsFixture[0]!.fields[0]!,
@@ -92,13 +93,13 @@ test("multi select sends an array", async () => {
   };
   serveCollections(server, [tags]);
   const { user } = renderApp({
-    path: "/collections/pbc_tags?record=new",
+    path: "/collections/hbc_tags?record=new",
     server,
   });
   const d = await dialog("New record");
   await user.click(d.getByLabelText("a"));
   await user.click(d.getByLabelText("c"));
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   expect(server.find("POST", "/api/collections/tags/records")[0]!.body).toEqual(
     {
@@ -118,7 +119,7 @@ test("update sends only the changed keys", async () => {
   const title = await d.findByLabelText("title");
   await user.clear(title);
   await user.type(title, "Changed");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("PATCH", "/api/collections/posts/records/:id")[0]!.body,
@@ -133,7 +134,7 @@ test('invalid JSON blocks submit with "Invalid JSON." under the input and sends 
   const d = await dialog("Edit record");
   const meta = await d.findByLabelText("meta");
   setCode(meta, "{oops");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Save changes" }));
   const message = await d.findByText("Invalid JSON.");
   expect(meta.getAttribute("aria-describedby")).toBe(message.id);
   expect(
@@ -148,13 +149,13 @@ test("geoPoint sends {lon, lat} numbers", async () => {
     saved(),
   );
   const { user } = renderApp({
-    path: "/collections/pbc_posts?record=new",
+    path: "/collections/hbc_posts?record=new",
     server,
   });
   const d = await dialog("New record");
   await user.type(d.getByLabelText("Longitude"), "12.5");
   await user.type(d.getByLabelText("Latitude"), "-40");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("POST", "/api/collections/posts/records")[0]!.body,
@@ -170,13 +171,13 @@ test("date is edited in UTC and sent in the server format", async () => {
     saved(),
   );
   const { user } = renderApp({
-    path: "/collections/pbc_posts?record=new",
+    path: "/collections/hbc_posts?record=new",
     server,
   });
   const d = await dialog("New record");
   expect(d.getByText("when (UTC)")).toBeTruthy();
   await user.type(d.getByLabelText("when (UTC)"), "2026-11-11T10:20:30");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Create" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("POST", "/api/collections/posts/records")[0]!.body,
@@ -189,7 +190,7 @@ test("password is sent only when Change password is checked", async () => {
   const server = fakeServer()
     .on("GET", "/api/collections/users/records/:id", {
       id: "u1",
-      collectionId: "_pb_users_auth_",
+      collectionId: "_hb_users_auth_",
       collectionName: "users",
       email: "a@b.c",
       emailVisibility: false,
@@ -197,18 +198,18 @@ test("password is sent only when Change password is checked", async () => {
     })
     .on("PATCH", "/api/collections/users/records/:id", {});
   const { user } = renderApp({
-    path: "/collections/_pb_users_auth_?record=u1",
+    path: "/collections/_hb_users_auth_?record=u1",
     server,
   });
   const d = await dialog("Edit record");
-  expect(await d.findByLabelText("Email")).toBeTruthy();
-  expect(d.getByLabelText("Public email")).toBeTruthy();
-  expect(d.getByLabelText("Verified")).toBeTruthy();
+  expect(await d.findByLabelText("email")).toBeTruthy();
+  expect(d.getByLabelText("emailVisibility")).toBeTruthy();
+  expect(d.getByLabelText("verified")).toBeTruthy();
   expect(d.queryByLabelText("Password")).toBeNull();
   await user.click(d.getByLabelText("Change password"));
   await user.type(d.getByLabelText("Password"), "secret123");
   await user.type(d.getByLabelText("Confirm password"), "secret123");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("PATCH", "/api/collections/users/records/:id")[0]!.body,
@@ -222,18 +223,18 @@ test("an untouched password is not sent", async () => {
   const server = fakeServer()
     .on("GET", "/api/collections/users/records/:id", {
       id: "u1",
-      collectionId: "_pb_users_auth_",
+      collectionId: "_hb_users_auth_",
       collectionName: "users",
       email: "a@b.c",
     })
     .on("PATCH", "/api/collections/users/records/:id", {});
   const { user } = renderApp({
-    path: "/collections/_pb_users_auth_?record=u1",
+    path: "/collections/_hb_users_auth_?record=u1",
     server,
   });
   const d = await dialog("Edit record");
-  await user.click(await d.findByLabelText("Verified"));
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(await d.findByLabelText("verified"));
+  await user.click(d.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Record saved.");
   expect(
     server.find("PATCH", "/api/collections/users/records/:id")[0]!.body,
@@ -257,11 +258,11 @@ test("server errors map to inputs", async () => {
     400,
   );
   const { user } = renderApp({
-    path: "/collections/pbc_posts?record=new",
+    path: "/collections/hbc_posts?record=new",
     server,
   });
   const d = await dialog("New record");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Create" }));
   const message = await d.findByText("Cannot be blank.");
   expect(d.getByLabelText("title").getAttribute("aria-describedby")).toBe(
     message.id,
@@ -285,7 +286,7 @@ test("a script value in a text field stays text in the input", async () => {
     "/api/collections/posts/records/:id",
     saved({ title: hostile }),
   );
-  renderApp({ path: "/collections/pbc_posts?record=r1", server });
+  renderApp({ path: "/collections/hbc_posts?record=r1", server });
   const d = await dialog("Edit record");
   const input = (await d.findByLabelText("title")) as HTMLInputElement;
   expect(input.value).toBe(hostile);
@@ -324,23 +325,27 @@ test("closing a clean editor does not ask", async () => {
 test("view collection records open read-only", async () => {
   const server = fakeServer().on("GET", "/api/collections/stats/records/:id", {
     id: "v1",
-    collectionId: "pbc_stats",
+    collectionId: "hbc_stats",
     collectionName: "stats",
     title: "T",
   });
-  renderApp({ path: "/collections/pbc_stats?record=v1", server });
+  const { user } = renderApp({
+    path: "/collections/hbc_stats?record=v1",
+    server,
+  });
   const d = await dialog("Record");
   const title = (await d.findByLabelText("title")) as HTMLInputElement;
   expect(title.disabled).toBe(true);
-  expect(d.queryByRole("button", { name: "Save" })).toBeNull();
-  expect(d.queryByRole("button", { name: "Delete" })).toBeNull();
+  expect(d.queryByRole("button", { name: "Save changes" })).toBeNull();
+  const menu = await openActions(user, d);
+  expect(menu.queryByRole("menuitem", { name: "Delete" })).toBeNull();
 });
 
 test("Duplicate opens a new record without id", async () => {
   const { user, router } = open("r1");
   const d = await dialog("Edit record");
   await d.findByLabelText("title");
-  await user.click(d.getByRole("button", { name: "Duplicate" }));
+  await pickAction(user, d, "Duplicate");
   const next = await dialog("New record");
   expect(router.state.location.search).toMatchObject({ record: "new" });
   expect(
@@ -359,7 +364,7 @@ test("Delete confirms, deletes and closes", async () => {
   const { user, router } = open("r1", server);
   const d = await dialog("Edit record");
   await d.findByLabelText("title");
-  await user.click(d.getByRole("button", { name: "Delete" }));
+  await pickAction(user, d, "Delete");
   const confirm = await screen.findByRole("dialog", { name: "Delete record" });
   await user.click(within(confirm).getByRole("button", { name: "Delete" }));
   await screen.findByText("Record deleted.");
@@ -376,12 +381,12 @@ test("a 404 record id shows the server message", async () => {
     { code: 404, message: "The requested resource wasn't found.", data: {} },
     404,
   );
-  renderApp({ path: "/collections/pbc_posts?record=nope", server });
+  renderApp({ path: "/collections/hbc_posts?record=nope", server });
   const d = await dialog("Edit record");
   expect(
     await d.findByText("The requested resource wasn't found."),
   ).toBeTruthy();
-  expect(d.queryByRole("button", { name: "Save" })).toBeNull();
+  expect(d.queryByRole("button", { name: "Save changes" })).toBeNull();
 });
 
 test("a view record keeps the editor preview usable", async () => {
@@ -404,13 +409,13 @@ test("a view record keeps the editor preview usable", async () => {
     {
       id: "v1",
       collectionName: "stats",
-      collectionId: "pbc_stats",
+      collectionId: "hbc_stats",
       title: "T",
       body: "<p>x</p>",
     },
   );
   const { user } = renderApp({
-    path: "/collections/pbc_stats?record=v1",
+    path: "/collections/hbc_stats?record=v1",
     server,
   });
   const d = await dialog("Record");
@@ -424,7 +429,7 @@ test("Duplicate on a dirty form asks before leaving", async () => {
   const { user, router } = open("r1");
   const d = await dialog("Edit record");
   await user.type(await d.findByLabelText("title"), "x");
-  await user.click(d.getByRole("button", { name: "Duplicate" }));
+  await pickAction(user, d, "Duplicate");
   const confirm = await screen.findByRole("dialog", {
     name: "Discard unsaved changes?",
   });
@@ -449,11 +454,11 @@ test("a local JSON error replaces a stale server error", async () => {
   const d = await dialog("Edit record");
   const title = await d.findByLabelText("title");
   await user.type(title, "x");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Save changes" }));
   await d.findByText("Too long.");
   const meta = d.getByLabelText("meta");
   setCode(meta, "{oops");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Save changes" }));
   await d.findByText("Invalid JSON.");
   expect(d.queryByText("Too long.")).toBeNull();
 });
@@ -470,14 +475,35 @@ test("geoPoint and multi select errors are linked to their inputs", async () => 
     400,
   );
   const { user } = renderApp({
-    path: "/collections/pbc_posts?record=new",
+    path: "/collections/hbc_posts?record=new",
     server,
   });
   const d = await dialog("New record");
-  await user.click(d.getByRole("button", { name: "Save" }));
+  await user.click(d.getByRole("button", { name: "Create" }));
   const message = await d.findByText("Bad point.");
   for (const label of ["Longitude", "Latitude"])
     expect(d.getByLabelText(label).getAttribute("aria-describedby")).toBe(
       message.id,
     );
+});
+
+test("create hides autodate fields, edit shows them as text", async () => {
+  const server = fakeServer();
+  renderApp({ path: "/collections/hbc_posts?record=new", server });
+  const d = await dialog("New record");
+  expect(d.queryByText("created")).toBeNull();
+  expect(d.queryByLabelText("created")).toBeNull();
+});
+
+test("edit shows autodate values as read-only text and the delete prompt names the id", async () => {
+  const { user } = open("r1");
+  const d = await dialog("Edit record");
+  expect(d.getByText("created")).toBeTruthy();
+  expect(d.getByText("r1", { selector: "dd" })).toBeTruthy();
+  expect(d.getAllByText(/Jan 1, 2026/, { selector: "dd" })).toHaveLength(2);
+  expect(d.queryByLabelText("created")).toBeNull();
+  await pickAction(user, d, "Delete");
+  expect(
+    await screen.findByText("Delete record r1? This cannot be undone."),
+  ).toBeTruthy();
 });

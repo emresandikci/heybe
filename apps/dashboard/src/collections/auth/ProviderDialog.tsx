@@ -6,6 +6,7 @@ import {
   Button,
   CodeArea,
   Dialog,
+  Disclosure,
   NumberField,
   Select,
   TextField,
@@ -24,6 +25,7 @@ function Input({
   hint,
   type,
   required,
+  error,
 }: {
   label: string;
   path: string;
@@ -32,7 +34,9 @@ function Input({
   hint?: string;
   type?: string;
   required?: boolean;
+  error?: string;
 }) {
+  const serverError = useFieldError(path);
   return (
     <TextField
       label={label}
@@ -40,7 +44,7 @@ function Input({
       type={type}
       required={required}
       value={value}
-      error={useFieldError(path)}
+      error={error ?? serverError}
       onChange={(e) => onChange(e.target.value)}
     />
   );
@@ -58,6 +62,11 @@ export function ProviderDialog({
   onSave: (provider: Provider) => void;
 }) {
   const info = OAUTH2_PROVIDERS.find((p) => p.name === provider.name);
+  const hasSecret = Boolean(provider.clientId);
+  const [blank, setBlank] = useState<{
+    clientId?: string;
+    clientSecret?: string;
+  }>({});
   const text = (key: string) => String(provider[key] ?? "");
   const form = useForm({
     defaultValues: {
@@ -74,13 +83,21 @@ export function ProviderDialog({
             ? "off"
             : "unset",
     },
-    onSubmit: ({ value: { clientSecret, pkce, ...rest } }) =>
+    onSubmit: ({ value: { clientSecret, pkce, ...rest } }) => {
+      const missing = {
+        clientId: rest.clientId.trim() ? undefined : "Cannot be blank.",
+        clientSecret:
+          clientSecret || hasSecret ? undefined : "Cannot be blank.",
+      };
+      setBlank(missing);
+      if (missing.clientId || missing.clientSecret) return;
       onSave({
         ...provider,
         ...rest,
         pkce: pkce === "on" ? true : pkce === "off" ? false : null,
         ...(clientSecret ? { clientSecret } : {}),
-      }),
+      });
+    },
   });
   type Key = Exclude<keyof typeof form.state.values, "pkce">;
   const field = (key: Key, label: string, extra = {}) => (
@@ -90,7 +107,11 @@ export function ProviderDialog({
           label={label}
           path={`${errorPath}.${key}`}
           value={f.state.value}
-          onChange={f.handleChange}
+          onChange={(value) => {
+            f.handleChange(value);
+            setBlank((b) => ({ ...b, [key]: undefined }));
+          }}
+          error={blank[key as keyof typeof blank]}
           {...extra}
         />
       )}
@@ -126,13 +147,11 @@ export function ProviderDialog({
       }
     >
       <div className="flex flex-col gap-3">
+        <UnclaimedErrors />
         {field("clientId", "Client ID")}
         {field("clientSecret", "Client secret", {
           type: "password",
-          hint:
-            "clientId" in provider
-              ? "Leave empty to keep the current value"
-              : undefined,
+          hint: hasSecret ? "Leave empty to keep the current value" : undefined,
         })}
         {provider.name === "apple" && (
           <fieldset className={groupClass}>
@@ -162,12 +181,9 @@ export function ProviderDialog({
         {info?.needsURLs ? (
           urls
         ) : (
-          <details>
-            <summary className="cursor-pointer text-sm">
-              Custom endpoints
-            </summary>
-            <div className="mt-2 flex flex-col gap-3">{urls}</div>
-          </details>
+          <Disclosure title="Custom endpoints">
+            <div className="flex flex-col gap-3">{urls}</div>
+          </Disclosure>
         )}
       </div>
     </Dialog>

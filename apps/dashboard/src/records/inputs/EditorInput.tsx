@@ -37,7 +37,7 @@ export function EditorInput({
           title={`${name} preview`}
           sandbox=""
           srcDoc={value}
-          className="h-48 w-full rounded border border-slate-300 bg-white dark:border-slate-600"
+          className="h-48 w-full rounded border border-line-strong bg-surface"
         />
       )}
     </div>

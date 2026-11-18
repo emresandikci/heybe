@@ -3,37 +3,42 @@ import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { useCollections } from "../app/queries";
+import { Button, Dialog, Select, TextField, useToast } from "@heybe/ui";
 import {
-  Button,
-  Dialog,
-  Section,
-  Select,
-  TextField,
-  useToast,
-} from "@heybe/ui";
-import { CheckInput, NumberInput, SecretInput, TextInput } from "./inputs";
+  DependentFields,
+  EnabledBadge,
+  SectionDisclosure,
+  NumberInput,
+  SecretInput,
+  SwitchInput,
+  TextInput,
+} from "./inputs";
+import { QueryStatus } from "./QueryStatus";
+import { FormFooter } from "./FormFooter";
+import { SettingsPage } from "./SettingsPage";
 import { useSettings, type SettingsModel } from "./use-settings";
 import { useSettingsForm } from "./use-settings-form";
 
 export function MailPage() {
   const settings = useSettings();
-  if (!settings.data) return null;
-  return <MailForm settings={settings.data} />;
+  return (
+    <SettingsPage title="Mail">
+      {settings.data ? (
+        <MailForm settings={settings.data} />
+      ) : (
+        <QueryStatus query={settings} />
+      )}
+    </SettingsPage>
+  );
 }
 
 function MailForm({ settings }: { settings: SettingsModel }) {
-  const { form, dirty, version, save, submit, reset } =
-    useSettingsForm(settings);
+  const { form, dirty, save, submit, reset } = useSettingsForm(settings);
   const [testing, setTesting] = useState(false);
   return (
     <ErrorScope error={save.error}>
-      <form
-        key={version}
-        onSubmit={submit}
-        className="flex max-w-2xl flex-col gap-4"
-      >
-        <UnclaimedErrors />
-        <Section title="Sender">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <div className="grid gap-3 sm:grid-cols-2">
           <form.Field name="settings.meta.senderName">
             {(field) => (
               <TextInput
@@ -52,69 +57,90 @@ function MailForm({ settings }: { settings: SettingsModel }) {
               />
             )}
           </form.Field>
-        </Section>
-        <Section title="SMTP">
-          <form.Field name="settings.smtp.enabled">
-            {(field) => (
-              <CheckInput path="smtp.enabled" label="Use SMTP" field={field} />
-            )}
-          </form.Field>
-          <form.Field name="settings.smtp.host">
-            {(field) => (
-              <TextInput path="smtp.host" label="Host" field={field} />
-            )}
-          </form.Field>
-          <form.Field name="settings.smtp.port">
-            {(field) => (
-              <NumberInput path="smtp.port" label="Port" field={field} />
-            )}
-          </form.Field>
-          <form.Field name="settings.smtp.username">
-            {(field) => (
-              <TextInput path="smtp.username" label="Username" field={field} />
-            )}
-          </form.Field>
-          <form.Field name="secrets.smtpPassword">
-            {(field) => (
-              <SecretInput
-                path="smtp.password"
-                label="Password"
-                field={field}
-              />
-            )}
-          </form.Field>
-          <form.Field name="settings.smtp.authMethod">
-            {(field) => (
-              <AuthMethod
-                value={field.state.value}
-                onChange={field.handleChange}
-              />
-            )}
-          </form.Field>
-          <form.Field name="settings.smtp.tls">
-            {(field) => (
-              <CheckInput path="smtp.tls" label="TLS" field={field} />
-            )}
-          </form.Field>
-          <form.Field name="settings.smtp.localName">
-            {(field) => (
-              <TextInput
-                path="smtp.localName"
-                label="Local name"
-                field={field}
-              />
-            )}
-          </form.Field>
-        </Section>
-        <div className="flex gap-2">
-          <Button type="submit" variant="primary" loading={save.isPending}>
-            Save changes
-          </Button>
-          <Button onClick={reset}>Reset</Button>
+        </div>
+        <form.Subscribe selector={(s) => s.values.settings.smtp.enabled}>
+          {(enabled) => (
+            <SectionDisclosure
+              errorPrefix="smtp."
+              title="SMTP server"
+              badge={<EnabledBadge on={enabled} />}
+            >
+              <div className="flex flex-col gap-3">
+                <form.Field name="settings.smtp.enabled">
+                  {(field) => (
+                    <SwitchInput
+                      path="smtp.enabled"
+                      label="Use SMTP"
+                      field={field}
+                    />
+                  )}
+                </form.Field>
+                <DependentFields enabled={enabled}>
+                  <form.Field name="settings.smtp.host">
+                    {(field) => (
+                      <TextInput path="smtp.host" label="Host" field={field} />
+                    )}
+                  </form.Field>
+                  <form.Field name="settings.smtp.port">
+                    {(field) => (
+                      <NumberInput
+                        path="smtp.port"
+                        label="Port"
+                        field={field}
+                      />
+                    )}
+                  </form.Field>
+                  <form.Field name="settings.smtp.username">
+                    {(field) => (
+                      <TextInput
+                        path="smtp.username"
+                        label="Username"
+                        field={field}
+                      />
+                    )}
+                  </form.Field>
+                  <form.Field name="secrets.smtpPassword">
+                    {(field) => (
+                      <SecretInput
+                        path="smtp.password"
+                        label="Password"
+                        field={field}
+                      />
+                    )}
+                  </form.Field>
+                  <form.Field name="settings.smtp.authMethod">
+                    {(field) => (
+                      <AuthMethod
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                      />
+                    )}
+                  </form.Field>
+                  <form.Field name="settings.smtp.tls">
+                    {(field) => (
+                      <SwitchInput path="smtp.tls" label="TLS" field={field} />
+                    )}
+                  </form.Field>
+                  <form.Field name="settings.smtp.localName">
+                    {(field) => (
+                      <TextInput
+                        path="smtp.localName"
+                        label="Local name"
+                        field={field}
+                      />
+                    )}
+                  </form.Field>
+                </DependentFields>
+              </div>
+            </SectionDisclosure>
+          )}
+        </form.Subscribe>
+        <div>
           <Button disabled={dirty} onClick={() => setTesting(true)}>
             Send test email
           </Button>
         </div>
+        <FormFooter dirty={dirty} saving={save.isPending} onReset={reset} />
       </form>
       {testing && <TestEmailDialog onClose={() => setTesting(false)} />}
     </ErrorScope>
@@ -183,8 +209,30 @@ function TestEmailDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <ErrorScope error={error}>
-      <Dialog open onClose={onClose} title="Send test email">
+      <Dialog
+        open
+        onClose={onClose}
+        title="Send test email"
+        footer={
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <form.Subscribe selector={(s) => s.isSubmitting}>
+              {(isSubmitting) => (
+                <Button
+                  type="submit"
+                  form="send-test-email"
+                  variant="primary"
+                  loading={isSubmitting}
+                >
+                  Send
+                </Button>
+              )}
+            </form.Subscribe>
+          </>
+        }
+      >
         <form
+          id="send-test-email"
           onSubmit={(e) => {
             e.preventDefault();
             void form.handleSubmit();
@@ -237,16 +285,6 @@ function TestEmailDialog({ onClose }: { onClose: () => void }) {
               </Select>
             )}
           </form.Field>
-          <div className="flex justify-end gap-2">
-            <Button onClick={onClose}>Cancel</Button>
-            <form.Subscribe selector={(s) => s.isSubmitting}>
-              {(isSubmitting) => (
-                <Button type="submit" variant="primary" loading={isSubmitting}>
-                  Send
-                </Button>
-              )}
-            </form.Subscribe>
-          </div>
         </form>
       </Dialog>
     </ErrorScope>
