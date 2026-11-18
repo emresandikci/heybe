@@ -1,3 +1,5 @@
+# [@heybe/core-v1.1.1](https://github.com/emresandikci/heybe/compare/@heybe/core@1.1.0...@heybe/core@1.1.1) (2026-11-18)
+
 # [heybe-v1.1.0](https://github.com/emresandikci/heybe/compare/heybe@1.0.0...heybe@1.1.0) (2026-11-18)
 
 
