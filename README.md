@@ -4,7 +4,7 @@
 
 Heybe is an open source backend in a single binary, built with TypeScript on [Bun](https://bun.sh). It brings the feature set of [PocketBase](https://ganigeorgiev.com/pocketbase/pocketbase) to the JavaScript ecosystem, so you can extend and read it without leaving TypeScript.
 
-> **Status:** early development. Nothing is usable yet. The API below is the planned design and may change.
+> **Status:** the 1.x feature set is in place, but the packages are not published to npm yet and the API may still change.
 
 ## Goals
 
@@ -16,7 +16,7 @@ Heybe is an open source backend in a single binary, built with TypeScript on [Bu
 - **New dashboard** for collections, records and settings.
 - **Own storage format** with `heybe import` to migrate from an existing `pb_data`.
 
-## Planned API
+## API
 
 ### Hooks and routes
 
@@ -66,16 +66,14 @@ const posts = await heybe.records("posts").findMany({
 });
 ```
 
-## Roadmap to 1.0
+## Features
 
-1. **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybe/query`, superusers, password auth, settings.
-2. **Relations and files:** expand, back-relations, indexes, view collections, batch API, file uploads, thumbnails, protected files, type generation.
-3. **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
-4. **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
-5. **`@heybe/client`**
-6. **Operations:** rate limiting, logs, backups, S3, SQL API.
-7. **Dashboard**
-8. **Distribution:** `heybe import`, single binary, npm package, docs.
+- **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybe/query`, superusers, password auth, settings.
+- **Relations and files:** expand, back-relations, indexes, view collections, batch API, file uploads, thumbnails, protected files, type generation.
+- **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
+- **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
+- **Operations:** rate limiting, logs, backups, S3, SQL API.
+- **Distribution:** `heybe import`, single binary.
 
 ## Development
 
@@ -139,6 +137,8 @@ pnpm --filter @heybe/dashboard build
 
 The build writes `packages/heybe/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
 
+It covers collections (with a field, rule and index editor), records, logs, backups and all settings. OAuth2 providers of an auth collection are managed under Settings > Auth providers. The records filter, the logs filter, API rules and the SQL fields (view query, indexes, SQL page) autocomplete fields, operators, modifiers, macros and `@request` params as you type.
+
 Record previews block remote images (the dashboard CSP allows none, like PocketBase).
 
 Email templates are written in MJML and compiled in the browser (`mjml-browser`, loaded on demand). The server stores the HTML with the MJML source embedded as a trailing `<!-- heybe:mjml:<base64> -->` comment.
@@ -188,7 +188,7 @@ window.heybe.dashboard.addPage({
 });
 ```
 
-Use `@heybe/ui` for styled components and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybe/ui/style.css` for compiled styles or `@heybe/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
+Use `@heybe/ui` for styled components (buttons, fields, `FileField`, `Select`, `Checkbox`, `Switch`, `Table`, `Dialog`, `Disclosure`, `Badge`, `CodeArea`, toasts and more) and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybe/ui/style.css` for compiled styles or `@heybe/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
 
 ## License
 
