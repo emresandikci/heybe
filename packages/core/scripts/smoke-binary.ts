@@ -194,8 +194,25 @@ export async function smoke(binary: string): Promise<void> {
     console.log(`binary size: ${size} MB`);
     console.log(`cold start: ${coldStart} ms`);
   } finally {
-    server?.kill("SIGKILL");
-    rmSync(root, { recursive: true, force: true });
+    if (server) {
+      server.kill("SIGKILL");
+      await server.exited;
+    }
+    await removeDir(root);
+  }
+}
+
+// Windows keeps file locks for a moment after the process exits
+async function removeDir(dir: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (attempt >= 20 || (code !== "EBUSY" && code !== "EPERM")) throw err;
+      await Bun.sleep(250);
+    }
   }
 }
 
