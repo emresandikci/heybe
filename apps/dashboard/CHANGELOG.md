@@ -1,3 +1,5 @@
+# [@heybe/dashboard-v1.1.1](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.1.0...@heybe/dashboard@1.1.1) (2026-11-18)
+
 # [@heybe/dashboard-v1.1.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.0.0...@heybe/dashboard@1.1.0) (2026-11-18)
 
 
