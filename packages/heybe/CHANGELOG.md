@@ -1,3 +1,15 @@
+# [heybe-v1.1.0](https://github.com/emresandikci/heybe/compare/heybe@1.0.0...heybe@1.1.0) (2026-11-18)
+
+
+* refactor!: use the hb prefix for heybe's own ids ([63695bc](https://github.com/emresandikci/heybe/commit/63695bc3960a07fa4fb885a2c23dc279fa529121))
+
+
+### BREAKING CHANGES
+
+* Heybe data created before this change keeps pb ids and
+is not migrated. Code that hardcodes pbc_ or _pb_users_auth_ ids must
+use the hb ids or collection names.
+
 # heybe-v1.0.0 (2026-11-16)
 
 
