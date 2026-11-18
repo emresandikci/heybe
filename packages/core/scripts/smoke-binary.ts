@@ -168,19 +168,25 @@ export async function smoke(binary: string): Promise<void> {
       backup.status === 204,
       `backup create answered ${backup.status} ${await backup.text()}`,
     );
-    const recordUrl = `/api/collections/smoke/records/${record.id}`;
-    check(
-      (await api(recordUrl, { method: "DELETE" })).status === 204,
-      "record delete",
-    );
-    const restore = await api("/api/backups/smoke.zip/restore", {
-      method: "POST",
-    });
-    check(restore.status === 204, `restore answered ${restore.status}`);
-    await poll("the restored record is served after the restart", 15000, () =>
-      api(recordUrl).then((r) => (r.ok ? true : undefined)),
-    );
-    check(server.exitCode === null, "the server exited instead of restarting");
+    // restore needs a process restart, which Windows does not support (same as PocketBase)
+    if (process.platform !== "win32") {
+      const recordUrl = `/api/collections/smoke/records/${record.id}`;
+      check(
+        (await api(recordUrl, { method: "DELETE" })).status === 204,
+        "record delete",
+      );
+      const restore = await api("/api/backups/smoke.zip/restore", {
+        method: "POST",
+      });
+      check(restore.status === 204, `restore answered ${restore.status}`);
+      await poll("the restored record is served after the restart", 15000, () =>
+        api(recordUrl).then((r) => (r.ok ? true : undefined)),
+      );
+      check(
+        server.exitCode === null,
+        "the server exited instead of restarting",
+      );
+    }
 
     server.kill("SIGTERM");
     const code = await Promise.race([server.exited, Bun.sleep(5000)]);

@@ -99,7 +99,7 @@ Get the archive for your OS and architecture (Linux, macOS, Windows) from [GitHu
 ./heybe serve          # Windows: heybe.exe serve
 ```
 
-`checksums.txt` on each release lists the SHA-256 of every archive. Docker is the other option, see below. Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no Windows container image.
+`checksums.txt` on each release lists the SHA-256 of every archive. Docker is the other option, see below. Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no Windows container image. Like PocketBase, the Windows binary cannot restore a backup in place (restoring needs a process restart); restore on Linux, macOS or in Docker.
 
 ## Docker
 
