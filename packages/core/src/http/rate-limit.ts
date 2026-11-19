@@ -103,7 +103,7 @@ const AUTH_AUDIENCE = ["", "@auth"];
 const audience = (e: RequestEvent) => (e.auth ? AUTH_AUDIENCE : GUEST_AUDIENCE);
 
 function defaultLabels(e: RequestEvent): string[] {
-  let path = new URL(e.req.url).pathname;
+  let path = e.url.pathname;
   try {
     path = decodeURIComponent(path);
   } catch {}

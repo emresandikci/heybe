@@ -6,7 +6,9 @@ import { type App } from "../app";
 import { type PasswordValue, fields } from "../fields";
 import { NotFoundError, ValidationError } from "../util";
 import { serializeRecord } from "./serialize";
+import { parseFilter } from "../filter/parse";
 import { internalRecords } from "./internal";
+import { keyField } from "./service";
 import { cheapPassword, testApp } from "../test-app";
 
 const now = () => new Date("2026-01-01T00:00:00.000Z");
@@ -320,6 +322,50 @@ describe("update and delete", () => {
       } as any,
     );
     expect(d).toMatchObject({ views: -5, tags: ["b"] });
+  });
+
+  test("keys that only look like modifiers are ignored", async () => {
+    const r = await app.records("posts").create({
+      title: "a",
+      views: 1,
+      "+views": 5,
+      "title+": "x",
+      "+tags+": "a",
+      "views:autogenerate": 3,
+      "tags:autogenerate": "a",
+    } as any);
+    expect(r).toMatchObject({ title: "a", views: 1, tags: [] });
+  });
+
+  test("modifier keys see fields added to or removed from the same collection object", () => {
+    const c = structuredClone(app.collections.find("posts")!);
+    expect(keyField(c, "likes+")).toBeNull();
+    c.fields.push({ name: "likes", type: "number" } as any);
+    expect(keyField(c, "likes+")?.op).toBe("append");
+    c.fields.splice(
+      c.fields.findIndex((f) => f.name === "views"),
+      1,
+    );
+    expect(keyField(c, "views+")).toBeNull();
+  });
+
+  test("modifier keys follow a renamed or deleted field", async () => {
+    const r = await app.records("posts").create({ title: "a", views: 1 });
+    const id = r.id as string;
+    await app.records("posts").update(id, { "views+": 1 } as any);
+    const posts = app.collections.find("posts")!;
+    await app.collections.save({
+      ...posts,
+      fields: posts.fields
+        .filter((f) => f.name !== "tags")
+        .map((f) => (f.name === "views" ? { ...f, name: "hits" } : f)),
+    } as any);
+    const u = await app
+      .records("posts")
+      .update(id, { "views+": 10, "hits+": 2, "tags+": "a" } as any);
+    expect(u).toMatchObject({ hits: 4 });
+    expect(u).not.toHaveProperty("views");
+    expect(u).not.toHaveProperty("tags");
   });
 
   test("text :autogenerate appends a random value", async () => {
@@ -717,5 +763,164 @@ describe("file uploads", () => {
     expect(stored()).toHaveLength(1);
     await docs.truncate();
     expect(stored()).toEqual([]);
+  });
+});
+
+describe("list totals", () => {
+  beforeEach(async () => {
+    const authors = await app.collections.save({
+      name: "authors",
+      fields: [text("name")],
+    } as any);
+    const posts = app.collections.find("posts")!;
+    await app.collections.save({
+      ...posts,
+      fields: [
+        ...posts.fields,
+        {
+          name: "author",
+          type: "relation",
+          collectionId: authors.id,
+          maxSelect: 1,
+        },
+        {
+          name: "editors",
+          type: "relation",
+          collectionId: authors.id,
+          maxSelect: 5,
+        },
+      ],
+    } as any);
+    await app.collections.save({
+      name: "comments",
+      fields: [
+        text("body"),
+        {
+          name: "post",
+          type: "relation",
+          collectionId: posts.id,
+          maxSelect: 1,
+        },
+      ],
+    } as any);
+    const ann = await app.records("authors").create({ name: "ann" });
+    const ann2 = await app.records("authors").create({ name: "ann" });
+    const bob = await app.records("authors").create({ name: "bob" });
+    const p1 = await app.records("posts").create({
+      title: "p1",
+      tags: ["a", "b"],
+      author: ann.id,
+      editors: [ann.id, ann2.id],
+    });
+    await app.records("posts").create({
+      title: "p2",
+      author: ann2.id,
+      editors: [bob.id],
+    });
+    await app.records("posts").create({ title: "p3", author: bob.id });
+    for (const body of ["c", "c"])
+      await app.records("comments").create({ body, post: p1.id });
+  });
+
+  const count = (
+    filter: string,
+    auth: Record<string, unknown> | null = null,
+  ) => {
+    const get = spyOn(app.db, "get");
+    try {
+      const { totalItems } = internalRecords(app, "posts").query({
+        filter: parseFilter(filter),
+        request: auth && {
+          auth,
+          authCollection: "users",
+          body: {},
+          query: {},
+          headers: {},
+          method: "GET",
+          context: "default",
+        },
+      });
+      const sql = get.mock.calls
+        .map(([s]) => s)
+        .find((s) => s.includes("COUNT("))!;
+      return { totalItems, distinct: sql.includes("COUNT(DISTINCT") };
+    } finally {
+      get.mockRestore();
+    }
+  };
+
+  test.each([
+    ["", 3],
+    ['title != ""', 3],
+    ['author.name = "ann"', 2],
+    ['author.name = "ann" && author.id != ""', 2],
+  ])("to-one joins count rows: %p", (filter, total) => {
+    expect(count(filter)).toEqual({ totalItems: total, distinct: false });
+  });
+
+  test.each([
+    ['editors.name ?= "ann"', 1],
+    ['editors.name = "ann"', 1],
+    ['comments_via_post.body ?= "c"', 1],
+    ['tags:each ?!= "z"', 3],
+    ['@collection.authors.name ?= "ann" && author.name = "ann"', 2],
+  ])("to-many joins count distinct rows: %p", (filter, total) => {
+    expect(count(filter)).toEqual({ totalItems: total, distinct: true });
+  });
+
+  // three rows of each back collection point to the first post; only "covers" and "pins" allow one
+  test.each([
+    ["covers", "CREATE UNIQUE INDEX idx_covers_post ON covers (post)", false],
+    [
+      "pins",
+      "CREATE UNIQUE INDEX idx_pins_post ON pins (post) WHERE post != ''",
+      false,
+    ],
+    [
+      "drafts",
+      "CREATE UNIQUE INDEX idx_drafts_post ON drafts (post) WHERE active = TRUE",
+      true,
+    ],
+  ])(
+    "a back relation through %p counts distinct only when it can repeat",
+    async (name, index, distinct) => {
+      const posts = app.collections.find("posts")!;
+      await app.collections.save({
+        name,
+        fields: [
+          text("body"),
+          { name: "active", type: "bool" },
+          {
+            name: "post",
+            type: "relation",
+            collectionId: posts.id,
+            maxSelect: 1,
+          },
+        ],
+        indexes: [index],
+      } as any);
+      const [p1] = internalRecords(app, "posts").query({
+        filter: parseFilter('title = "p1"'),
+      }).items;
+      const rows = name === "drafts" ? 3 : 1;
+      for (let i = 0; i < rows; i++)
+        await app.records(name).create({ body: "x", post: p1!.id });
+      expect(count(`${name}_via_post.body = "x"`)).toEqual({
+        totalItems: 1,
+        distinct,
+      });
+    },
+  );
+
+  test("an @request.auth field joins one row", async () => {
+    const user = await app.records("users").create({
+      email: "u@example.com",
+      password: "1234567890",
+      name: "u",
+    });
+    expect(count('@request.auth.name = "u"', { id: user.id })).toEqual({
+      totalItems: 3,
+      distinct: false,
+    });
   });
 });

@@ -58,6 +58,8 @@ export interface PreparedWrite {
 }
 
 export interface QueryOpts {
+  // only the record with this id; replaces filter
+  id?: string;
   filter?: Expr | null;
   sort?: string;
   page?: number;
@@ -116,6 +118,35 @@ export function modifier(
   return null;
 }
 
+const fieldsByName = new WeakMap<Field[], Map<string, Field>>();
+
+// The field a data key sets and how ("views+" appends to views). The name map follows a new
+// fields array (a collection change) and fields added or removed in place.
+export function keyField(
+  c: Collection,
+  key: string,
+): { f: Field; op: NonNullable<ReturnType<typeof modifier>> } | null {
+  let byName = fieldsByName.get(c.fields);
+  if (!byName || byName.size !== c.fields.length) {
+    byName = new Map(c.fields.map((f) => [f.name, f]));
+    fieldsByName.set(c.fields, byName);
+  }
+  let f = byName.get(key);
+  if (!f) {
+    // field names are \w+, so a key names at most one field
+    const name = key.endsWith(":autogenerate")
+      ? key.slice(0, -":autogenerate".length)
+      : key.endsWith("+") || key.endsWith("-")
+        ? key.slice(0, -1)
+        : key.startsWith("+")
+          ? key.slice(1)
+          : null;
+    f = name === null ? undefined : byName.get(name);
+  }
+  const op = f && modifier(f, key);
+  return op ? { f: f!, op } : null;
+}
+
 export function applyModifier(
   f: Field,
   op: NonNullable<ReturnType<typeof modifier>>,
@@ -147,13 +178,10 @@ export function applyModifier(
 function assign(c: Collection, values: Values, data: Values): void {
   const keys = Object.keys(data).sort((a, b) => a.length - b.length);
   for (const key of keys) {
-    for (const f of c.fields) {
-      const op = modifier(f, key);
-      if (!op) continue;
-      if (f.type !== "autodate")
-        values[f.name] = applyModifier(f, op, values[f.name], data[key]);
-      break;
-    }
+    const found = keyField(c, key);
+    if (!found || found.f.type === "autodate") continue;
+    const { f, op } = found;
+    values[f.name] = applyModifier(f, op, values[f.name], data[key]);
   }
 }
 
@@ -178,7 +206,7 @@ export function replaceModifiers(
   const values = draftValues(c, base, data);
   const out = { ...data };
   for (const key of Object.keys(data)) {
-    const f = c.fields.find((f) => modifier(f, key));
+    const f = keyField(c, key)?.f;
     if (!f || f.type === "password") continue;
     delete out[key];
     out[f.name] = values[f.name];
@@ -327,9 +355,10 @@ export class RecordServiceImpl<T> {
     };
     try {
       for (const key of Object.keys(input)) {
-        const f = c.fields.find((f) => modifier(f, key));
+        const found = keyField(c, key);
+        const f = found?.f;
         const prepare = f && fields[f.type].prepare;
-        if (!prepare || modifier(f, key) === "subtract") continue;
+        if (!prepare || found!.op === "subtract") continue;
         const out = await prepare(input[key], f, p.ctx);
         let pairs = p.resolved.get(f.name);
         if (!pairs) p.resolved.set(f.name, (pairs = new Map()));
@@ -572,13 +601,38 @@ export class RecordServiceImpl<T> {
     const request = opts.request ?? null;
     const isSuperuser = !request || request.authCollection === "_superusers";
 
-    const compiler = new QueryCompiler({ collection: c, store, request, now });
-    compiler.allowHidden = true;
-    compiler.filter(opts.ruleFilter ?? null);
-    compiler.allowHidden = isSuperuser;
-    compiler.filter(opts.filter ?? null);
-    compiler.sort(parseSort(opts.sort ?? ""));
-    const built = compiler.build();
+    const table = quote(c.name);
+    let built: {
+      sql: string;
+      params: unknown[];
+      joins: string[];
+      orderBy: string;
+      toMany: boolean;
+    };
+    if (opts.id !== undefined && !opts.ruleFilter && c.type !== "view") {
+      built = {
+        sql: `${table}.${quote("id")} = ?1`,
+        params: [opts.id],
+        joins: [],
+        orderBy: "",
+        toMany: false,
+      };
+    } else {
+      const compiler = new QueryCompiler({
+        collection: c,
+        store,
+        request,
+        now,
+      });
+      compiler.allowHidden = true;
+      compiler.filter(opts.ruleFilter ?? null);
+      compiler.allowHidden = isSuperuser;
+      compiler.filter(
+        opts.id !== undefined ? toAst({ id: opts.id }) : (opts.filter ?? null),
+      );
+      compiler.sort(parseSort(opts.sort ?? ""));
+      built = compiler.build();
+    }
 
     const page = opts.page && opts.page > 0 ? Math.floor(opts.page) : 1;
     const perPage = Math.min(
@@ -587,7 +641,6 @@ export class RecordServiceImpl<T> {
         : DEFAULT_PER_PAGE,
       MAX_PER_PAGE,
     );
-    const table = quote(c.name);
     const from = `FROM ${table} ${built.joins.join(" ")} WHERE ${built.sql}`;
 
     const n = built.params.length;
@@ -599,9 +652,15 @@ export class RecordServiceImpl<T> {
     let totalItems = -1;
     let totalPages = -1;
     if (!opts.skipTotal) {
-      const countCol = c.type === "view" ? "id" : "_rowid_";
+      // without a join that can repeat a row, every row is distinct already
+      const counted =
+        c.type === "view"
+          ? `DISTINCT ${table}.id`
+          : built.toMany
+            ? `DISTINCT ${table}._rowid_`
+            : "*";
       totalItems = db.get<{ n: number }>(
-        `SELECT COUNT(DISTINCT ${table}.${countCol}) AS n ${from}`,
+        `SELECT COUNT(${counted}) AS n ${from}`,
         built.params,
       )!.n;
       totalPages = Math.ceil(totalItems / perPage);
@@ -692,10 +751,9 @@ export class RecordServiceImpl<T> {
   private resolve(p: PreparedWrite, data: Values): Values {
     const out = { ...data };
     for (const key of Object.keys(data)) {
-      const f = p.ctx.collection.fields.find((f) => modifier(f, key));
-      const pairs = f && p.resolved.get(f.name);
-      if (pairs && modifier(f, key) !== "subtract")
-        out[key] = swap(pairs, data[key]);
+      const found = keyField(p.ctx.collection, key);
+      const pairs = found && p.resolved.get(found.f.name);
+      if (pairs && found.op !== "subtract") out[key] = swap(pairs, data[key]);
     }
     return out;
   }

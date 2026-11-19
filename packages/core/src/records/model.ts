@@ -1,5 +1,5 @@
 import type { Collection } from "../collections/model";
-import { applyModifier, modifier, zeroValues } from "./service";
+import { applyModifier, keyField, zeroValues } from "./service";
 import { plain, sortKeys } from "./serialize";
 
 type Values = Record<string, unknown>;
@@ -33,11 +33,13 @@ export class RecordModel {
   }
 
   set(key: string, value: unknown): void {
-    const f = this.collection.fields.find((f) => modifier(f, key));
-    const op = f && modifier(f, key);
-    if (!f || !op) this.data.set(key, value);
-    else if (f.type !== "autodate")
-      this.data.set(f.name, applyModifier(f, op, this.get(f.name), value));
+    const found = keyField(this.collection, key);
+    if (!found) this.data.set(key, value);
+    else if (found.f.type !== "autodate")
+      this.data.set(
+        found.f.name,
+        applyModifier(found.f, found.op, this.get(found.f.name), value),
+      );
   }
 
   // stores the value as is, without modifiers or normalization

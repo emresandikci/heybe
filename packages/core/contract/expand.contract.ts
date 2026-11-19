@@ -492,6 +492,39 @@ describe("back-relations in filters and rules", () => {
     );
   });
 
+  test("totals with a partial and a full unique index", async () => {
+    for (const t of [targets.pb, targets.hb]) {
+      const posts = (await (
+        await api(t, "GET", "/api/collections/posts")
+      ).json()) as Json;
+      await setup(t, "POST", "/api/collections", {
+        name: "drafts",
+        ...open,
+        fields: [
+          { name: "body", type: "text" },
+          { name: "active", type: "bool" },
+          rel("post", posts.id),
+        ],
+        indexes: [
+          "CREATE UNIQUE INDEX idx_drafts_post ON drafts (post) WHERE active = TRUE",
+        ],
+      });
+    }
+    for (const key of ["d1", "d2", "d3"])
+      await create(key, "drafts", (t) => ({ body: "x", post: id(t, "p1") }));
+    for (const filter of [
+      'drafts_via_post.body = "x"',
+      'profiles_via_post.bio = "b"',
+    ]) {
+      const pb = await same(
+        guestGet(() =>
+          records("posts", `?filter=${encodeURIComponent(filter)}`),
+        ),
+      );
+      expect((pb.body as Json).totalItems).toBe(1);
+    }
+  });
+
   test("list rule", async () => {
     const setRule = (rule: string) =>
       both((t) =>

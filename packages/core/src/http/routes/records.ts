@@ -1,4 +1,4 @@
-import { type Expr, type ListResult, toAst } from "@heybe/query";
+import { type Expr, type ListResult } from "@heybe/query";
 import { verifyPassword } from "../../auth/password";
 import type { App } from "../../app";
 import type { Collection } from "../../collections/model";
@@ -225,7 +225,7 @@ function findById(
   try {
     items = internalRecords(app, c.name).query({
       ruleFilter: rule,
-      filter: toAst({ id }),
+      id,
       perPage: 1,
       skipTotal: true,
       request: info,

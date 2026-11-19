@@ -236,6 +236,30 @@ async function serve(
   }
 }
 
+const TYPE_CACHE_SIZE = 4096;
+const typeCaches = new WeakMap<
+  Filesystem,
+  Map<string, { size: number; modified: number; type: string }>
+>();
+
+// sniffing is a large part of a download, so the type is kept per key while size and mtime match
+async function cachedSniff(fs: Filesystem, key: string, file: StoredFile) {
+  let cache = typeCaches.get(fs);
+  if (!cache) typeCaches.set(fs, (cache = new Map()));
+  const modified = file.modified.getTime();
+  const hit = cache.get(key);
+  if (hit && hit.size === file.size && hit.modified === modified) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return hit.type;
+  }
+  const type = await sniffMime(file.blob);
+  cache.delete(key);
+  if (cache.size >= TYPE_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+  cache.set(key, { size: file.size, modified, type });
+  return type;
+}
+
 // Port of PB filesystem.Serve
 export async function serveStoredFile(
   e: RequestEvent,
@@ -249,7 +273,7 @@ export async function serveStoredFile(
     : await fs.file(key);
   if (!file) throw new NotFoundError();
   const type =
-    sniffed ?? ("read" in file ? file.type : await sniffMime(file.blob));
+    sniffed ?? ("read" in file ? file.type : await cachedSniff(fs, key, file));
   const inline =
     !TRUE.has(e.query.get("download") ?? "") && INLINE_TYPES.has(type);
   const headers = new Headers({

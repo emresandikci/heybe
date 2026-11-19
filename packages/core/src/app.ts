@@ -283,7 +283,7 @@ export function createApp(opts: AppOptions = {}): App {
   const now = opts.now ?? (() => new Date());
   const db = memory
     ? openMemoryDb(join(dataDir, "data.db"), now)
-    : openDb(join(dataDir, "data.db"));
+    : openDb(join(dataDir, "data.db"), undefined, realTimers);
   const auxDb = openAuxDb(join(dataDir, "auxiliary.db"));
   const settings = new Settings(db);
   const files = appFilesystem(

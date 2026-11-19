@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Database, type SQLQueryBindings, type Statement } from "bun:sqlite";
+import type { Timers } from "./timers";
 
 export interface Db {
   query<T>(sql: string, params?: unknown[]): T[];
@@ -114,6 +115,156 @@ function connection(path: string, readonly: boolean, busyTimeoutMs: number) {
   return { sqlite, cache, withStmt, close };
 }
 
+// picked by A/B on the create benchmark: under sustained writes a 1 s tick lets the WAL reach the
+// writer's autocheckpoint, which then runs inside a request
+const CHECKPOINT_DELAY_MS = 250;
+const CHECKPOINT_COMMITS = 200;
+const WAL_AUTOCHECKPOINT_PAGES = 10_000;
+const WORKER_TIMEOUT_MS = 5000;
+
+interface Checkpointer {
+  written(): void;
+  pause(): Promise<void>;
+  resume(): void;
+  stop(): void;
+  connected(): boolean;
+  running(): boolean;
+  // resolves when no message to the worker is in flight
+  idle(): Promise<void>;
+}
+
+// PASSIVE checkpoints in a worker thread with its own connection, so a commit never runs one.
+// A tick is scheduled only after a write; pause closes the worker's connection.
+function checkpointer(path: string, timers: Timers): Checkpointer {
+  type CheckpointWorker = Worker & { ref(): void; unref(): void };
+  let worker: CheckpointWorker | null = null;
+  let timer: unknown = null;
+  let dirty = false;
+  let paused = false;
+  let stopped = false;
+  let connected = false;
+  let inflight: Promise<unknown> = Promise.resolve();
+  let lastId = 0;
+  let commits = 0;
+  let ticking = false;
+  type Reply = { complete?: boolean; error?: string };
+  const replies = new Map<number, (data: Reply) => void>();
+
+  // a dead or stuck worker answers whatever was waiting, so pause never hangs
+  const exited = (w: CheckpointWorker, error: string) => {
+    if (worker === w) {
+      worker = null;
+      connected = false;
+    }
+    w.terminate();
+    for (const reply of replies.values()) reply({ error });
+    replies.clear();
+  };
+
+  const start = () => {
+    const w = new Worker(
+      new URL("./checkpoint-worker.ts", import.meta.url),
+    ) as CheckpointWorker;
+    w.unref();
+    w.onmessage = (e: MessageEvent<Reply & { id: number }>) => {
+      const reply = replies.get(e.data.id);
+      replies.delete(e.data.id);
+      if (replies.size === 0) w.unref();
+      reply?.(e.data);
+    };
+    w.onerror = (e) => exited(w, e.message);
+    w.addEventListener("close", () => exited(w, "checkpoint worker exited"));
+    return w;
+  };
+
+  const post = (w: CheckpointWorker, close: boolean) => {
+    const id = ++lastId;
+    const done = new Promise<Reply>((resolve) => replies.set(id, resolve));
+    w.ref();
+    w.postMessage({ id, path, close });
+    inflight = Promise.all([inflight, done]);
+    return done;
+  };
+
+  const schedule = () => {
+    if (timer === null && dirty && !paused && !stopped)
+      timer = timers.setTimeout(tick, CHECKPOINT_DELAY_MS);
+  };
+
+  const tick = async () => {
+    timer = null;
+    if (paused || stopped) return;
+    dirty = false;
+    commits = 0;
+    ticking = true;
+    worker ??= start();
+    const { complete, error } = await post(worker, false);
+    ticking = false;
+    connected = error === undefined && !stopped;
+    // frames a reader still needed stay in the WAL, so try again; after an error the next write retries
+    if (error === undefined && !complete) dirty = true;
+    schedule();
+  };
+
+  return {
+    written: () => {
+      dirty = true;
+      if (++commits >= CHECKPOINT_COMMITS && !ticking) {
+        if (timer !== null) timers.clearTimeout(timer);
+        timer = null;
+        void tick();
+      } else schedule();
+    },
+    pause: async () => {
+      paused = true;
+      if (timer !== null) timers.clearTimeout(timer);
+      timer = null;
+      const w = worker;
+      const guard = timers.setTimeout(() => {
+        if (w) exited(w, "checkpoint worker did not answer");
+      }, WORKER_TIMEOUT_MS);
+      try {
+        await inflight;
+        if (worker) await post(worker, true);
+      } finally {
+        timers.clearTimeout(guard);
+      }
+      connected = false;
+    },
+    resume: () => {
+      paused = false;
+      schedule();
+    },
+    // synchronous, so the db files are free when close returns: the worker closes its connection
+    // after any checkpoint in flight and signals through shared memory
+    stop: () => {
+      stopped = true;
+      if (timer !== null) timers.clearTimeout(timer);
+      timer = null;
+      const w = worker;
+      if (!w) return;
+      const signal = new Int32Array(new SharedArrayBuffer(4));
+      w.postMessage({ id: ++lastId, path, close: true, signal });
+      Atomics.wait(signal, 0, 0, WORKER_TIMEOUT_MS);
+      exited(w, "checkpoint worker stopped");
+    },
+    connected: () => connected,
+    running: () => worker !== null,
+    idle: async () => {
+      let seen;
+      do {
+        seen = inflight;
+        await seen;
+      } while (seen !== inflight);
+    },
+  };
+}
+
+const checkpointers = new WeakMap<Db, Checkpointer>();
+
+export const checkpointerOf = (db: Db): Checkpointer | undefined =>
+  checkpointers.get(db);
+
 const cacheSizes = new WeakMap<Db, () => number>();
 
 export const statementCacheSize = (db: Db): number => cacheSizes.get(db)!();
@@ -138,9 +289,20 @@ export const reopen = (db: Db): void => reopens.get(db)!();
 
 // One writer connection behind a FIFO mutex and a query_only reader connection. Inside `write`
 // (tracked with AsyncLocalStorage) every query goes to the writer; elsewhere reads see only
-// committed data.
-export function openDb(path: string, busyTimeoutMs = 10_000): Db {
-  let writer = connection(path, false, busyTimeoutMs);
+// committed data. With `checkpointTimers`, WAL checkpoints run in a worker instead of on commit.
+export function openDb(
+  path: string,
+  busyTimeoutMs = 10_000,
+  checkpointTimers?: Timers,
+): Db {
+  const cp = checkpointTimers ? checkpointer(path, checkpointTimers) : null;
+  const openWriter = () => {
+    const c = connection(path, false, busyTimeoutMs);
+    if (cp)
+      c.sqlite.run(`PRAGMA wal_autocheckpoint = ${WAL_AUTOCHECKPOINT_PAGES}`);
+    return c;
+  };
+  let writer = openWriter();
   let reader = connection(path, true, busyTimeoutMs);
   const mutex = fifoLock();
   const als = new AsyncLocalStorage<Context>();
@@ -167,6 +329,7 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
   const endRoot = () => {
     if (collectionsTouched) version++;
     collectionsTouched = false;
+    cp?.written();
   };
   const exec = (sql: string) => writer.sqlite.run(sql);
 
@@ -327,14 +490,22 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
     inWrite: onWriter,
     close: () => {
       reader.close();
+      if (cp) {
+        cp.stop();
+        // best effort: a restore may have moved the files under the connection
+        try {
+          writer.sqlite.run("PRAGMA wal_checkpoint(TRUNCATE)");
+        } catch {}
+      }
       writer.close();
     },
   };
   cacheSizes.set(db, () => writer.cache.size + reader.cache.size);
+  if (cp) checkpointers.set(db, cp);
   reopens.set(db, () => {
     reader.close();
     writer.close();
-    writer = connection(path, false, busyTimeoutMs);
+    writer = openWriter();
     reader = connection(path, true, busyTimeoutMs);
     version++;
   });
@@ -342,9 +513,12 @@ export function openDb(path: string, busyTimeoutMs = 10_000): Db {
     if (onWriter()) throw new Error("heybe: exclusive inside db.write");
     await mutex.acquire();
     try {
+      await cp?.pause();
       return await fn(writer.sqlite);
     } finally {
       version++;
+      cp?.written();
+      cp?.resume();
       mutex.release();
     }
   });

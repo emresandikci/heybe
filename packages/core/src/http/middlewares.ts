@@ -96,7 +96,7 @@ function logRequest(e: RequestEvent, started: number, err: unknown): void {
   if (meta !== undefined && meta !== null) data.meta = meta;
 
   const method = cutStr(e.req.method.toUpperCase(), 50);
-  const { pathname, search } = new URL(e.req.url);
+  const { pathname, search } = e.url;
   const url = cutStr(pathname + search, 3000);
   let status = e.status();
   if (err !== undefined) {

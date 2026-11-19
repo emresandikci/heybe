@@ -1,5 +1,24 @@
-import { expect, test } from "bun:test";
-import { exclusive, reopen, statementCacheSize } from "./db";
+import { Database } from "bun:sqlite";
+import { describe, expect, test } from "bun:test";
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  type Db,
+  checkpointerOf,
+  exclusive,
+  openDb,
+  reopen,
+  statementCacheSize,
+} from "./db";
+import { fakeClock } from "./test-clock";
 import { tempDb } from "./test-db";
 
 const deferred = () => Promise.withResolvers<void>();
@@ -405,4 +424,187 @@ test("collectionsVersion bumps after exclusive and reopen", async () => {
   reopen(db);
   expect(db.collectionsVersion()).toBe(v + 2);
   db.close();
+});
+
+describe("checkpoint worker", () => {
+  function setup() {
+    const dir = mkdtempSync(join(tmpdir(), "heybe-ckpt-"));
+    const path = join(dir, "data.db");
+    const clock = fakeClock();
+    const db = openDb(path, 10_000, clock.timers);
+    const cp = checkpointerOf(db)!;
+    db.tx(() => db.run("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)"));
+    const insert = (n: number) =>
+      db.tx(() => {
+        for (let i = 0; i < n; i++)
+          db.run("INSERT INTO t (v) VALUES (?)", ["x".repeat(500)]);
+      });
+    // rows readable from data.db alone, without its -wal
+    const inMainFile = () => {
+      const copy = join(dir, "copy.db");
+      copyFileSync(path, copy);
+      const raw = new Database(copy);
+      try {
+        return raw
+          .query<{ n: number }, []>("SELECT count(*) AS n FROM t")
+          .get()!.n;
+      } catch {
+        return -1;
+      } finally {
+        raw.close();
+        rmSync(copy, { force: true });
+        rmSync(`${copy}-wal`, { force: true });
+        rmSync(`${copy}-shm`, { force: true });
+      }
+    };
+    const tick = async () => {
+      clock.advance(1000);
+      await cp.idle();
+    };
+    const cleanup = () => rmSync(dir, { recursive: true, force: true });
+    return { dir, path, clock, db, cp, insert, inMainFile, tick, cleanup };
+  }
+
+  test("the writer keeps autocheckpoint at 10000 pages as a safety net", async () => {
+    const { db, cleanup } = setup();
+    const pages = await exclusive(db, (s) =>
+      s
+        .query<{ wal_autocheckpoint: number }, []>("PRAGMA wal_autocheckpoint")
+        .get(),
+    );
+    expect(pages).toEqual({ wal_autocheckpoint: 10_000 });
+    db.close();
+    cleanup();
+  });
+
+  test("a tick moves committed frames into the db file and the WAL stops growing", async () => {
+    const { path, db, insert, inMainFile, tick, cleanup } = setup();
+    insert(200);
+    expect(inMainFile()).toBe(-1);
+    await tick();
+    expect(inMainFile()).toBe(200);
+    const wal = statSync(`${path}-wal`).size;
+    insert(200);
+    await tick();
+    expect(inMainFile()).toBe(400);
+    expect(statSync(`${path}-wal`).size).toBeLessThanOrEqual(wal);
+    db.close();
+    cleanup();
+  });
+
+  test("a write is checkpointed 250 ms later", async () => {
+    const { clock, db, insert, inMainFile, cp, cleanup } = setup();
+    await cp.idle();
+    clock.advance(1000);
+    await cp.idle();
+    insert(3);
+    clock.advance(249);
+    expect(clock.pending()).toBe(1);
+    clock.advance(1);
+    expect(clock.pending()).toBe(0);
+    await cp.idle();
+    expect(inMainFile()).toBe(3);
+    db.close();
+    cleanup();
+  });
+
+  test("200 commits since the last checkpoint start one without waiting", async () => {
+    const { clock, db, insert, inMainFile, cp, tick, cleanup } = setup();
+    await tick();
+    for (let i = 0; i < 199; i++) insert(1);
+    expect(clock.pending()).toBe(1);
+    insert(1);
+    expect(clock.pending()).toBe(0);
+    await cp.idle();
+    expect(inMainFile()).toBe(200);
+    db.close();
+    cleanup();
+  });
+
+  test("an idle db schedules no checkpoint", async () => {
+    const { clock, db, cp, insert, tick, cleanup } = setup();
+    await tick();
+    expect(clock.pending()).toBe(0);
+    clock.advance(10_000);
+    expect(cp.connected()).toBe(true);
+    insert(1);
+    expect(clock.pending()).toBe(1);
+    await tick();
+    expect(clock.pending()).toBe(0);
+    db.close();
+    cleanup();
+  });
+
+  test("the worker connection is closed while exclusive runs and reopens after", async () => {
+    const { clock, db, cp, insert, inMainFile, tick, cleanup } = setup();
+    await tick();
+    expect(cp.connected()).toBe(true);
+    insert(10);
+    await exclusive(db, async () => {
+      expect(cp.connected()).toBe(false);
+      clock.advance(5000);
+      await cp.idle();
+      expect(cp.connected()).toBe(false);
+      reopen(db);
+    });
+    insert(10);
+    await tick();
+    expect(cp.connected()).toBe(true);
+    expect(inMainFile()).toBe(20);
+    db.close();
+    cleanup();
+  });
+
+  // leaving WAL mode needs the only connection to the file
+  const alone = (path: string) => {
+    const raw = new Database(path);
+    try {
+      return raw
+        .query<{ journal_mode: string }, []>("PRAGMA journal_mode = DELETE")
+        .get()!.journal_mode;
+    } finally {
+      raw.close();
+    }
+  };
+
+  test("close returns with the worker connection closed", async () => {
+    const { path, db, cp, insert, inMainFile, tick, cleanup } = setup();
+    insert(5);
+    await tick();
+    expect(cp.connected()).toBe(true);
+    insert(5);
+    db.close();
+    expect(cp.running()).toBe(false);
+    expect(alone(path)).toBe("delete");
+    expect(inMainFile()).toBe(10);
+    cleanup();
+  });
+
+  test("close waits for a checkpoint in flight", () => {
+    const { path, clock, db, insert, inMainFile, cleanup } = setup();
+    insert(50);
+    clock.advance(1000);
+    db.close();
+    expect(alone(path)).toBe("delete");
+    expect(inMainFile()).toBe(50);
+    cleanup();
+  });
+
+  test("a failed checkpoint waits for the next write instead of retrying", async () => {
+    const { path, clock, db, cp, insert, tick, cleanup } = setup();
+    insert(1);
+    renameSync(path, `${path}.moved`);
+    await tick();
+    expect(cp.connected()).toBe(false);
+    expect(clock.pending()).toBe(0);
+    renameSync(`${path}.moved`, path);
+    db.close();
+    cleanup();
+  });
+
+  test("a db opened without timers has no worker", () => {
+    const db: Db = tempDb();
+    expect(checkpointerOf(db)).toBeUndefined();
+    db.close();
+  });
 });

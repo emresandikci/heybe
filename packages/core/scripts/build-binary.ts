@@ -133,6 +133,7 @@ export async function buildBinary(o: {
       join(PKG, "src/binary/entry.ts"),
       join(PKG, "src/binary/vacuum-worker.ts"),
       join(PKG, "src/binary/log-worker.ts"),
+      join(PKG, "src/binary/checkpoint-worker.ts"),
     ],
     compile: { target: target as Bun.Build.CompileTarget, outfile },
     minify: true,
