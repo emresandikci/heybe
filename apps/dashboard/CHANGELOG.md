@@ -1,3 +1,17 @@
+# [@heybe/dashboard-v1.2.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.1.1...@heybe/dashboard@1.2.0) (2026-11-19)
+
+
+### Bug Fixes
+
+* **dashboard:** use apply for draft-only dialogs ([508294b](https://github.com/emresandikci/heybe/commit/508294bc58b0836b3e87890f828dd8d19b81853b))
+* **ui:** close deferred kit gaps ([1de3d4f](https://github.com/emresandikci/heybe/commit/1de3d4f9cb45ff782224e122add134245b59541a))
+
+
+### Features
+
+* **dashboard:** edit rich text fields with tiptap ([faf5f05](https://github.com/emresandikci/heybe/commit/faf5f05e62d1f384d32c6f3efa92fba074ef24f4))
+* **dashboard:** show a logo for every oauth2 provider ([5974998](https://github.com/emresandikci/heybe/commit/5974998b9f8de8d19242ca8bd6b3708a86771393))
+
 # [@heybe/dashboard-v1.1.1](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.1.0...@heybe/dashboard@1.1.1) (2026-11-18)
 
 # [@heybe/dashboard-v1.1.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.0.0...@heybe/dashboard@1.1.0) (2026-11-18)
