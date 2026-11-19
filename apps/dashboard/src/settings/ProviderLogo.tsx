@@ -37,6 +37,21 @@ export function ProviderLogo({
         {displayName.charAt(0).toUpperCase()}
       </span>
     );
+  if ("shapes" in icon)
+    return (
+      <span aria-hidden="true" className={tile}>
+        <svg viewBox={icon.viewBox} className="size-[18px]">
+          {icon.shapes.map((shape) => (
+            <path
+              key={shape.d}
+              d={shape.d}
+              fill={shape.fill}
+              fillRule={shape.fillRule}
+            />
+          ))}
+        </svg>
+      </span>
+    );
   const light = contrast(icon.hex, LIGHT_SURFACE) >= 3;
   const dark = contrast(icon.hex, DARK_SURFACE) >= 3;
   return (

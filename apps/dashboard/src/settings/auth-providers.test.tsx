@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
-import { screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { CollectionModel } from "@heybe/client";
 import { echoPatch, serveCollections } from "../test/editor";
 import { fakeServer } from "../test/fake-server";
 import { collectionsFixture } from "../test/fixtures";
+import { OAUTH2_PROVIDERS } from "../collections/oauth2-providers";
 import { renderApp } from "../test/render";
+import { PROVIDER_ICONS } from "./provider-icons";
+import { ProviderLogo } from "./ProviderLogo";
 
 const users = collectionsFixture.find((c) => c.name === "users")!;
 const members = {
@@ -123,12 +126,28 @@ test("no picker with a single auth collection", async () => {
   expect(screen.queryByLabelText("Collection")).toBeNull();
 });
 
-test("shows a monogram for a provider without an icon", async () => {
+test("every known provider has a logo", () => {
+  const missing = OAUTH2_PROVIDERS.filter((p) => !PROVIDER_ICONS[p.name]);
+  expect(missing.map((p) => p.name)).toEqual([]);
+});
+
+test("shows a monogram only for a provider without an icon", () => {
+  render(<ProviderLogo name="unknown" displayName="Acme" />);
+  expect(screen.getByTestId("monogram").textContent).toBe("A");
+});
+
+test("renders a multi-color logo as drawn", async () => {
   await openPage();
-  expect(within(card("Microsoft")).getByTestId("monogram").textContent).toBe(
-    "M",
+  const paths = card("Microsoft").querySelectorAll(
+    "span[aria-hidden] svg path",
   );
-  expect(within(card("GitHub")).queryByTestId("monogram")).toBeNull();
+  expect([...paths].map((p) => p.getAttribute("fill"))).toEqual([
+    "#F1511B",
+    "#80CC28",
+    "#00ADEF",
+    "#FBBC09",
+  ]);
+  expect(within(card("Microsoft")).queryByTestId("monogram")).toBeNull();
 });
 
 test("shows an empty state without auth collections", async () => {
