@@ -78,10 +78,11 @@ export class QueryCompiler {
     return this;
   }
 
-  build(): Compiled & { orderBy: string } {
+  build(): Compiled & { orderBy: string; toMany: boolean } {
     const r = this.resolver;
     const where = [...this.where];
     const joins = [...r.joins];
+    let toMany = r.toMany;
 
     // a joined collection is visible only through its list rule (see PB updateQueryWithCollectionListRule)
     if (!r.allowHidden) {
@@ -96,6 +97,7 @@ export class QueryCompiler {
           ),
         );
         joins.push(...rule.joins);
+        toMany ||= rule.toMany;
       }
     }
 
@@ -123,6 +125,7 @@ export class QueryCompiler {
       ),
       orderBy: bind(this.order.join(", ")),
       params,
+      toMany,
     };
   }
 

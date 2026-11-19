@@ -74,6 +74,36 @@ describe("Router", () => {
     expect(await text(router, "GET", "/api/nope/a%20b")).toBe("api/nope/a b");
   });
 
+  test("params decode only encoded segments and wildcards match any depth", async () => {
+    const router = new Router();
+    router.get("/one/{a}", (e) => e.string(200, `one:${e.params.a}`));
+    router.get("/two/{a}/{b}", (e) =>
+      e.string(200, `two:${e.params.a}|${e.params.b}`),
+    );
+    router.get("/end/{$}", () => new Response("end"));
+    router.get("/w/{rest...}", (e) => e.string(200, `w:${e.params.rest}`));
+    expect(await text(router, "GET", "/one/a%2Fb%20c")).toBe("one:a/b c");
+    expect(await text(router, "GET", "/one/plain")).toBe("one:plain");
+    expect(await text(router, "GET", "/one/bad%zz")).toBe("one:bad%zz");
+    expect(await text(router, "GET", "/two/x/y%3F")).toBe("two:x|y?");
+    expect((await call(router, "GET", "/two/x")).status).toBe(404);
+    expect((await call(router, "GET", "/two/x/y/z")).status).toBe(404);
+    expect(await text(router, "GET", "/end/")).toBe("end");
+    expect((await call(router, "GET", "/end/x")).status).toBe(404);
+    expect(await text(router, "GET", "/w/a/b%2Fc/d")).toBe("w:a/b/c/d");
+    expect(await text(router, "GET", "/w/")).toBe("w:");
+  });
+
+  test("a trailing slash pattern matches its subtree at any depth", async () => {
+    const router = new Router();
+    router.get("/api/", () => new Response("subtree"));
+    router.get("/api/x", () => new Response("x"));
+    expect(await text(router, "GET", "/api/")).toBe("subtree");
+    expect(await text(router, "GET", "/api/x")).toBe("x");
+    expect(await text(router, "GET", "/api/x/y%2Fz/w")).toBe("subtree");
+    expect((await call(router, "GET", "/api")).status).toBe(301);
+  });
+
   test("unmatched requests run the global middlewares and answer PB's 404", async () => {
     const router = new Router();
     const log: string[] = [];

@@ -107,8 +107,9 @@ async function handle(
   server: Bun.Server<unknown>,
 ): Promise<Response> {
   const remoteIp = server.requestIP(req)?.address ?? "";
-  const found = mux.match(req.method, new URL(req.url).pathname)!;
-  const e = createEvent(app, req, found.params, remoteIp, found.pattern);
+  const url = new URL(req.url);
+  const found = mux.match(req.method, url.pathname)!;
+  const e = createEvent(app, req, found.params, remoteIp, found.pattern, url);
   let res: Response;
   try {
     res = await found.run(e);
@@ -120,15 +121,25 @@ async function handle(
 
 // Middleware headers were set before the response in PB: they stay unless the response sets the
 // same key, a middleware Content-Type wins (PB setResponseHeaderIfEmpty) and Vary values add up.
-function withHeaders(res: Response, headers: Headers): Response {
+// The response is changed in place; one with immutable headers is copied first.
+export function withHeaders(res: Response, headers: Headers): Response {
   if (headers.keys().next().done) return res;
-  const out = new Response(res.body, res);
-  for (const [k, v] of headers) {
-    const own = out.headers.get(k);
-    if (k === "vary") out.headers.set(k, own ? `${v}, ${own}` : v);
-    else if (k === "content-type" || own === null) out.headers.set(k, v);
+  try {
+    merge(res.headers, headers);
+    return res;
+  } catch {
+    const out = new Response(res.body, res);
+    merge(out.headers, headers);
+    return out;
   }
-  return out;
+}
+
+function merge(target: Headers, headers: Headers) {
+  for (const [k, v] of headers) {
+    const own = target.get(k);
+    if (k === "vary") target.set(k, own ? `${v}, ${own}` : v);
+    else if (k === "content-type" || own === null) target.set(k, v);
+  }
 }
 
 // Port of PB apis.Serve: onServe can change the router, its final action starts the server.

@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import sharp from "sharp";
 import { join } from "node:path";
 import { createApp } from "../app";
+import { checkpointerOf } from "../db";
 import { createEvent } from "../http/router";
 import { createRouter } from "../http/server";
 import { testApp } from "../test-app";
@@ -480,6 +481,7 @@ describe("sniffMime", () => {
 describe("app.files", () => {
   test("a memory app keeps storage and data.db in a temp data dir removed on close", async () => {
     const app = testApp();
+    expect(checkpointerOf(app.db)).toBeUndefined();
     await app.files.write("hbc_1/abc/a.txt", new Uint8Array([1]));
     expect(
       await Bun.file(join(app.dataDir, "storage/hbc_1/abc/a.txt")).exists(),
@@ -494,6 +496,7 @@ describe("app.files", () => {
     try {
       const app = createApp({ dir });
       expect(app.dataDir).toBe(dir);
+      expect(checkpointerOf(app.db)).toBeDefined();
       await app.files.write("hbc_1/abc/a.txt", new Uint8Array([1]));
       expect(
         await Bun.file(join(dir, "storage/hbc_1/abc/a.txt")).exists(),
@@ -572,6 +575,57 @@ describe("download sniffs once", () => {
     );
     expect(await res.text()).toBe("hello");
     expect(sniff).toHaveBeenCalledTimes(1);
+    sniff.mockRestore();
+  });
+});
+
+describe("download type cache", () => {
+  let app: ReturnType<typeof testApp>;
+  let url: URL;
+  let path: string;
+
+  beforeEach(async () => {
+    app = testApp();
+    const c = await app.collections.save({
+      name: "docs",
+      viewRule: "",
+      fields: [{ name: "doc", type: "file", maxSelect: 1, maxSize: 1000 }],
+    } as any);
+    const r = await app.records("docs").create({
+      doc: new File(["hello"], "a"),
+    });
+    url = new URL(`/api/files/docs/${r.id}/${r.doc}`, "http://x");
+    path = join(app.dataDir, "storage", c.id, r.id as string, r.doc as string);
+  });
+  afterEach(() => app.close());
+
+  const get = async () => {
+    const found = createRouter().build().match("GET", url.pathname)!;
+    const res = await found.run(
+      createEvent(app, new Request(url), found.params),
+    );
+    await res.arrayBuffer();
+    return res.headers.get("content-type");
+  };
+
+  test("a second download reuses the sniffed type", async () => {
+    const sniff = spyOn(mime, "sniffMime");
+    expect(await get()).toBe("text/plain; charset=utf-8");
+    expect(await get()).toBe("text/plain; charset=utf-8");
+    expect(sniff).toHaveBeenCalledTimes(1);
+    sniff.mockRestore();
+  });
+
+  test("a new size or mtime sniffs again", async () => {
+    await get();
+    const sniff = spyOn(mime, "sniffMime");
+    await writeFile(path, '{"a":1}');
+    expect(await get()).toBe("application/json");
+    expect(sniff).toHaveBeenCalledTimes(1);
+    await writeFile(path, "%PDF-1.");
+    await utimes(path, new Date(1_000_000), new Date(1_000_000));
+    expect(await get()).toBe("application/pdf");
+    expect(sniff).toHaveBeenCalledTimes(2);
     sniff.mockRestore();
   });
 });

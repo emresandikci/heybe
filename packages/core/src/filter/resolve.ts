@@ -1,4 +1,8 @@
-import { findSingleColumnUniqueIndex, quote } from "../collections/ddl";
+import {
+  findSingleColumnUniqueIndex,
+  parseIndex,
+  quote,
+} from "../collections/ddl";
 import type { Collection, Field } from "../collections/model";
 import type { CollectionStore } from "../collections/store";
 import { isMultiple, uniqueStrings } from "../fields/shared";
@@ -62,6 +66,21 @@ const PLAIN_AUTH_FIELDS = new Set(
 const MODIFIERS = new Set(["isset", "each", "length", "lower", "changed"]);
 const MULTI_VALUERS = new Set(["select", "relation", "file"]);
 const MAX_NESTED_RELS = 6;
+
+// A partial unique index allows repeats outside its WHERE, except `col != ''`, which only leaves
+// out the empty values a join on an id never matches.
+function uniqueForEveryRow(indexes: string[], column: string): boolean {
+  const empty = new RegExp(`^[\`"\\[]?${column}[\`"\\]]?\\s*!=\\s*''$`, "i");
+  return indexes.some((sql) => {
+    const p = parseIndex(sql);
+    return (
+      !!p?.unique &&
+      p.columns.length === 1 &&
+      p.columns[0]!.toLowerCase() === column.toLowerCase() &&
+      (p.where.trim() === "" || empty.test(p.where.trim()))
+    );
+  });
+}
 
 export const placeholder = (key: string) => `{:${key}}`;
 export const col = (alias: string, name: string) =>
@@ -136,6 +155,8 @@ export class Resolver {
   allowHidden = true;
   readonly joins: Join[] = [];
   readonly ruleJoins: { collection: Collection; alias: string }[] = [];
+  // a join that can match a row more than once, so counts need DISTINCT
+  toMany = false;
 
   constructor(
     readonly ctx: ResolverCtx,
@@ -191,7 +212,9 @@ export class Resolver {
     alias: string,
     on?: string,
     collection?: Collection,
+    toOne = false,
   ) {
+    if (!toOne) this.toMany = true;
     if (!this.allowHidden && collection) {
       if (collection.listRule === null) {
         throw new FilterError(
@@ -367,6 +390,7 @@ class Runner {
       this.alias,
       `${col(this.alias, "id")} = ${authId}`,
       collection,
+      true,
     );
     this.mmAlias = "__mm_" + this.alias;
     this.mm.joins.push({
@@ -517,6 +541,7 @@ class Runner {
           newAlias,
           `${col(newAlias, "id")} = ${col(this.alias, field.name)}`,
           relCollection,
+          true,
         );
       } else {
         const jeAlias = "__je_" + newAlias;
@@ -609,6 +634,7 @@ class Runner {
         newAlias,
         `${col(newAlias, backColumn)} = ${col(this.alias, "id")}`,
         back,
+        uniqueForEveryRow(back.indexes, backColumn),
       );
     } else {
       const jeAlias = "__je_" + newAlias;

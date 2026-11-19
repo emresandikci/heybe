@@ -4,6 +4,7 @@ import { newAuthToken } from "../../auth/tokens";
 import { internalRecords } from "../../records/internal";
 import { loadAuth } from "../middlewares";
 import * as model from "../../records/model";
+import * as compile from "../../filter/compile";
 import { toApiError } from "../errors";
 import { createEvent } from "../router";
 import { createRouter } from "../server";
@@ -264,5 +265,99 @@ test("a create file spilled over the 16 MiB memory budget is stored in full on S
     expect(Buffer.from(stored).equals(bytes)).toBe(true);
   } finally {
     await s3.stop();
+  }
+});
+
+test("view by id answers the same bytes with and without a rule filter", async () => {
+  await app.collections.save({
+    name: "authors",
+    listRule: "",
+    viewRule: "",
+    fields: [{ name: "name", type: "text" }],
+  } as any);
+  const authors = app.collections.find("authors")!;
+  await app.collections.save({
+    ...app.collections.find("posts")!,
+    fields: [
+      ...app.collections.find("posts")!.fields,
+      { name: "secret", type: "text", hidden: true },
+      { name: "meta", type: "json" },
+      {
+        name: "author",
+        type: "relation",
+        collectionId: authors.id,
+        maxSelect: 1,
+      },
+    ],
+  } as any);
+  const author = await app.records("authors").create({ name: "ann" });
+  const { id } = await app.records("posts").create({
+    title: "a",
+    secret: "s",
+    meta: { x: [1, 2] },
+    author: author.id,
+  });
+  await app.records("posts").create({ title: "b" });
+
+  const raw = async (path: string, superuser: boolean) => {
+    const headers: Record<string, string> = {};
+    if (superuser) {
+      const su = internalRecords(app, "_superusers");
+      const { id: suId } = await su.create({
+        email: `su${seq++}@example.com`,
+        password: "1234567890",
+      });
+      headers.authorization = await newAuthToken(
+        app,
+        app.collections.find("_superusers")!,
+        su.findRaw(suId as string),
+      );
+    }
+    const url = new URL(path, "http://x");
+    const req = new Request(url, { headers });
+    const found = createRouter().build().match("GET", url.pathname)!;
+    const e = createEvent(app, req, found.params);
+    e.auth = loadAuth(app, req);
+    return (await found.run(e)).text();
+  };
+
+  for (const query of [
+    "",
+    "?expand=author",
+    "?expand=author&fields=id,title,expand.author.name",
+  ])
+    for (const superuser of [false, true]) {
+      await setViewRule("");
+      const fast = await raw(
+        `/api/collections/posts/records/${id}${query}`,
+        superuser,
+      );
+      await setViewRule('id != ""');
+      const ruled = await raw(
+        `/api/collections/posts/records/${id}${query}`,
+        superuser,
+      );
+      expect(fast).toBe(ruled);
+      expect(fast).toContain('"title":"a"');
+      if (!query.includes("fields"))
+        expect(fast.includes('"secret"')).toBe(superuser);
+    }
+});
+
+test("view by id without a rule filter compiles no filter", async () => {
+  const { id } = await app.records("posts").create({ title: "a" });
+  const { QueryCompiler } = compile;
+  type Args = ConstructorParameters<typeof QueryCompiler>;
+  const built = spyOn(compile as any, "QueryCompiler").mockImplementation(
+    (...args: Args) => new QueryCompiler(...args),
+  );
+  try {
+    expect((await viewAs(id)).body.id).toBe(id);
+    expect(built).not.toHaveBeenCalled();
+    await setViewRule('id != ""');
+    expect((await viewAs(id)).body.id).toBe(id);
+    expect(built).toHaveBeenCalled();
+  } finally {
+    built.mockRestore();
   }
 });

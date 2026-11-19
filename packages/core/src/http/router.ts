@@ -28,7 +28,7 @@ interface RequestState {
   req: Request;
   params: Record<string, string>;
   pattern: string;
-  query: URLSearchParams;
+  url: URL;
   auth: AuthState | null;
   remoteIp: string;
   response: Response | null;
@@ -72,7 +72,7 @@ export class RequestEvent extends HookEvent {
       req,
       params,
       pattern: "",
-      query: new URL(req.url).searchParams,
+      url: new URL(req.url),
       response: null,
       responseHeaders: new Headers(),
       store: new Map(re.state.store),
@@ -94,8 +94,12 @@ export class RequestEvent extends HookEvent {
   get pattern(): string {
     return this.state.pattern;
   }
+  // the parsed request URL, shared by the router and the middlewares
+  get url(): URL {
+    return this.state.url;
+  }
   get query(): URLSearchParams {
-    return this.state.query;
+    return this.state.url.searchParams;
   }
   get auth(): AuthState | null {
     return this.state.auth;
@@ -135,7 +139,7 @@ export class RequestEvent extends HookEvent {
   }
 
   isTLS(): boolean {
-    return new URL(this.req.url).protocol === "https:";
+    return this.state.url.protocol === "https:";
   }
 
   // Go's http.Cookie adds Path and SameSite only when set, Bun.Cookie defaults them to "/" and Lax
@@ -366,13 +370,14 @@ export function createEvent(
   params: Record<string, string>,
   remoteIp = "",
   pattern = "",
+  url = new URL(req.url),
 ): RequestEvent {
   return new RequestEvent({
     app,
     req,
     params,
     pattern,
-    query: new URL(req.url).searchParams,
+    url,
     auth: null,
     remoteIp,
     response: null,
@@ -637,6 +642,7 @@ export class RouterGroup extends Bindable {
       out.push({
         method: child.method,
         tokens,
+        multi: tokens.at(-1)?.kind === "multi",
         rank: tokens.map((t) => RANK[t.kind]),
         pattern: `${child.method ? `${child.method} ` : ""}${prefix + child.path}`,
         hook,
@@ -649,6 +655,8 @@ export class RouterGroup extends Bindable {
 interface CompiledRoute {
   method: string;
   tokens: Token[];
+  // ends with a multi wildcard, so it matches any path with at least as many segments
+  multi: boolean;
   rank: number[];
   pattern: string;
   hook: Hook<RequestEvent>;
@@ -687,6 +695,8 @@ export class Router extends RouterGroup {
         score: number;
       } | null = null;
       for (const route of routes) {
+        const n = route.tokens.length;
+        if (route.multi ? parts.length < n : parts.length !== n) continue;
         const score = methodScore(route.method, method);
         if (score < 0) continue;
         const params = matchTokens(route.tokens, parts);
@@ -817,6 +827,7 @@ const sameRank = (a: number[], b: number[]) =>
   !moreSpecific(a, b) && !moreSpecific(b, a);
 
 function decode(s: string): string {
+  if (!s.includes("%")) return s;
   try {
     return decodeURIComponent(s);
   } catch {

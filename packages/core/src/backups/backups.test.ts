@@ -320,6 +320,16 @@ describe("createBackup", () => {
 });
 
 describe("restoreBackup", () => {
+  test("a record still in the WAL is in the backup", async () => {
+    await app.records("posts").create({ title: "a" });
+    await app.createBackup("wal.zip");
+    await app.restoreBackup("wal.zip");
+    app.close();
+    const restored = open();
+    await restored.bootstrap();
+    expect(titles(restored)).toEqual(["a"]);
+  });
+
   test("restores the data dir and re-executes the process", async () => {
     await app.records("posts").create({ title: "a" });
     await app.files.write("hbc_1/r1/a.txt", enc("a"));
