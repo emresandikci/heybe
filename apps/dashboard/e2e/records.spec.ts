@@ -66,3 +66,31 @@ test("record create with a file, filter, edit and delete", async ({ page }) => {
     .click();
   await expect(page.getByText("No records yet")).toBeVisible();
 });
+
+test("rich text field saves bold text as HTML", async ({ page }) => {
+  await api("/api/collections", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "articles",
+      type: "base",
+      fields: [{ name: "body", type: "editor" }],
+    }),
+  });
+
+  await page.goto("#/collections/articles");
+  await page.getByRole("button", { name: "New record" }).first().click();
+  const drawer = page.getByRole("dialog", { name: "New record" });
+  await drawer.getByRole("textbox", { name: "body" }).click();
+  await drawer.getByRole("button", { name: "Bold" }).click();
+  await page.keyboard.type("hello");
+  await expect(drawer.getByRole("textbox", { name: "body" })).toHaveText(
+    "hello",
+  );
+  await drawer.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(drawer).toBeHidden();
+
+  const { items } = await api<{ items: { body: string }[] }>(
+    "/api/collections/articles/records",
+  );
+  expect(items.map((r) => r.body)).toEqual(["<p><strong>hello</strong></p>"]);
+});

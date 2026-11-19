@@ -1,45 +1,38 @@
-import { useState } from "react";
-import { Button, CodeArea } from "@heybe/ui";
+import { lazy, Suspense } from "react";
+import { FieldShell, useFieldIds } from "@heybe/ui";
 
-export function EditorInput({
-  name,
-  value,
-  error,
-  disabled,
-  onChange,
-}: {
+const RichTextEditor = lazy(() => import("./RichTextEditor"));
+
+export interface EditorInputProps {
   name: string;
   value: string;
   error?: string;
   disabled: boolean;
   onChange: (value: string) => void;
-}) {
-  const [preview, setPreview] = useState(false);
+}
+
+export function EditorSkeleton({
+  name,
+  error,
+}: Pick<EditorInputProps, "name" | "error">) {
+  const ids = useFieldIds({ error });
   return (
-    <div className="flex flex-col gap-2">
-      <CodeArea
-        label={name}
-        language="html"
-        value={value}
-        error={error}
-        disabled={disabled}
-        onChange={onChange}
+    <FieldShell {...ids} label={name} error={error}>
+      <div
+        role="status"
+        aria-label={`Loading ${name} editor`}
+        className="h-52 animate-pulse rounded-control border border-field-line bg-field motion-reduce:animate-none"
       />
-      <Button
-        aria-pressed={preview}
-        className="self-start"
-        onClick={() => setPreview(!preview)}
-      >
-        Preview
-      </Button>
-      {preview && (
-        <iframe
-          title={`${name} preview`}
-          sandbox=""
-          srcDoc={value}
-          className="h-48 w-full rounded border border-line-strong bg-surface"
-        />
-      )}
-    </div>
+    </FieldShell>
+  );
+}
+
+export function EditorInput(props: EditorInputProps) {
+  return (
+    <Suspense
+      fallback={<EditorSkeleton name={props.name} error={props.error} />}
+    >
+      <RichTextEditor {...props} />
+    </Suspense>
   );
 }

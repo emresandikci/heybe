@@ -270,15 +270,6 @@ test("server errors map to inputs", async () => {
   expect(d.getByText("other: Odd.")).toBeTruthy();
 });
 
-test("editor preview is a sandboxed iframe with the HTML in srcdoc", async () => {
-  const { user } = open("r1");
-  const d = await dialog("Edit record");
-  await user.click(await d.findByRole("button", { name: "Preview" }));
-  const frame = d.getByTitle("body preview");
-  expect(frame.getAttribute("sandbox")).toBe("");
-  expect(frame.getAttribute("srcdoc")).toBe("<p>Hi</p>");
-});
-
 test("a script value in a text field stays text in the input", async () => {
   const hostile = "<script>alert(1)</script><img src=x onerror=alert(2)>";
   const server = fakeServer().on(
@@ -389,7 +380,7 @@ test("a 404 record id shows the server message", async () => {
   expect(d.queryByRole("button", { name: "Save changes" })).toBeNull();
 });
 
-test("a view record keeps the editor preview usable", async () => {
+test("a view record shows the rich text read-only", async () => {
   const { collectionsFixture } = await import("../test/fixtures");
   const { serveCollections } = await import("../test/editor");
   const stats = collectionsFixture.find((c) => c.name === "stats")!;
@@ -419,10 +410,11 @@ test("a view record keeps the editor preview usable", async () => {
     server,
   });
   const d = await dialog("Record");
-  const preview = await d.findByRole("button", { name: "Preview" });
-  expect((preview as HTMLButtonElement).disabled).toBe(false);
-  await user.click(preview);
-  expect(d.getByTitle("body preview").getAttribute("srcdoc")).toBe("<p>x</p>");
+  const box = await d.findByRole("textbox", { name: "body" });
+  expect(box.innerHTML).toBe("<p>x</p>");
+  await waitFor(() =>
+    expect(box.getAttribute("contenteditable")).toBe("false"),
+  );
 });
 
 test("Duplicate on a dirty form asks before leaving", async () => {
