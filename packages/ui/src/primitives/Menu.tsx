@@ -9,7 +9,7 @@ import {
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
-import { mergeRefs } from "../hooks/mergeRefs.js";
+import { useMergeRefs } from "../hooks/useMergeRefs.js";
 import { useDismiss } from "../hooks/useDismiss.js";
 import { useListKeyboard } from "../hooks/useListKeyboard.js";
 import { mergeProps } from "../hooks/mergeProps.js";
@@ -44,6 +44,10 @@ export function Menu(props: {
   const triggerId =
     (props.trigger.props.id as string | undefined) ?? `${id}-trigger`;
   const triggerRef = useRef<HTMLElement>(null);
+  const mergedTriggerRef = useMergeRefs(
+    triggerRef,
+    props.trigger.props.ref as Ref<HTMLElement> | undefined,
+  );
   const menuRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
   const actions = props.items.filter((item) => "key" in item);
@@ -111,10 +115,7 @@ export function Menu(props: {
   const trigger = cloneElement(
     props.trigger,
     mergeProps(props.trigger.props, {
-      ref: mergeRefs(
-        triggerRef,
-        props.trigger.props.ref as Ref<HTMLElement> | undefined,
-      ),
+      ref: mergedTriggerRef,
       id: triggerId,
       "aria-expanded": state.open,
       "aria-controls": state.open ? id : undefined,

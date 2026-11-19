@@ -40,6 +40,7 @@ export function Button({
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
+      data-size={size ?? "md"}
       className={button({ variant, size, className })}
       {...rest}
     >

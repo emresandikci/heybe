@@ -404,3 +404,17 @@ test("list inside a modal Dialog renders in the dialog and in the top layer", as
   );
   expect(list.getAttribute("popover")).toBe("manual");
 });
+
+test("Combobox hideLabel keeps the label for screen readers only", () => {
+  render(
+    <Combobox
+      label="Pick"
+      hideLabel
+      options={options}
+      value={null}
+      onChange={() => {}}
+    />,
+  );
+  expect(screen.getByText("Pick").className).toContain("sr-only");
+  expect(screen.getByRole("combobox", { name: "Pick" })).toBeTruthy();
+});

@@ -62,11 +62,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className="fixed right-4 bottom-4 z-50 flex flex-col gap-2">
-        <div role="status" aria-live="polite" className="flex flex-col gap-2">
-          {toasts.filter((t) => t.kind !== "error").map(renderToast)}
-        </div>
-        {toasts.filter((t) => t.kind === "error").map(renderToast)}
+      <div
+        role="status"
+        aria-live="polite"
+        className="fixed right-4 bottom-4 z-50 flex flex-col gap-2"
+      >
+        {toasts.map(renderToast)}
       </div>
     </ToastContext.Provider>
   );

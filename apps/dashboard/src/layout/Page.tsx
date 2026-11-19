@@ -1,13 +1,9 @@
-import { Link } from "@tanstack/react-router";
+import { Link, type LinkProps } from "@tanstack/react-router";
 import { Fragment, type ReactNode } from "react";
 
 const DOCS_URL = "https://github.com/emresandikci/heybe#readme";
 
-interface Crumb {
-  label: string;
-  to?: string;
-  params?: Record<string, string>;
-}
+type Crumb = { label: string } & Pick<LinkProps, "to" | "params">;
 
 export function Page({
   crumbs,
@@ -39,7 +35,7 @@ export function Page({
                   )}
                   {crumb.to && !last ? (
                     <Link
-                      to={crumb.to as string}
+                      to={crumb.to}
                       params={crumb.params}
                       className="shrink-0 rounded-control text-muted hover:text-text"
                     >

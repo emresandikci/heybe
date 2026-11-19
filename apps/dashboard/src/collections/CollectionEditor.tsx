@@ -468,7 +468,7 @@ function ViewQuery({
             {draft.fields.map((f) => (
               <li
                 key={f._key}
-                className="rounded bg-hover px-2 py-0.5 font-mono text-xs "
+                className="rounded bg-hover px-2 py-0.5 font-mono text-xs"
               >
                 {f.name}
               </li>

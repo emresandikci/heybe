@@ -6,7 +6,7 @@ export function tabPanelIds(id: string, value: string) {
 
 export function Tabs(props: {
   label: string;
-  tabs: { value: string; label: string }[];
+  tabs: { value: string; label: string; disabled?: boolean }[];
   value: string;
   onChange(value: string): void;
   id?: string;
@@ -16,6 +16,11 @@ export function Tabs(props: {
   const id = props.id ?? generatedId;
   const listRef = useRef<HTMLDivElement>(null);
 
+  const enabled = props.tabs.filter((tab) => !tab.disabled);
+  const tabStop = enabled.some((tab) => tab.value === props.value)
+    ? props.value
+    : enabled[0]?.value;
+
   const select = (value: string) => {
     props.onChange(value);
     listRef.current
@@ -24,21 +29,22 @@ export function Tabs(props: {
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    const last = props.tabs.length - 1;
-    const index = props.tabs.findIndex((tab) => tab.value === props.value);
+    if (!enabled.length) return;
+    const index = enabled.findIndex((tab) => tab.value === props.value);
+    const previous = index <= 0 ? enabled.length - 1 : index - 1;
     const target =
       event.key === "ArrowRight"
-        ? (index + 1) % props.tabs.length
+        ? enabled[(index + 1) % enabled.length]
         : event.key === "ArrowLeft"
-          ? (index - 1 + props.tabs.length) % props.tabs.length
+          ? enabled[previous]
           : event.key === "Home"
-            ? 0
+            ? enabled[0]
             : event.key === "End"
-              ? last
-              : -1;
-    if (target === -1) return;
+              ? enabled[enabled.length - 1]
+              : undefined;
+    if (!target) return;
     event.preventDefault();
-    select(props.tabs[target]!.value);
+    select(target.value);
   };
 
   return (
@@ -62,7 +68,8 @@ export function Tabs(props: {
             aria-selected={selected}
             aria-controls={ids.panel}
             data-selected={selected ? "" : undefined}
-            tabIndex={selected ? 0 : -1}
+            disabled={tab.disabled}
+            tabIndex={tab.value === tabStop ? 0 : -1}
             onClick={() => props.onChange(tab.value)}
           >
             {tab.label}

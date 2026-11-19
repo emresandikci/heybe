@@ -8,7 +8,7 @@ import {
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
-import { mergeRefs } from "../hooks/mergeRefs.js";
+import { useMergeRefs } from "../hooks/useMergeRefs.js";
 import { useDismiss } from "../hooks/useDismiss.js";
 import { mergeProps } from "../hooks/mergeProps.js";
 import { usePosition } from "../hooks/usePosition.js";
@@ -32,6 +32,10 @@ export function Popover(props: {
   const state = useOverlayState(props);
   const id = useId();
   const triggerRef = useRef<HTMLElement>(null);
+  const mergedTriggerRef = useMergeRefs(
+    triggerRef,
+    props.trigger.props.ref as Ref<HTMLElement> | undefined,
+  );
   const contentRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(state.open);
   const container = useTopLayer(triggerRef, contentRef, state.open);
@@ -59,10 +63,7 @@ export function Popover(props: {
   const trigger = cloneElement(
     props.trigger,
     mergeProps(props.trigger.props, {
-      ref: mergeRefs(
-        triggerRef,
-        props.trigger.props.ref as Ref<HTMLElement> | undefined,
-      ),
+      ref: mergedTriggerRef,
       "aria-expanded": state.open,
       "aria-controls": state.open ? id : undefined,
       "aria-haspopup": "dialog",

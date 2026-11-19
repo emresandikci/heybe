@@ -42,3 +42,10 @@ test("RadioGroup links hint and error and sets aria-invalid", () => {
     .map((id) => document.getElementById(id)!.textContent);
   expect(texts).toEqual(["Any.", "Pick one."]);
 });
+
+test("RadioGroup styles the radio ring as danger only when invalid", () => {
+  render(<Host error="Pick one." />);
+  expect(screen.getByRole("radiogroup").className).toContain(
+    "aria-[invalid=true]:[&>button]:before:border-danger",
+  );
+});

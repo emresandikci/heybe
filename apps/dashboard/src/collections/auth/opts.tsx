@@ -85,8 +85,7 @@ export function BoolOpt({ c, path, label, hint }: OptProps<boolean>) {
   );
 }
 
-export const groupClass =
-  "flex flex-col gap-2 rounded border border-line p-3 dark:border-line";
+export const groupClass = "flex flex-col gap-2 rounded border border-line p-3";
 
 export function AuthSection({
   title,

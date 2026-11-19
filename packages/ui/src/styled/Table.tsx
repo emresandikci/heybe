@@ -73,17 +73,19 @@ export function Th({
 export function Td({
   children,
   wrap,
+  fill,
   align,
 }: {
   children?: ReactNode;
   wrap?: boolean;
+  fill?: boolean;
   align?: "left" | "right";
 }) {
   const truncate = !wrap && typeof children === "string";
   return (
     <td
       title={truncate ? children : undefined}
-      className={`border-b border-line px-3 py-2 text-text${align === "right" ? " text-right" : ""}${wrap ? "" : " max-w-xs whitespace-nowrap"}${truncate ? " truncate" : ""}`}
+      className={`border-b border-line px-3 py-2 text-text${align === "right" ? " text-right" : ""}${fill ? " w-full max-w-0" : wrap ? "" : " max-w-xs whitespace-nowrap"}${truncate ? " truncate" : ""}`}
     >
       {children}
     </td>

@@ -36,6 +36,24 @@ test("Td with wrap opts out of truncation and title", () => {
   expect(cell.className).not.toContain("truncate");
 });
 
+test("Td with fill takes the remaining width instead of the max width", () => {
+  render(
+    <table>
+      <tbody>
+        <tr>
+          <Td fill>
+            <button>child</button>
+          </Td>
+        </tr>
+      </tbody>
+    </table>,
+  );
+  const cls = screen.getByRole("cell").className;
+  expect(cls).toContain("w-full");
+  expect(cls).toContain("max-w-0");
+  expect(cls).not.toContain("max-w-xs");
+});
+
 test("Th with onSort renders a button and aria-sort", async () => {
   const onSort = mock();
   render(

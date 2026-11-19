@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import {
   afterEach,
   beforeEach,
@@ -7,14 +7,15 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
+import { nextTestDay } from "../test-clock.js";
 import { useTooltipDelay } from "./useTooltipDelay.js";
 
-let day = 0;
 beforeEach(() => {
   jest.useFakeTimers();
-  setSystemTime(new Date(2026, 0, ++day));
+  setSystemTime(nextTestDay());
 });
 afterEach(() => {
+  cleanup();
   jest.useRealTimers();
   setSystemTime();
 });
@@ -58,4 +59,21 @@ test("useTooltipDelay stays warm after a long hover once it closes", () => {
   const next = renderHook(() => useTooltipDelay());
   act(() => next.result.current.onEnter());
   expect(next.result.current.open).toBe(true);
+});
+
+test("useTooltipDelay unmounting while open starts the warm-up window", () => {
+  const first = openFirst();
+  first.unmount();
+  act(() => jest.advanceTimersByTime(299));
+  const next = renderHook(() => useTooltipDelay());
+  act(() => next.result.current.onEnter());
+  expect(next.result.current.open).toBe(true);
+});
+
+test("useTooltipDelay unmounting while closed does not start the warm-up window", () => {
+  const first = renderHook(() => useTooltipDelay());
+  first.unmount();
+  const next = renderHook(() => useTooltipDelay());
+  act(() => next.result.current.onEnter());
+  expect(next.result.current.open).toBe(false);
 });

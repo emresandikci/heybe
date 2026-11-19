@@ -5,7 +5,7 @@ import { tv } from "./tv.js";
 
 const dialog = tv({
   base: [
-    "border border-line bg-raised p-0 text-text shadow-overlay backdrop:bg-black/40 dark:backdrop:bg-black/70",
+    "border border-line bg-raised p-0 text-text shadow-overlay backdrop:bg-scrim",
     "[&_[data-part=content]]:flex [&_[data-part=content]]:max-h-dvh [&_[data-part=content]]:flex-col",
     "[&_[data-part=header]]:flex [&_[data-part=header]]:items-center [&_[data-part=header]]:justify-between [&_[data-part=header]]:gap-2 [&_[data-part=header]]:border-b [&_[data-part=header]]:border-line [&_[data-part=header]]:py-3 [&_[data-part=header]]:pl-4 [&_[data-part=header]]:pr-3",
     "[&_[data-part=title]]:text-base [&_[data-part=title]]:font-semibold",

@@ -54,8 +54,7 @@ const TYPE_ICONS: Record<FieldType, LucideIcon> = {
   password: Lock,
 };
 
-const rowClass =
-  "flex flex-col gap-2 rounded border border-line p-3 dark:border-line";
+const rowClass = "flex flex-col gap-2 rounded border border-line p-3";
 
 export function FieldRow(props: FieldRowProps) {
   const { field } = props;

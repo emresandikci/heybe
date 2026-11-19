@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { createRef } from "react";
 import { usePosition } from "./usePosition.js";
 
@@ -156,6 +156,52 @@ test("usePosition re-measures when the overlay resizes", () => {
       bottom: "auto",
     });
   } finally {
+    globalThis.ResizeObserver = original;
+  }
+});
+
+test("usePosition removes its window listeners and observer on close and on unmount", () => {
+  const original = globalThis.ResizeObserver;
+  let disconnects = 0;
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {
+      disconnects++;
+    }
+  } as unknown as typeof ResizeObserver;
+  const added = spyOn(window, "addEventListener");
+  const removed = spyOn(window, "removeEventListener");
+  try {
+    const trigger = createRef<HTMLElement>();
+    const overlay = createRef<HTMLElement>();
+    trigger.current = document.createElement("button");
+    overlay.current = document.createElement("div");
+    const { rerender, unmount } = renderHook(
+      ({ open }) => usePosition(trigger, overlay, { open }),
+      { initialProps: { open: true } },
+    );
+    const types = added.mock.calls.map((call) => call[0]);
+    expect(types).toEqual(expect.arrayContaining(["resize", "scroll"]));
+    rerender({ open: false });
+    expect(disconnects).toBe(1);
+    const closed = removed.mock.calls.map((call) => call[0]);
+    expect(closed).toEqual(expect.arrayContaining(["resize", "scroll"]));
+    added.mockClear();
+    removed.mockClear();
+    rerender({ open: true });
+    unmount();
+    expect(disconnects).toBe(2);
+    for (const [type, handler] of added.mock.calls.filter(
+      (call) => call[0] === "resize" || call[0] === "scroll",
+    )) {
+      expect(
+        removed.mock.calls.some((c) => c[0] === type && c[1] === handler),
+      ).toBe(true);
+    }
+  } finally {
+    added.mockRestore();
+    removed.mockRestore();
     globalThis.ResizeObserver = original;
   }
 });

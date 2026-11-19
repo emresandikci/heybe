@@ -96,3 +96,54 @@ test("Tabs aria-controls matches the documented panel id", () => {
   expect(tab.id).toBe(tabPanelIds("t", "b").tab);
   expect(tab.getAttribute("aria-controls")).toBe(tabPanelIds("t", "b").panel);
 });
+
+test("Tabs renders an empty list without throwing and ignores arrows", async () => {
+  const user = userEvent.setup({ delay: null });
+  render(<Tabs label="Sections" value="" onChange={() => {}} tabs={[]} />);
+  const list = screen.getByRole("tablist");
+  act(() => list.focus());
+  await user.keyboard("{ArrowRight}{ArrowLeft}{Home}{End}");
+  expect(list.children.length).toBe(0);
+});
+
+test("Tabs skip a disabled tab when moving with arrows", async () => {
+  const user = userEvent.setup({ delay: null });
+  const onChange: string[] = [];
+  render(
+    <Tabs
+      label="Sections"
+      value="a"
+      onChange={(v) => onChange.push(v)}
+      tabs={[
+        { value: "a", label: "Alpha" },
+        { value: "b", label: "Beta", disabled: true },
+        { value: "c", label: "Gamma" },
+      ]}
+    />,
+  );
+  const beta = screen.getByRole("tab", { name: "Beta" }) as HTMLButtonElement;
+  expect(beta.disabled).toBe(true);
+  act(() => screen.getByRole("tab", { name: "Alpha" }).focus());
+  await user.keyboard("{ArrowRight}");
+  expect(onChange).toEqual(["c"]);
+});
+
+test("Tabs gives the first enabled tab the tab stop when the selected tab is disabled", () => {
+  render(
+    <Tabs
+      label="Sections"
+      value="a"
+      onChange={() => {}}
+      tabs={[
+        { value: "a", label: "Alpha", disabled: true },
+        { value: "b", label: "Beta" },
+        { value: "c", label: "Gamma" },
+      ]}
+    />,
+  );
+  const stops = screen
+    .getAllByRole("tab")
+    .filter((tab) => (tab as HTMLButtonElement).tabIndex === 0)
+    .map((tab) => tab.textContent);
+  expect(stops).toEqual(["Beta"]);
+});

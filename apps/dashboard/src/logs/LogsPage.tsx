@@ -144,8 +144,7 @@ export function LogsPage() {
                 <Td>
                   <LevelBadge level={log.level} />
                 </Td>
-                {/* Td caps width at max-w-xs; this cell must take the remaining width */}
-                <td className="w-full max-w-0 border-b border-line px-3 py-2">
+                <Td fill>
                   <button
                     type="button"
                     title={summary(log)}
@@ -157,7 +156,7 @@ export function LogsPage() {
                   >
                     {summary(log)}
                   </button>
-                </td>
+                </Td>
                 <Td>
                   <span
                     title={log.created}

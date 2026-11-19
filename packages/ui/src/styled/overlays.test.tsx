@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   afterEach,
@@ -8,7 +8,10 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useState } from "react";
+import { nextTestDay } from "../test-clock.js";
 import { ConfirmProvider, useConfirm } from "./Confirm.js";
 import { CopyButton } from "./CopyButton.js";
 import { Dialog } from "./Dialog.js";
@@ -18,9 +21,10 @@ import { ToastProvider, useToast } from "./Toasts.js";
 
 beforeEach(() => {
   jest.useFakeTimers();
-  setSystemTime(new Date(Date.UTC(2021, 0, 1)));
+  setSystemTime(nextTestDay());
 });
 afterEach(() => {
+  cleanup();
   jest.useRealTimers();
   setSystemTime();
 });
@@ -93,6 +97,23 @@ test("Dialog close button closes and returns focus", async () => {
   await u.click(screen.getByRole("button", { name: "Close" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(document.activeElement).toBe(opener);
+});
+
+test("Dialog backdrop uses the scrim token in both themes", () => {
+  render(
+    <Dialog open onClose={() => {}} title="Hello">
+      <p>Body</p>
+    </Dialog>,
+  );
+  const cls = screen.getByRole("dialog").className;
+  expect(cls).toContain("backdrop:bg-scrim");
+  expect(cls).not.toContain("bg-black");
+  const css = readFileSync(join(import.meta.dir, "../theme.css"), "utf8");
+  expect(css).toMatch(/:root \{[^}]*--hb-scrim: rgba\(0, 0, 0, 0\.4\)/);
+  expect(css).toMatch(
+    /:root\[data-theme="dark"\] \{[^}]*--hb-scrim: rgba\(0, 0, 0, 0\.7\)/,
+  );
+  expect(css).toContain("--color-scrim: var(--hb-scrim)");
 });
 
 test("Dialog footer renders inside the footer band", () => {
@@ -340,7 +361,7 @@ test("CopyButton announces Copied through a live region", async () => {
   expect(screen.getByRole("status").textContent).toBe("Copied");
 });
 
-test("Toast error is not nested inside the polite status region", async () => {
+test("Toast error renders as an alert item", async () => {
   const u = user();
   function Host() {
     const toast = useToast();
@@ -352,7 +373,53 @@ test("Toast error is not nested inside the polite status region", async () => {
     </ToastProvider>,
   );
   await u.click(screen.getByRole("button", { name: "Fail" }));
-  expect(screen.getByRole("alert").closest("[role=status]")).toBeNull();
+  expect(screen.getByRole("alert").textContent).toBe("Boom");
+});
+
+test("Toasts live in a polite region that exists before any toast", async () => {
+  const u = user();
+  function Host() {
+    const toast = useToast();
+    return <button onClick={() => toast.success("Saved")}>Go</button>;
+  }
+  render(
+    <ToastProvider>
+      <Host />
+    </ToastProvider>,
+  );
+  const region = screen.getByRole("status");
+  expect(region.getAttribute("aria-live")).toBe("polite");
+  await u.click(screen.getByRole("button", { name: "Go" }));
+  expect(screen.getByText("Saved").closest("[role=status]")).toBe(region);
+});
+
+test("Toasts render in arrival order regardless of type", async () => {
+  const u = user();
+  function Host() {
+    const toast = useToast();
+    return (
+      <button
+        onClick={() => {
+          toast.success("One");
+          toast.error("Two");
+          toast.success("Three");
+        }}
+      >
+        Go
+      </button>
+    );
+  }
+  render(
+    <ToastProvider>
+      <Host />
+    </ToastProvider>,
+  );
+  await u.click(screen.getByRole("button", { name: "Go" }));
+  const texts = [
+    ...screen.getAllByText(/^(One|Two|Three)$/).map((el) => el.textContent),
+  ];
+  expect(texts).toEqual(["One", "Two", "Three"]);
+  expect(screen.getByRole("alert").textContent).toBe("Two");
 });
 
 test("Toast error renders role=alert", async () => {

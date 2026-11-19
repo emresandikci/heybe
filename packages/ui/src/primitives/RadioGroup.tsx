@@ -26,7 +26,11 @@ export function RadioGroup(props: {
           ? -1
           : 0;
     const target = step
-      ? enabled[(index + step + enabled.length) % enabled.length]
+      ? enabled[
+          index < 0 && step < 0
+            ? enabled.length - 1
+            : (index + step + enabled.length) % enabled.length
+        ]
       : event.key === "Home"
         ? enabled[0]
         : event.key === "End"

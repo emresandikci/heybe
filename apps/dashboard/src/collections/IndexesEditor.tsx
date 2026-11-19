@@ -76,7 +76,7 @@ function IndexRow({
   const error = useFieldError(errorPath);
   const parsed = parseIndex(sql);
   return (
-    <li className="flex flex-col gap-1 rounded border border-line p-2 dark:border-line">
+    <li className="flex flex-col gap-1 rounded border border-line p-2">
       <div className="flex items-center gap-2">
         <span className="flex-1 font-mono text-xs" title={sql}>
           {parsed

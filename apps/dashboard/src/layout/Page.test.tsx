@@ -6,6 +6,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { Page } from "./Page";
 
 async function renderPage(page: React.ReactElement) {
@@ -52,4 +53,12 @@ test("Page footer shows the version and Docs link", async () => {
   expect(
     screen.getByRole("link", { name: "Docs" }).getAttribute("href"),
   ).toContain("github.com");
+});
+
+test("Page crumbs only accept registered routes", () => {
+  const crumbs: ComponentProps<typeof Page>["crumbs"] = [
+    // @ts-expect-error unknown route
+    { label: "Nope", to: "/not-a-route" },
+  ];
+  expect(crumbs.length).toBe(1);
 });

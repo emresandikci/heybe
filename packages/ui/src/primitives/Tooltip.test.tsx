@@ -1,22 +1,30 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import {
   afterEach,
   beforeEach,
   expect,
   jest,
+  spyOn,
   setSystemTime,
   test,
 } from "bun:test";
 import { createRef } from "react";
+import { nextTestDay } from "../test-clock.js";
 import { Dialog } from "./Dialog.js";
 import { Tooltip } from "./Tooltip.js";
 
-let day = 0;
 beforeEach(() => {
   jest.useFakeTimers();
-  setSystemTime(new Date(Date.UTC(2020, 0, ++day)));
+  setSystemTime(nextTestDay());
 });
 afterEach(() => {
+  cleanup();
   jest.useRealTimers();
   setSystemTime();
 });
@@ -99,8 +107,46 @@ test("Tooltip closes after leaving the trigger without entering it", () => {
   });
   fireEvent.mouseLeave(target);
   act(() => {
-    jest.advanceTimersByTime(200);
+    jest.advanceTimersByTime(99);
   });
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+  act(() => {
+    jest.advanceTimersByTime(1);
+  });
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+function pointerLeaveWhileFocused(focusVisible: boolean) {
+  render(
+    <Tooltip content="Help">
+      <button>Target</button>
+    </Tooltip>,
+  );
+  const target = screen.getByRole("button");
+  spyOn(target, "matches").mockReturnValue(focusVisible);
+  target.focus();
+  fireEvent.focus(target);
+  fireEvent.mouseEnter(target);
+  act(() => {
+    jest.advanceTimersByTime(700);
+  });
+  fireEvent.mouseLeave(target);
+  act(() => {
+    jest.advanceTimersByTime(1000);
+  });
+  return target;
+}
+
+test("Tooltip stays open after the pointer leaves while the trigger has keyboard focus", () => {
+  const target = pointerLeaveWhileFocused(true);
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+  target.blur();
+  fireEvent.blur(target);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("Tooltip closes when the pointer leaves a trigger focused by a mouse click", () => {
+  pointerLeaveWhileFocused(false);
   expect(screen.queryByRole("tooltip")).toBeNull();
 });
 

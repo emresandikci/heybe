@@ -13,7 +13,12 @@ test("primary Button has the accent classes and no gradient", () => {
 
 test("Button size md is the default", () => {
   render(<Button>Save</Button>);
-  expect(screen.getByRole("button").className).toContain("h-9");
+  expect(screen.getByRole("button").getAttribute("data-size")).toBe("md");
+});
+
+test("Button size sm is reflected in data-size", () => {
+  render(<Button size="sm">Save</Button>);
+  expect(screen.getByRole("button").getAttribute("data-size")).toBe("sm");
 });
 
 test("Button loading disables it and sets aria-busy", () => {

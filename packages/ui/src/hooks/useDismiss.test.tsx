@@ -1,5 +1,5 @@
 import { act, render, renderHook } from "@testing-library/react";
-import { expect, mock, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { createRef } from "react";
 import { useDismiss } from "./useDismiss.js";
 
@@ -110,4 +110,39 @@ test("useDismiss re-render of an outer layer does not steal Escape from the inne
   act(() => getByTestId("inner").dispatchEvent(escape()));
   expect(innerDismiss).toHaveBeenCalledTimes(1);
   expect(outerDismiss).not.toHaveBeenCalled();
+});
+
+test("useDismiss removes its document listeners on close and on unmount", () => {
+  const added = spyOn(document, "addEventListener");
+  const removed = spyOn(document, "removeEventListener");
+  try {
+    const ref = createRef<HTMLDivElement>();
+    const { rerender, unmount } = renderHook(
+      ({ open }) => useDismiss(ref, { open, onDismiss: () => {} }),
+      { initialProps: { open: true } },
+    );
+    const types = added.mock.calls.map((call) => call[0]);
+    expect(types).toEqual(expect.arrayContaining(["keydown", "pointerdown"]));
+    expect(removed).not.toHaveBeenCalled();
+    rerender({ open: false });
+    const afterClose = removed.mock.calls.map((call) => call[0]);
+    expect(afterClose).toEqual(
+      expect.arrayContaining(["keydown", "pointerdown"]),
+    );
+    added.mockClear();
+    removed.mockClear();
+    rerender({ open: true });
+    unmount();
+    expect(removed.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining(["keydown", "pointerdown"]),
+    );
+    for (const [type, handler] of added.mock.calls) {
+      expect(
+        removed.mock.calls.some((c) => c[0] === type && c[1] === handler),
+      ).toBe(true);
+    }
+  } finally {
+    added.mockRestore();
+    removed.mockRestore();
+  }
 });

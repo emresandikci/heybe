@@ -8,12 +8,20 @@ import {
   type Ref,
 } from "react";
 import { createPortal } from "react-dom";
-import { mergeRefs } from "../hooks/mergeRefs.js";
+import { useMergeRefs } from "../hooks/useMergeRefs.js";
 import { useDismiss } from "../hooks/useDismiss.js";
 import { mergeProps } from "../hooks/mergeProps.js";
 import { usePosition } from "../hooks/usePosition.js";
 import { useTooltipDelay } from "../hooks/useTooltipDelay.js";
 import { useTopLayer } from "../hooks/useTopLayer.js";
+
+function hasKeyboardFocus(element: HTMLElement | null) {
+  try {
+    return element?.matches(":focus-visible") ?? false;
+  } catch {
+    return element === document.activeElement;
+  }
+}
 
 export function Tooltip(props: {
   content: ReactNode;
@@ -23,6 +31,10 @@ export function Tooltip(props: {
   const delay = useTooltipDelay();
   const id = useId();
   const triggerRef = useRef<HTMLElement>(null);
+  const mergedTriggerRef = useMergeRefs(
+    triggerRef,
+    props.children.props.ref as Ref<HTMLElement> | undefined,
+  );
   const tipRef = useRef<HTMLDivElement>(null);
   const container = useTopLayer(triggerRef, tipRef, delay.open);
   const position = usePosition(triggerRef, tipRef, {
@@ -40,6 +52,7 @@ export function Tooltip(props: {
   );
   useEffect(() => () => clearTimeout(leaveTimer.current), []);
   const leaveSoon = () => {
+    if (hasKeyboardFocus(triggerRef.current)) return;
     clearTimeout(leaveTimer.current);
     leaveTimer.current = setTimeout(delay.onLeave, 100);
   };
@@ -48,10 +61,7 @@ export function Tooltip(props: {
   const trigger = cloneElement(
     props.children,
     mergeProps(props.children.props, {
-      ref: mergeRefs(
-        triggerRef,
-        props.children.props.ref as Ref<HTMLElement> | undefined,
-      ),
+      ref: mergedTriggerRef,
       "aria-describedby": delay.open ? id : undefined,
       onMouseEnter: () => {
         stay();

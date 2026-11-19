@@ -256,7 +256,7 @@ function ProviderRow({
     OAUTH2_PROVIDERS.find((p) => p.name === provider.name)?.displayName ||
     provider.name;
   return (
-    <li className="flex flex-col gap-1 rounded border border-line p-2 dark:border-line">
+    <li className="flex flex-col gap-1 rounded border border-line p-2">
       <div className="flex items-center gap-2">
         <ProviderLogo name={provider.name} displayName={name} />
         <span className="min-w-0 flex-1 truncate text-sm">{name}</span>

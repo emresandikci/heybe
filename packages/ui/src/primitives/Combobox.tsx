@@ -16,6 +16,7 @@ export type ComboboxOption = { key: string; label: string; disabled?: boolean };
 
 export function Combobox(props: {
   label: string;
+  hideLabel?: boolean;
   options: ComboboxOption[];
   value: string | null;
   onChange(key: string | null): void;
@@ -112,7 +113,11 @@ export function Combobox(props: {
 
   return (
     <>
-      <label id={`${id}-label`} htmlFor={`${id}-input`}>
+      <label
+        id={`${id}-label`}
+        htmlFor={`${id}-input`}
+        className={props.hideLabel ? "sr-only" : undefined}
+      >
         {props.label}
       </label>
       <input

@@ -75,3 +75,36 @@ test("RadioGroup wraps around and supports Home and End", async () => {
   await user.keyboard("{Home}");
   expect(checked("Alpha")).toBe("true");
 });
+
+test("RadioGroup ArrowUp with no enabled value selected goes to the last enabled option", async () => {
+  const user = userEvent.setup({ delay: null });
+  function Host(props: { initial: string }) {
+    const [value, setValue] = useState(props.initial);
+    return (
+      <RadioGroup
+        label="Pick"
+        value={value}
+        onChange={setValue}
+        options={[
+          { value: "a", label: "Alpha" },
+          { value: "b", label: "Beta" },
+          { value: "c", label: "Gamma" },
+          { value: "d", label: "Delta", disabled: true },
+        ]}
+      />
+    );
+  }
+  const { unmount } = render(<Host initial="" />);
+  act(() => screen.getByRole("radio", { name: "Alpha" }).focus());
+  await user.keyboard("{ArrowUp}");
+  expect(
+    screen.getByRole("radio", { name: "Gamma" }).getAttribute("aria-checked"),
+  ).toBe("true");
+  unmount();
+  render(<Host initial="d" />);
+  act(() => screen.getByRole("radio", { name: "Alpha" }).focus());
+  await user.keyboard("{ArrowUp}");
+  expect(
+    screen.getByRole("radio", { name: "Gamma" }).getAttribute("aria-checked"),
+  ).toBe("true");
+});

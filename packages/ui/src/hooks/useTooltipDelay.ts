@@ -23,6 +23,12 @@ export function useTooltipDelay(): {
     if (openRef.current) warmUntil = Date.now() + 300;
     setOpen(false);
   }, []);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current);
+      if (openRef.current) warmUntil = Date.now() + 300;
+    },
+    [],
+  );
   return { open, onEnter, onLeave };
 }

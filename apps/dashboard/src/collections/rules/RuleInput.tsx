@@ -38,7 +38,7 @@ export function RuleInput({
   const insert = (chip: string) => area.current?.insert(chip);
 
   return (
-    <fieldset className="flex flex-col gap-2 rounded border border-line p-3 dark:border-line">
+    <fieldset className="flex flex-col gap-2 rounded border border-line p-3">
       <legend className="sr-only">{label}</legend>
       <CodeArea
         ref={area}

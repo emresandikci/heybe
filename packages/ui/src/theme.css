@@ -37,6 +37,7 @@
   --hb-radius: 7px;
   --hb-radius-control: 8px;
   --hb-shadow-overlay: 0 16px 40px rgba(20, 24, 40, 0.14);
+  --hb-scrim: rgba(0, 0, 0, 0.4);
   --hb-font: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
   --hb-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --hb-duration: 150ms;
@@ -80,6 +81,7 @@
   --hb-warning-line: #4f4020;
   --hb-warning-text: #f0c36b;
   --hb-shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --hb-scrim: rgba(0, 0, 0, 0.7);
   --cm-keyword: #c4b5fd;
   --cm-string: #6ee7b7;
   --cm-number: #fcd34d;
@@ -132,6 +134,7 @@
   --radius-base: var(--hb-radius);
   --radius-control: var(--hb-radius-control);
   --shadow-overlay: var(--hb-shadow-overlay);
+  --color-scrim: var(--hb-scrim);
   --font-sans: var(--hb-font);
   --font-mono: var(--hb-font-mono);
 }
