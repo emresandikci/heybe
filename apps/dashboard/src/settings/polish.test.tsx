@@ -117,7 +117,7 @@ test("provider dialog rejects empty client id and secret", async () => {
   const dialog = within(
     screen.getByRole("dialog", { name: "GitHub provider" }),
   );
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Create" }));
   expect(dialog.getAllByText("Cannot be blank.")).toHaveLength(2);
   expect(server.find("PATCH", "/api/collections/:id")).toHaveLength(0);
 });

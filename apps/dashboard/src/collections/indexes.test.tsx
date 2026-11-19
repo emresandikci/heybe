@@ -25,7 +25,7 @@ async function addIndex(
     await user.click(within(dialog).getByLabelText(column));
   if (unique) await user.click(within(dialog).getByLabelText("Unique"));
   const sql = codeValue(within(dialog).getByLabelText("Index SQL"));
-  await user.click(within(dialog).getByRole("button", { name: "Save index" }));
+  await user.click(within(dialog).getByRole("button", { name: "Apply" }));
   return sql;
 }
 
@@ -59,7 +59,7 @@ test("index SQL can be edited by hand and removed", async () => {
   const dialog = screen.getByRole("dialog", { name: "Edit index" });
   const area = within(dialog).getByLabelText("Index SQL");
   setCode(area, "CREATE INDEX idx_t ON posts (title DESC)");
-  await user.click(within(dialog).getByRole("button", { name: "Save index" }));
+  await user.click(within(dialog).getByRole("button", { name: "Apply" }));
   await user.click(
     within(indexRows()[1]!).getByRole("button", { name: "Remove index" }),
   );
@@ -144,7 +144,7 @@ test("indexes with SQL the checkboxes cannot show keep their SQL", async () => {
   expect(
     (within(dialog).getByLabelText("Unique") as HTMLInputElement).disabled,
   ).toBe(true);
-  await user.click(within(dialog).getByRole("button", { name: "Save index" }));
+  await user.click(within(dialog).getByRole("button", { name: "Apply" }));
   await save();
   await screen.findByText("Collection saved.");
   const [patch] = server.find("PATCH", "/api/collections/hbc_posts");

@@ -49,7 +49,7 @@ test("auth providers: configure GitHub", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "GitHub provider" });
   await dialog.getByLabel("Client ID").fill("gh-id");
   await dialog.getByLabel("Client secret").fill("gh-secret");
-  await dialog.getByRole("button", { name: "Save provider" }).click();
+  await dialog.getByRole("button", { name: "Create" }).click();
   await expect(page.getByText("Auth providers saved.")).toBeVisible();
   await expect(
     page

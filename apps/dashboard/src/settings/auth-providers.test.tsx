@@ -54,7 +54,7 @@ test("configuring a provider saves it on the collection", async () => {
   );
   await user.type(dialog.getByLabelText("Client ID"), "gh-id");
   await user.type(dialog.getByLabelText("Client secret"), "gh-secret");
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Create" }));
   await screen.findByText("Auth providers saved.");
   const [patch] = patches();
   expect(patch.oauth2.enabled).toBe(true);
@@ -76,7 +76,7 @@ test("editing an enabled provider replaces it in place", async () => {
   );
   await user.clear(dialog.getByLabelText("Client ID"));
   await user.type(dialog.getByLabelText("Client ID"), "new-id");
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Save changes" }));
   await screen.findByText("Auth providers saved.");
   expect(patches()[0].oauth2.providers).toHaveLength(1);
   expect(patches()[0].oauth2.providers[0].clientId).toBe("new-id");
@@ -111,7 +111,7 @@ test("the picker switches collection and is hidden for a single one", async () =
   );
   await user.type(dialog.getByLabelText("Client ID"), "x");
   await user.type(dialog.getByLabelText("Client secret"), "y");
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Create" }));
   await screen.findByText("Auth providers saved.");
   expect(patches()[0].oauth2.providers.map((p: any) => p.name)).toEqual([
     "github",

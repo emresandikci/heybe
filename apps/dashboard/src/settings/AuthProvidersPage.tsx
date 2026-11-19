@@ -171,6 +171,9 @@ function Providers({ collections }: { collections: CollectionModel[] }) {
               save.reset();
             }}
             onSave={(p) => saveProvider(editing.index, p)}
+            submitLabel={
+              editing.index < providers.length ? "Save changes" : "Create"
+            }
           />
         )}
       </div>

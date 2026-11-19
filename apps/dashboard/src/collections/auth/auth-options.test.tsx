@@ -55,7 +55,7 @@ test("adding a provider sends name, clientId, clientSecret and pkce", async () =
   await user.type(dialog.getByLabelText("Client ID"), "gh-id");
   await user.type(dialog.getByLabelText("Client secret"), "gh-secret");
   await user.selectOptions(dialog.getByLabelText("PKCE"), "on");
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Apply" }));
   expect(region("OAuth2").getByText("GitHub")).toBeTruthy();
   const body = await saved();
   expect(body.oauth2.providers[1]).toMatchObject({
@@ -78,7 +78,7 @@ test("editing a provider without typing a secret sends no clientSecret key", asy
   const id = dialog.getByLabelText("Client ID");
   await user.clear(id);
   await user.type(id, "new-id");
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Apply" }));
   const [google] = (await saved()).oauth2.providers;
   expect(google).toMatchObject({ name: "google", clientId: "new-id" });
   expect(google).not.toHaveProperty("clientSecret");
@@ -128,7 +128,7 @@ test("apple generate fills clientSecret from the response", async () => {
     privateKey: "PK",
     duration: 15777000,
   });
-  await user.click(dialog.getByRole("button", { name: "Save provider" }));
+  await user.click(dialog.getByRole("button", { name: "Apply" }));
   expect((await saved()).oauth2.providers[1]).toMatchObject({
     name: "apple",
     clientSecret: "apple-secret",

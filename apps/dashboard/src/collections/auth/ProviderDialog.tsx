@@ -55,11 +55,13 @@ export function ProviderDialog({
   errorPath,
   onCancel,
   onSave,
+  submitLabel = "Apply",
 }: {
   provider: Provider;
   errorPath: string;
   onCancel: () => void;
   onSave: (provider: Provider) => void;
+  submitLabel?: string;
 }) {
   const info = OAUTH2_PROVIDERS.find((p) => p.name === provider.name);
   const hasSecret = Boolean(provider.clientId);
@@ -141,7 +143,7 @@ export function ProviderDialog({
         <>
           <Button onClick={onCancel}>Cancel</Button>
           <Button variant="primary" onClick={() => void form.handleSubmit()}>
-            Save provider
+            {submitLabel}
           </Button>
         </>
       }

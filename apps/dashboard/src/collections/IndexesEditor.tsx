@@ -143,7 +143,7 @@ function IndexDialog({
             disabled={text.trim() === ""}
             onClick={() => void form.handleSubmit()}
           >
-            Save index
+            Apply
           </Button>
         </>
       }
