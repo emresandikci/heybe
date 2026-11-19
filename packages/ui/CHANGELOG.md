@@ -1,3 +1,10 @@
+# [@heybe/ui-v1.0.1](https://github.com/emresandikci/heybe/compare/@heybe/ui@1.0.0...@heybe/ui@1.0.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **ui:** close deferred kit gaps ([1de3d4f](https://github.com/emresandikci/heybe/commit/1de3d4f9cb45ff782224e122add134245b59541a))
+
 # @heybe/ui-v1.0.0 (2026-11-18)
 
 
