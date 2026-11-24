@@ -465,14 +465,16 @@ describe("checkpoint worker", () => {
     return { dir, path, clock, db, cp, insert, inMainFile, tick, cleanup };
   }
 
-  test("the writer keeps autocheckpoint at 10000 pages as a safety net", async () => {
+  test("the writer keeps autocheckpoint at 10000 pages as a safety net and caps the WAL at 16 MiB", async () => {
     const { db, cleanup } = setup();
-    const pages = await exclusive(db, (s) =>
-      s
-        .query<{ wal_autocheckpoint: number }, []>("PRAGMA wal_autocheckpoint")
-        .get(),
-    );
-    expect(pages).toEqual({ wal_autocheckpoint: 10_000 });
+    const pragmas = await exclusive(db, (s) => ({
+      ...s.query<object, []>("PRAGMA wal_autocheckpoint").get(),
+      ...s.query<object, []>("PRAGMA journal_size_limit").get(),
+    }));
+    expect(pragmas).toEqual({
+      wal_autocheckpoint: 10_000,
+      journal_size_limit: 16 * 1024 * 1024,
+    });
     db.close();
     cleanup();
   });

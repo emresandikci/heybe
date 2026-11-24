@@ -120,6 +120,8 @@ function connection(path: string, readonly: boolean, busyTimeoutMs: number) {
 const CHECKPOINT_DELAY_MS = 250;
 const CHECKPOINT_COMMITS = 200;
 const WAL_AUTOCHECKPOINT_PAGES = 10_000;
+// the -wal file shrinks back to this after a burst, instead of keeping its high-water size
+const WAL_SIZE_LIMIT_BYTES = 16 * 1024 * 1024;
 const WORKER_TIMEOUT_MS = 5000;
 
 interface Checkpointer {
@@ -298,8 +300,10 @@ export function openDb(
   const cp = checkpointTimers ? checkpointer(path, checkpointTimers) : null;
   const openWriter = () => {
     const c = connection(path, false, busyTimeoutMs);
-    if (cp)
+    if (cp) {
       c.sqlite.run(`PRAGMA wal_autocheckpoint = ${WAL_AUTOCHECKPOINT_PAGES}`);
+      c.sqlite.run(`PRAGMA journal_size_limit = ${WAL_SIZE_LIMIT_BYTES}`);
+    }
     return c;
   };
   let writer = openWriter();
