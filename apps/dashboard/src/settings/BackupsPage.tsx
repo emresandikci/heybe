@@ -55,7 +55,10 @@ function BackupsList() {
   const toast = useToast();
   const confirm = useConfirm();
   const [creating, setCreating] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  // "started" until the server is seen going down, then "finished" once it answers again
+  const [restoring, setRestoring] = useState<
+    "started" | "down" | "finished" | null
+  >(null);
   const backups = useQuery({
     queryKey: keys.backups,
     queryFn: ({ signal }) =>
@@ -68,8 +71,18 @@ function BackupsList() {
   const health = useQuery({
     queryKey: keys.health,
     queryFn: ({ signal }) => client.health.check({ signal }),
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.data.canBackup === false ||
+      restoring === "started" ||
+      restoring === "down"
+        ? HEALTH_POLL_MS
+        : false,
   });
   const busy = health.data?.data.canBackup === false;
+  if (restoring === "started" && health.isError) setRestoring("down");
+  if (restoring === "down" && health.isSuccess && !health.isRefetchError)
+    setRestoring("finished");
 
   const refresh = () =>
     Promise.all([
@@ -77,15 +90,19 @@ function BackupsList() {
       queryClient.invalidateQueries({ queryKey: keys.health }),
     ]);
 
+  const [uploading, setUploading] = useState(false);
   const upload = async (files: File[]) => {
     const file = files[0];
     if (!file) return;
+    setUploading(true);
     try {
       await client.backups.upload(file);
       toast.success("Backup uploaded.");
       await refresh();
     } catch (err) {
       toast.error(errorMessage(err));
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -130,11 +147,11 @@ function BackupsList() {
     if (!ok) return;
     try {
       await client.backups.restore(key);
-      setRestoring(true);
+      setRestoring("started");
     } catch (err) {
       // status 0 without an abort: the server dropped the connection while restarting
       if (err instanceof HeybeError && err.status === 0 && !err.isAbort)
-        setRestoring(true);
+        setRestoring("started");
       else toast.error(errorMessage(err));
     }
   };
@@ -147,8 +164,9 @@ function BackupsList() {
           className="flex items-center gap-3 rounded border border-warning-line bg-warning-bg p-3 text-sm text-warning-text"
         >
           <p>
-            Restore started. The server restarts with the restored data; reload
-            this page in a few seconds.
+            {restoring === "finished"
+              ? "Restore finished. Reload this page to see the restored data."
+              : "Restore started. The server restarts with the restored data."}
           </p>
           <Button onClick={() => window.location.reload()}>Reload</Button>
         </div>
@@ -161,6 +179,7 @@ function BackupsList() {
           <FileField
             label="Backup file"
             accept=".zip"
+            disabled={uploading}
             onChange={(files) => void upload(files)}
           />
         </div>
@@ -301,7 +320,7 @@ function NameInput({
   return (
     <TextField
       label="Name"
-      hint="Leave empty for a generated name."
+      hint="Lowercase letters, digits, - and _, ending in .zip. Leave empty for a generated name."
       value={value}
       error={useFieldError("name")}
       onChange={(e) => onChange(e.target.value)}
@@ -310,11 +329,14 @@ function NameInput({
 }
 
 const PRESETS = ["", "0 0 * * *", "0 0 * * 0"];
+const HEALTH_POLL_MS = 1000;
 
 function CronField({ field }: { field: FieldLike<string> }) {
   const value = field.state.value;
   const onChange = field.handleChange;
-  const [custom, setCustom] = useState(!PRESETS.includes(value));
+  const [customPicked, setCustom] = useState(false);
+  // a stored or reset value outside the presets is custom, whatever was picked before
+  const custom = customPicked || !PRESETS.includes(value);
   return (
     <>
       <ScheduleSelect

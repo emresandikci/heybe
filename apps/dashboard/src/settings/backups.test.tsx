@@ -115,7 +115,7 @@ test("restore requires typing the key, posts restore and shows the restart notic
   await user.click(confirm);
   expect(
     await screen.findByText(
-      "Restore started. The server restarts with the restored data; reload this page in a few seconds.",
+      "Restore started. The server restarts with the restored data.",
     ),
   ).toBeTruthy();
   expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
@@ -270,4 +270,21 @@ test("backups test connection is disabled while dirty and calls testS3('backups'
   expect(server.find("POST", "/api/settings/test/s3")[0]!.body).toEqual({
     filesystem: "backups",
   });
+});
+
+test("reset brings back a stored custom schedule after picking a preset", async () => {
+  const server = serve().on("GET", "/api/settings", {
+    ...settingsFixture,
+    backups: { ...settingsFixture.backups, cron: "0 5 * * *" },
+  });
+  const { user } = await openBackups(server);
+  const schedule = await screen.findByRole("combobox", { name: "Schedule" });
+  expect((schedule as HTMLSelectElement).value).toBe("custom");
+  await user.selectOptions(schedule, "");
+  expect(screen.queryByLabelText("Custom cron expression")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Reset" }));
+  expect((schedule as HTMLSelectElement).value).toBe("custom");
+  expect(
+    (screen.getByLabelText("Custom cron expression") as HTMLInputElement).value,
+  ).toBe("0 5 * * *");
 });
