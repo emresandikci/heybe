@@ -62,7 +62,8 @@ jobs:
 
   image:
     needs: release
-    if: ${{ needs.release.outputs.version != '' }}
+    # off until the repository variable PUBLISH_DOCKER_IMAGE is set to "true"
+    if: ${{ needs.release.outputs.version != '' && vars.PUBLISH_DOCKER_IMAGE == 'true' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     permissions:
