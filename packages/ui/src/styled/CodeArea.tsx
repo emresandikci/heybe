@@ -20,6 +20,7 @@ import {
 } from "@codemirror/view";
 import {
   autocompletion,
+  closeCompletion,
   completionKeymap,
   type CompletionContext,
   type CompletionSource,
@@ -304,8 +305,9 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
             keymap.of([
               {
                 key: "Mod-Enter",
-                run: () => {
+                run: (v) => {
                   if (!latest.current.onRun) return false;
+                  closeCompletion(v);
                   latest.current.onRun();
                   return true;
                 },
@@ -313,8 +315,10 @@ export const CodeArea = forwardRef<CodeAreaHandle, CodeAreaProps>(
               ...completionKeymap,
               {
                 key: "Enter",
-                run: () => {
+                run: (v) => {
                   if (!singleLine) return false;
+                  // the suggestion list would cover the run's error message
+                  closeCompletion(v);
                   latest.current.onRun?.();
                   return true;
                 },

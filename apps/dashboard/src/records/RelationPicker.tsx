@@ -97,6 +97,11 @@ export function RelationPicker({
           }}
         />
         {records.isError && <p role="alert">{errorMessage(records.error)}</p>}
+        {records.isSuccess && items.length === 0 && (
+          <p className="text-sm text-muted">
+            {filter ? "No records match the search." : "No records yet."}
+          </p>
+        )}
         <ul className="flex flex-col gap-1">
           {items.map((item) => {
             const id = item.id as string;
