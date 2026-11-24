@@ -1,6 +1,7 @@
 import { useForm, useStore } from "@tanstack/react-form";
+import { useBlocker } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useToast } from "@heybe/ui";
+import { useConfirm, useToast } from "@heybe/ui";
 import {
   changedSections,
   useSaveSettings,
@@ -24,6 +25,7 @@ const initial = (settings: SettingsModel) => ({
 
 export function useSettingsForm(settings: SettingsModel, onSaved?: () => void) {
   const toast = useToast();
+  const confirm = useConfirm();
   const save = useSaveSettings();
 
   const load = (next: SettingsModel) => {
@@ -71,6 +73,18 @@ export function useSettingsForm(settings: SettingsModel, onSaved?: () => void) {
   useEffect(() => {
     if (!dirty && !same(settings, loaded.current)) load(settings);
   }, [settings]);
+
+  useBlocker({
+    shouldBlockFn: async () =>
+      dirty &&
+      !(await confirm({
+        title: "Discard unsaved changes?",
+        message: "Your edits to these settings will be lost.",
+        confirmLabel: "Discard",
+        danger: true,
+      })),
+    enableBeforeUnload: () => dirty,
+  });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
