@@ -209,11 +209,14 @@ function EditorForm({
         endOwnSession();
         return;
       }
+      onClose();
+      toast.success("Record deleted.");
+      // the deleted record's own query would refetch into a 404
       await queryClient.invalidateQueries({
         queryKey: ["records", collection.id],
+        predicate: (q) =>
+          (q.queryKey[2] as { id?: string } | undefined)?.id !== record!.id,
       });
-      toast.success("Record deleted.");
-      onClose();
     } catch (err) {
       toast.error(errorMessage(err));
     }

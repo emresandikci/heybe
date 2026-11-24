@@ -1,6 +1,6 @@
 import type { CollectionModel } from "@heybe/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-form";
 import { MoreHorizontal } from "lucide-react";
 import { useId, useMemo, useState } from "react";
@@ -116,6 +116,7 @@ function Editor({
   const client = useClient();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { collectionId } = useParams({ strict: false });
   const confirm = useConfirm();
   const toast = useToast();
   const formId = useId();
@@ -137,6 +138,14 @@ function Editor({
       const saved = source
         ? await client.collections.update(source.id, payload)
         : await client.collections.create(payload);
+      // move a URL holding the old name to the id before the list refetches, or the page
+      // (and the button the editor returns focus to) unmounts as "not found"
+      if (source && collectionId === source.name && saved.name !== source.name)
+        await navigate({
+          to: "/collections/$collectionId",
+          params: { collectionId: saved.id },
+          replace: true,
+        });
       await queryClient.invalidateQueries({ queryKey: keys.collections });
       await queryClient.invalidateQueries({ queryKey: ["records", saved.id] });
       toast.success(source ? "Collection saved." : "Collection created.");

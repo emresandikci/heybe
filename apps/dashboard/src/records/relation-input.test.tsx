@@ -56,6 +56,16 @@ test("the picker search sends the raw filter to the target collection", async ()
   expect(last.query.get("sort")).toBe("-@rowid");
 });
 
+test("the picker says when the target collection has no records", async () => {
+  const { user } = renderApp({
+    path: "/collections/hbc_docs?record=new",
+    server: serveUsers(undefined, []),
+  });
+  const owner = await group("owner");
+  await user.click(owner.getByRole("button", { name: "Choose records" }));
+  await picker().findByText("No records yet.");
+});
+
 test("single relation replaces the selection", async () => {
   const { server, user } = create();
   const owner = await group("owner");

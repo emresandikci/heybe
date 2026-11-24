@@ -429,3 +429,29 @@ test("create with empty name shows only the inline error", async () => {
   await within(dialog).findByText("Cannot be blank.");
   expect(within(dialog).queryByRole("alert")).toBeNull();
 });
+
+test("renaming a collection opened by name moves the URL to its id", async () => {
+  const server = fakeServer().on("PATCH", "/api/collections/:id", (req) => ({
+    ...posts,
+    ...(req.body as object),
+  }));
+  const { user, router } = renderApp({ path: "/collections/posts", server });
+  await user.click(
+    await screen.findByRole("button", { name: "Edit collection posts" }),
+  );
+  const dialog = screen.getByRole("dialog", { name: "Edit posts" });
+  const name = within(dialog).getByLabelText("Name", { exact: true });
+  await user.clear(name);
+  await user.type(name, "articles");
+  await user.click(
+    within(dialog).getByRole("button", { name: "Save changes" }),
+  );
+  await user.click(
+    within(screen.getByRole("dialog", { name: "Confirm changes" })).getByRole(
+      "button",
+      { name: "Confirm" },
+    ),
+  );
+  await screen.findByText("Collection saved.");
+  expect(router.state.location.pathname).toBe(`/collections/${posts.id}`);
+});

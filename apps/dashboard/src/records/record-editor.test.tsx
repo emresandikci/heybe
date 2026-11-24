@@ -363,6 +363,12 @@ test("Delete confirms, deletes and closes", async () => {
     server.find("DELETE", "/api/collections/posts/records/:id"),
   ).toHaveLength(1);
   expect(router.state.location.search).not.toHaveProperty("record");
+  const deleted = server.requests.findIndex((r) => r.method === "DELETE");
+  expect(
+    server.requests
+      .slice(deleted)
+      .filter((r) => r.path === "/api/collections/posts/records/r1"),
+  ).toHaveLength(1);
 });
 
 test("a 404 record id shows the server message", async () => {
