@@ -225,3 +225,21 @@ test("the rate limit rules are disabled while rate limits are off", async () => 
   await user.click(screen.getByRole("switch", { name: "Enable rate limits" }));
   expect(group.disabled).toBe(false);
 });
+
+test("leaving with unsaved settings asks first", async () => {
+  const { user, router } = await openApplication();
+  await user.type(screen.getByLabelText("Application name"), "x");
+  await user.click(screen.getByRole("link", { name: "Mail" }));
+  const ask = await screen.findByRole("dialog", {
+    name: "Discard unsaved changes?",
+  });
+  await user.click(within(ask).getByRole("button", { name: "Cancel" }));
+  expect(router.state.location.pathname).toBe("/settings");
+  await user.click(screen.getByRole("link", { name: "Mail" }));
+  await user.click(
+    within(
+      await screen.findByRole("dialog", { name: "Discard unsaved changes?" }),
+    ).getByRole("button", { name: "Discard" }),
+  );
+  await screen.findByLabelText("Sender address");
+});
