@@ -9,6 +9,7 @@ import { createSuggest, logsSchema } from "../filter-language";
 import { SearchBar } from "../records/SearchBar";
 
 const suggest = createSuggest(logsSchema);
+import { QueryStatus } from "../settings/QueryStatus";
 import { useSettings } from "../settings/use-settings";
 import { Button, Checkbox, Table, Td, Th } from "@heybe/ui";
 import { LogDialog } from "./LogDialog";
@@ -125,7 +126,18 @@ export function LogsPage() {
         }
       />
       {(stats.data || list.error) && <LogsChart stats={stats.data ?? []} />}
-      {(items || list.error) && (
+      {stats.isError && !list.error && <QueryStatus query={stats} />}
+      {list.isPending && (
+        <p role="status" className="text-sm text-muted">
+          Loading...
+        </p>
+      )}
+      {items?.length === 0 && (
+        <p className="text-sm text-muted">
+          {search.filter ? "No logs match the filter." : "No logs yet."}
+        </p>
+      )}
+      {((items && items.length > 0) || list.error) && (
         <Table caption="Logs">
           <thead>
             <tr>

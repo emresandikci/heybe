@@ -6,6 +6,7 @@ import { useHideControls } from "../settings/use-settings";
 import { RecordsPage } from "../records/RecordsPage";
 import { EmptyState } from "@heybe/ui";
 import { Page } from "../layout/Page";
+import { QueryStatus } from "../settings/QueryStatus";
 import { CollectionEditor } from "./CollectionEditor";
 import {
   CollectionsSidebar,
@@ -38,7 +39,7 @@ export function CollectionsLayout() {
 export function CollectionsIndex() {
   const collections = useCollections();
   const hideControls = useHideControls();
-  if (!collections.data) return null;
+  if (!collections.data) return <QueryStatus query={collections} />;
   const first = collections.data.find((c) => !c.system);
   if (first)
     return (

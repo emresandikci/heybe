@@ -48,6 +48,11 @@ export function LogDialog({ id, onClose }: { id: string; onClose(): void }) {
         </>
       }
     >
+      {log.isPending && (
+        <p role="status" className="text-sm text-muted">
+          Loading...
+        </p>
+      )}
       {log.error && <p role="alert">{errorMessage(log.error)}</p>}
       <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
         {shown.map(([key, value]) => (

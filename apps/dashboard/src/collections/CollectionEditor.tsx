@@ -25,6 +25,7 @@ import {
   useConfirm,
   useToast,
 } from "@heybe/ui";
+import { QueryStatus } from "../settings/QueryStatus";
 import { ChangesDialog } from "./ChangesDialog";
 import {
   diffCollection,
@@ -100,7 +101,7 @@ export function CollectionEditor({
   if (!collection && !scaffolds.data)
     return (
       <Dialog open variant="side" onClose={onClose} title="New collection">
-        <p className="text-sm">Loading…</p>
+        <QueryStatus query={scaffolds} />
       </Dialog>
     );
   return <Editor collection={collection} onClose={onClose} />;
