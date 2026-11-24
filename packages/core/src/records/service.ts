@@ -118,31 +118,34 @@ export function modifier(
   return null;
 }
 
-const fieldsByName = new WeakMap<Field[], Map<string, Field>>();
+const fieldIndexes = new WeakMap<Field[], Map<string, number>>();
 
-// The field a data key sets and how ("views+" appends to views). The name map follows a new
-// fields array (a collection change) and fields added or removed in place.
+// The field a data key sets and how ("views+" appends to views). The name index follows a new
+// fields array (a collection change) and fields added, removed, renamed or replaced in place.
 export function keyField(
   c: Collection,
   key: string,
 ): { f: Field; op: NonNullable<ReturnType<typeof modifier>> } | null {
-  let byName = fieldsByName.get(c.fields);
-  if (!byName || byName.size !== c.fields.length) {
-    byName = new Map(c.fields.map((f) => [f.name, f]));
-    fieldsByName.set(c.fields, byName);
+  // field names are \w+, so a key names at most one field
+  const name = key.endsWith(":autogenerate")
+    ? key.slice(0, -":autogenerate".length)
+    : key.endsWith("+") || key.endsWith("-")
+      ? key.slice(0, -1)
+      : key.startsWith("+")
+        ? key.slice(1)
+        : key;
+  let index = fieldIndexes.get(c.fields);
+  let i = index?.get(name);
+  const hit = i !== undefined && c.fields[i]?.name === name;
+  if (
+    !index ||
+    (!hit && (i !== undefined || c.fields.some((f) => f.name === name)))
+  ) {
+    index = new Map(c.fields.map((f, i) => [f.name, i]));
+    fieldIndexes.set(c.fields, index);
+    i = index.get(name);
   }
-  let f = byName.get(key);
-  if (!f) {
-    // field names are \w+, so a key names at most one field
-    const name = key.endsWith(":autogenerate")
-      ? key.slice(0, -":autogenerate".length)
-      : key.endsWith("+") || key.endsWith("-")
-        ? key.slice(0, -1)
-        : key.startsWith("+")
-          ? key.slice(1)
-          : null;
-    f = name === null ? undefined : byName.get(name);
-  }
+  const f = i === undefined ? undefined : c.fields[i];
   const op = f && modifier(f, key);
   return op ? { f: f!, op } : null;
 }

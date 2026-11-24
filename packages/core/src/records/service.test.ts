@@ -349,6 +349,18 @@ describe("update and delete", () => {
     expect(keyField(c, "views+")).toBeNull();
   });
 
+  test("modifier keys see fields renamed or replaced in place", () => {
+    const c = structuredClone(app.collections.find("posts")!);
+    const at = c.fields.findIndex((f) => f.name === "views");
+    expect(keyField(c, "views+")?.f.name).toBe("views");
+    c.fields[at] = { ...c.fields[at]!, name: "hits" };
+    expect(keyField(c, "views+")).toBeNull();
+    expect(keyField(c, "hits+")?.f.name).toBe("hits");
+    c.fields[at] = { name: "hits", type: "text" } as any;
+    expect(keyField(c, "hits+")).toBeNull();
+    expect(keyField(c, "hits:autogenerate")?.f).toBe(c.fields[at]);
+  });
+
   test("modifier keys follow a renamed or deleted field", async () => {
     const r = await app.records("posts").create({ title: "a", views: 1 });
     const id = r.id as string;
