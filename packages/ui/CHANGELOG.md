@@ -1,3 +1,10 @@
+# [@heybe/ui-v1.0.2](https://github.com/emresandikci/heybe/compare/@heybe/ui@1.0.1...@heybe/ui@1.0.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **dashboard:** keep the page after a rename and tidy record flows ([848b589](https://github.com/emresandikci/heybe/commit/848b589a206ab4f177d6a9fa8bb415cd3513a014))
+
 # [@heybe/ui-v1.0.1](https://github.com/emresandikci/heybe/compare/@heybe/ui@1.0.0...@heybe/ui@1.0.1) (2026-11-19)
 
 
