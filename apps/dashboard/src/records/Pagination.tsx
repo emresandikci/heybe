@@ -11,7 +11,7 @@ export function Pagination({
 }) {
   if (totalPages <= 1) return null;
   return (
-    <div className="flex items-center justify-end gap-2 text-sm">
+    <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
       <div className="flex items-center gap-2">
         <Button disabled={page <= 1} onClick={() => onPage(page - 1)}>
           Previous

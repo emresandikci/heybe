@@ -77,10 +77,10 @@ const groups: {
 export function SettingsLayout() {
   const hideControls = useHideControls();
   return (
-    <div className="flex gap-6">
+    <div className="flex flex-col gap-6 md:flex-row">
       <nav
         aria-label="Settings"
-        className="sticky top-0 flex w-48 shrink-0 flex-col gap-0.5 self-start"
+        className="flex flex-col gap-0.5 md:sticky md:top-0 md:w-48 md:shrink-0 md:self-start"
       >
         {groups.map((group, i) => (
           <Fragment key={group.title}>

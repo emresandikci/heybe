@@ -63,7 +63,7 @@ export function Page({
         {children}
       </div>
       <footer
-        className={`${column} flex items-center justify-between gap-4 border-t border-line pt-3 text-xs text-faint`}
+        className={`${column} flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line pt-3 text-xs text-faint`}
       >
         <div>{footer}</div>
         <div className="flex items-center gap-3">
