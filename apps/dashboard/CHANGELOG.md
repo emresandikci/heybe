@@ -1,3 +1,12 @@
+# [@heybe/dashboard-v1.2.1](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.0...@heybe/dashboard@1.2.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **dashboard:** keep the page after a rename and tidy record flows ([848b589](https://github.com/emresandikci/heybe/commit/848b589a206ab4f177d6a9fa8bb415cd3513a014))
+* **dashboard:** make every page usable at phone width ([218da93](https://github.com/emresandikci/heybe/commit/218da9398a0ae13490a5d6735f7ae64d723cabcf))
+* **dashboard:** show loading, empty and error states the review found missing ([2804352](https://github.com/emresandikci/heybe/commit/28043526067a43374b4c4aa7e4ea4d75e579677e))
+
 # [@heybe/dashboard-v1.2.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.1.1...@heybe/dashboard@1.2.0) (2026-11-19)
 
 
