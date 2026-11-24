@@ -1,3 +1,13 @@
+# [@heybe/dashboard-v1.2.2](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.1...@heybe/dashboard@1.2.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **dashboard:** ask before leaving settings with unsaved changes ([f303ec3](https://github.com/emresandikci/heybe/commit/f303ec31a644d34dd944723c825bd02974e47883))
+* **dashboard:** confirm schema changes and replacing inserts in SQL ([844bfc9](https://github.com/emresandikci/heybe/commit/844bfc9af8b39b6c5f9dbf7b769e6d25f916d467))
+* **dashboard:** guard repeated settings actions ([8c3f07f](https://github.com/emresandikci/heybe/commit/8c3f07f553c3ce075372158357177102c928a481))
+* **dashboard:** keep backup state current while busy or restoring ([cbddc17](https://github.com/emresandikci/heybe/commit/cbddc17a0ff23dc9ebb375385dff8ca33ee14538))
+
 # [@heybe/dashboard-v1.2.1](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.0...@heybe/dashboard@1.2.1) (2026-11-24)
 
 
