@@ -86,6 +86,16 @@ test("changesRows finds delete and update anywhere but not in strings or comment
   expect(changesRows("SELECT updated, deleted_at FROM posts")).toBe(false);
 });
 
+test("changesRows also finds schema changes and replacing inserts", () => {
+  expect(changesRows("DROP TABLE posts")).toBe(true);
+  expect(changesRows("alter table posts add column x")).toBe(true);
+  expect(changesRows("REPLACE INTO posts (id) VALUES ('a')")).toBe(true);
+  expect(changesRows("INSERT OR REPLACE INTO posts (id) VALUES ('a')")).toBe(
+    true,
+  );
+  expect(changesRows("SELECT replace(title, 'a', 'b') FROM posts")).toBe(false);
+});
+
 test("Ctrl+Enter runs the query", async () => {
   const { user, server } = await openSql();
   const sql = screen.getByLabelText("SQL query");

@@ -12,7 +12,10 @@ const CODE_ONLY =
   /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?\*\//g;
 
 export function changesRows(query: string): boolean {
-  return /\b(delete|update)\b/i.test(query.replace(CODE_ONLY, " "));
+  // replace() is also a string function, so only the statement forms count
+  return /\b(delete|update|drop|alter)\b|\b(replace\s+into|or\s+replace)\b/i.test(
+    query.replace(CODE_ONLY, " "),
+  );
 }
 
 export function SqlPage() {
@@ -33,7 +36,7 @@ export function SqlPage() {
         !(await confirm({
           title: "Run query",
           message:
-            "This query deletes or updates rows. It cannot be undone. Run it?",
+            "This query changes or removes data or tables. It cannot be undone. Run it?",
           confirmLabel: "Run",
           danger: true,
         }))
