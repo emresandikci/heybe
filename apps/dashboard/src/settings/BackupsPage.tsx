@@ -92,7 +92,11 @@ function BackupsList() {
   const download = async (key: string) => {
     try {
       const token = await client.files.token();
-      window.open(client.backups.downloadURL(token, key), "_blank", "noopener");
+      // a new window opened after an await is blocked as a popup; a same-origin download link is not
+      const link = document.createElement("a");
+      link.href = client.backups.downloadURL(token, key);
+      link.download = key;
+      link.click();
     } catch (err) {
       toast.error(errorMessage(err));
     }

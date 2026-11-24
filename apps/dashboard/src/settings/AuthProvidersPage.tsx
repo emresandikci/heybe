@@ -75,6 +75,11 @@ function Providers({ collections }: { collections: CollectionModel[] }) {
     },
   });
 
+  // each change is built from the current providers, so one waits for the previous save and refetch
+  const update = (patch: Partial<OAuth2>) => {
+    if (!save.isPending) save.mutate(patch);
+  };
+
   const infoFor = (name: string) =>
     OAUTH2_PROVIDERS.find((p) => p.name === name);
   const labelOf = (p: Provider) =>
@@ -91,11 +96,11 @@ function Providers({ collections }: { collections: CollectionModel[] }) {
       confirmLabel: "Disable",
       danger: true,
     });
-    if (ok) save.mutate({ providers: providers.filter((_, i) => i !== index) });
+    if (ok) update({ providers: providers.filter((_, i) => i !== index) });
   };
 
   const saveProvider = (index: number, provider: Provider) =>
-    save.mutate({
+    update({
       providers:
         index < providers.length
           ? providers.map((p, i) => (i === index ? provider : p))
@@ -122,7 +127,8 @@ function Providers({ collections }: { collections: CollectionModel[] }) {
         <Switch
           label="Enable OAuth2"
           checked={oauth2.enabled}
-          onChange={(enabled) => save.mutate({ enabled })}
+          disabled={save.isPending}
+          onChange={(enabled) => update({ enabled })}
         />
         {enabled.length > 0 && (
           <>

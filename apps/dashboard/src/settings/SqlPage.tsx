@@ -3,7 +3,8 @@ import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { useSqlSchema } from "../app/queries";
+import { useCollections, useSqlSchema } from "../app/queries";
+import { QueryStatus } from "./QueryStatus";
 import { SettingsPage } from "./SettingsPage";
 import { Button, CodeArea, Table, Td, Th, useConfirm } from "@heybe/ui";
 
@@ -19,6 +20,7 @@ export function SqlPage() {
   const [result, setResult] = useState<SqlResult | null>(null);
   const [error, setError] = useState("");
   const confirm = useConfirm();
+  const collections = useCollections();
   const schema = useSqlSchema();
 
   const form = useForm({
@@ -55,6 +57,7 @@ export function SqlPage() {
         }}
         className="flex flex-col gap-3"
       >
+        {collections.isError && <QueryStatus query={collections} />}
         <p className="rounded-control border border-warning-line bg-warning-bg p-3 text-sm text-warning-text">
           Queries run directly on the database. They skip API rules, hooks and
           migrations.

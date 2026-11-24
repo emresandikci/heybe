@@ -164,18 +164,20 @@ test("delete confirms then deletes", async () => {
   );
 });
 
-test("download opens downloadURL with a fresh file token", async () => {
-  const open = spyOn(window, "open").mockImplementation(() => null);
+test("download follows downloadURL with a fresh file token", async () => {
+  const click = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
+    () => {},
+  );
   const server = serve().on("POST", "/api/files/token", { token: "ft1" });
   const { user, row } = await openBackups(server);
   await user.click(row().getByRole("button", { name: "Download" }));
   await screen.findByRole("table");
   await Promise.resolve();
-  expect(open).toHaveBeenCalledTimes(1);
-  const [url, target, features] = open.mock.calls[0]!;
-  expect(String(url)).toContain("/api/backups/a.zip?token=ft1");
-  expect(target).toBe("_blank");
-  expect(features).toBe("noopener");
+  expect(click).toHaveBeenCalledTimes(1);
+  const link = click.mock.contexts[0] as HTMLAnchorElement;
+  expect(link.href).toContain("/api/backups/a.zip?token=ft1");
+  expect(link.download).toBe("a.zip");
+  click.mockRestore();
 });
 
 test("canBackup false disables create and restore", async () => {

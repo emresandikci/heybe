@@ -327,3 +327,18 @@ test("the logs filter suggests log fields", async () => {
     "data.status number",
   );
 });
+
+test("an empty log list says so", async () => {
+  const server = serve((s) =>
+    s.on("GET", "/api/logs", {
+      page: 1,
+      perPage: 50,
+      totalItems: 0,
+      totalPages: 1,
+      items: [],
+    }),
+  );
+  renderApp({ path: "/logs", server });
+  await screen.findByText("No logs yet.");
+  expect(screen.queryByRole("table", { name: "Logs" })).toBeNull();
+});

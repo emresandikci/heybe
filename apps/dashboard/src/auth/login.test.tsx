@@ -231,3 +231,24 @@ for (const status of [204, 400]) {
     ).toEqual({ email: "admin@example.com" });
   });
 }
+
+test("request password reset shows a server failure instead of the confirmation", async () => {
+  const server = fakeServer().on(
+    "POST",
+    "/api/collections/_superusers/request-password-reset",
+    { code: 500, message: "Mail server down.", data: {} },
+    500,
+  );
+  const { user } = renderApp({ path: "/login", server, auth: "none" });
+  await user.click(
+    await screen.findByRole("link", { name: "Forgot password?" }),
+  );
+  await user.type(await screen.findByLabelText("Email"), "admin@example.com");
+  await user.click(screen.getByRole("button", { name: "Send reset link" }));
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "Mail server down.",
+  );
+  expect(
+    screen.queryByText("If the email exists, a reset link was sent."),
+  ).toBeNull();
+});
