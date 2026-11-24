@@ -48,7 +48,7 @@ export function CollectionsSidebar() {
     <>
       <nav
         aria-label="Collections"
-        className="sticky top-14 -m-1 flex max-h-[calc(100dvh-4.5rem)] w-56 shrink-0 flex-col gap-3 self-start overflow-y-auto p-1"
+        className="flex w-full flex-col gap-3 overflow-y-auto p-1 md:sticky md:-m-1 md:top-14 md:max-h-[calc(100dvh-4.5rem)] md:w-56 md:shrink-0 md:self-start"
       >
         <div className="relative">
           <Search

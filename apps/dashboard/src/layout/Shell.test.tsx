@@ -118,3 +118,37 @@ test("the sidebar wordmark and document title follow the app name", async () => 
     within(screen.getByRole("navigation", { name: "Main" })).getByText(name),
   ).toBeTruthy();
 });
+
+test("the menu button opens the navigation drawer, Escape closes it and returns focus to the button", async () => {
+  const { user } = renderApp({ path: "/collections" });
+  const button = await screen.findByRole("button", { name: "Open menu" });
+  await user.click(button);
+  const drawer = screen.getByRole("dialog", {
+    name: "Menu",
+  }) as HTMLDialogElement;
+  expect(drawer.open).toBe(true);
+  within(drawer).getByRole("link", { name: "Collections" }).focus();
+  await user.keyboard("{Escape}");
+  expect(drawer.open).toBe(false);
+  expect(document.activeElement).toBe(button);
+});
+
+test("choosing a link in the navigation drawer closes it", async () => {
+  const { user } = renderApp({ path: "/collections/hbc_posts" });
+  await user.click(await screen.findByRole("button", { name: "Open menu" }));
+  const drawer = screen.getByRole("dialog", {
+    name: "Menu",
+  }) as HTMLDialogElement;
+  await user.click(within(drawer).getByRole("link", { name: "Collections" }));
+  await waitFor(() => expect(drawer.open).toBe(false));
+});
+
+test("clicking the drawer backdrop closes the navigation drawer", async () => {
+  const { user } = renderApp({ path: "/collections" });
+  await user.click(await screen.findByRole("button", { name: "Open menu" }));
+  const drawer = screen.getByRole("dialog", {
+    name: "Menu",
+  }) as HTMLDialogElement;
+  await user.click(drawer);
+  expect(drawer.open).toBe(false);
+});

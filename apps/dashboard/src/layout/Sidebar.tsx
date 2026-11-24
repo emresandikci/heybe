@@ -38,7 +38,7 @@ function Label({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { pages, links: extensionLinks } = useExtensions();
   const { pathname } = useLocation();
   const appName = (useSettings().data?.meta as { appName?: string } | undefined)
@@ -48,7 +48,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Main"
-      className="sticky top-0 flex h-dvh w-48 shrink-0 flex-col gap-0.5 border-r border-line bg-glass p-2 backdrop-blur-(--hb-glass-blur) backdrop-saturate-150"
+      className="flex h-full w-full flex-col gap-0.5 overflow-y-auto border-r border-line bg-glass p-2 backdrop-blur-(--hb-glass-blur) backdrop-saturate-150"
     >
       <div className="mb-2 flex h-9 items-center gap-2 px-2">
         <Logo />
@@ -62,6 +62,7 @@ export function Sidebar() {
           to={link.to}
           params={"params" in link ? link.params : undefined}
           className={item}
+          onClick={onNavigate}
           activeProps={{ "aria-current": "page", className: active }}
           activeOptions={{
             exact:
@@ -83,6 +84,7 @@ export function Sidebar() {
               to="/ext/$"
               params={{ _splat: page.path }}
               className={item}
+              onClick={onNavigate}
               activeProps={{ "aria-current": "page", className: active }}
             >
               <Label icon={<Puzzle {...iconProps} />}>{page.title}</Label>

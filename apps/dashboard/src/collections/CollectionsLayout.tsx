@@ -19,7 +19,7 @@ export function CollectionsLayout() {
   } | null>(null);
   return (
     <EditorContext.Provider value={(collection) => setEditing({ collection })}>
-      <div className="flex gap-6">
+      <div className="flex flex-col gap-6 md:flex-row">
         <CollectionsSidebar />
         <div className="min-w-0 flex-1">
           <Outlet />
