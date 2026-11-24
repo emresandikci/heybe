@@ -44,10 +44,11 @@ export function ImportPage() {
 
   const form = useForm({
     defaultValues: { text: "", deleteMissing: false },
-    onSubmitMeta: { step: "review" } as { step: "review" | "import" },
+    onSubmitMeta: { step: "review" } as
+      { step: "review" } | { step: "import"; review: Review },
     onSubmit: async ({ value, meta }) => {
       if (meta.step === "review") openReview(value);
-      else if (review) await runImport(review, value.deleteMissing);
+      else await runImport(meta.review, value.deleteMissing);
     },
   });
 
@@ -205,7 +206,11 @@ export function ImportPage() {
           <ReviewDialog
             diff={review.diff}
             onCancel={() => setReview(null)}
-            onImport={() => void form.handleSubmit({ step: "import" })}
+            onImport={() => {
+              // closing the dialog right away keeps a double click from importing twice
+              setReview(null);
+              void form.handleSubmit({ step: "import", review });
+            }}
           />
         )}
       </form>
