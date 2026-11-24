@@ -1,3 +1,17 @@
+# [@heybe/core-v1.1.2](https://github.com/emresandikci/heybe/compare/@heybe/core@1.1.1...@heybe/core@1.1.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **core:** cap the WAL file at 16 MiB after a write burst ([777ac75](https://github.com/emresandikci/heybe/commit/777ac75ccfef951f6ef63c87d77510846df9f8bd))
+* **core:** find modifier key fields renamed or replaced in place ([4a191d1](https://github.com/emresandikci/heybe/commit/4a191d15b3c1d361b04c0e463c25a1117f44f598))
+* **core:** merge middleware headers from the original values on a reused response ([e2b57ff](https://github.com/emresandikci/heybe/commit/e2b57ff9d1fdaa7f0e633b230879af4fe41cb352))
+
+
+### Performance Improvements
+
+* **core:** cut request cost on reads, writes and downloads ([f912b65](https://github.com/emresandikci/heybe/commit/f912b65b775b732357aa5bc4a94f9356c1fe7a55))
+
 # [@heybe/core-v1.1.1](https://github.com/emresandikci/heybe/compare/@heybe/core@1.1.0...@heybe/core@1.1.1) (2026-11-18)
 
 # [heybe-v1.1.0](https://github.com/emresandikci/heybe/compare/heybe@1.0.0...heybe@1.1.0) (2026-11-18)
