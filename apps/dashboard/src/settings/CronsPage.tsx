@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { keys } from "../app/queries";
@@ -15,12 +16,16 @@ export function CronsPage() {
     queryFn: ({ signal }) => client.crons.list({ signal }),
   });
 
+  const [running, setRunning] = useState<string | null>(null);
   const run = async (id: string) => {
+    setRunning(id);
     try {
       await client.crons.run(id);
       toast.success(`Started ${id}.`);
     } catch (err) {
       toast.error(errorMessage(err));
+    } finally {
+      setRunning(null);
     }
   };
 
@@ -53,7 +58,12 @@ export function CronsPage() {
                   {text && <span className="ml-2 text-muted">{text}</span>}
                 </Td>
                 <Td align="right">
-                  <Button onClick={() => void run(cron.id)}>Run now</Button>
+                  <Button
+                    loading={running === cron.id}
+                    onClick={() => void run(cron.id)}
+                  >
+                    Run now
+                  </Button>
                 </Td>
               </tr>
             );

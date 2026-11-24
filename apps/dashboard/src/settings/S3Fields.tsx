@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { Button, useToast } from "@heybe/ui";
@@ -116,18 +117,23 @@ export function TestS3Button({
 }) {
   const client = useClient();
   const toast = useToast();
+  const [testing, setTesting] = useState(false);
   const test = async () => {
+    setTesting(true);
     try {
       await client.settings.testS3(filesystem);
       toast.success("Connection works.");
     } catch (err) {
       toast.error(errorMessage(err));
+    } finally {
+      setTesting(false);
     }
   };
   return (
     <Button
       className="self-start"
       disabled={disabled}
+      loading={testing}
       onClick={() => void test()}
     >
       Test connection

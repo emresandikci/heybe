@@ -33,7 +33,8 @@ export function ExportPage() {
     link.href = url;
     link.download = "heybe_collections.json";
     link.click();
-    URL.revokeObjectURL(url);
+    // revoking in the same task can cancel the download in Firefox and Safari
+    setTimeout(() => URL.revokeObjectURL(url));
   };
 
   return (
