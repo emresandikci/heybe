@@ -121,25 +121,38 @@ async function handle(
 
 // Middleware headers were set before the response in PB: they stay unless the response sets the
 // same key, a middleware Content-Type wins (PB setResponseHeaderIfEmpty) and Vary values add up.
-// The response is changed in place; one with immutable headers is copied first.
+// The response is changed in place; one with immutable headers is copied first. A hook can return
+// the same Response object again, so the values a merge replaced are kept and a later merge
+// starts a copy from them.
+const replaced = new WeakMap<Response, [string, string | null][]>();
+
 export function withHeaders(res: Response, headers: Headers): Response {
   if (headers.keys().next().done) return res;
-  try {
-    merge(res.headers, headers);
-    return res;
-  } catch {
-    const out = new Response(res.body, res);
-    merge(out.headers, headers);
-    return out;
+  const before = replaced.get(res);
+  if (!before) {
+    try {
+      replaced.set(res, merge(res.headers, headers));
+      return res;
+    } catch {}
   }
+  const out = new Response(res.body, res);
+  for (const [k, v] of before ?? [])
+    if (v === null) out.headers.delete(k);
+    else out.headers.set(k, v);
+  merge(out.headers, headers);
+  return out;
 }
 
 function merge(target: Headers, headers: Headers) {
+  const before: [string, string | null][] = [];
   for (const [k, v] of headers) {
     const own = target.get(k);
     if (k === "vary") target.set(k, own ? `${v}, ${own}` : v);
     else if (k === "content-type" || own === null) target.set(k, v);
+    else continue;
+    before.push([k, own]);
   }
+  return before;
 }
 
 // Port of PB apis.Serve: onServe can change the router, its final action starts the server.

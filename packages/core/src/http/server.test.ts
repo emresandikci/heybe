@@ -29,3 +29,17 @@ test("a response with immutable headers is copied", async () => {
   expect(out.headers.get("x-a")).toBe("1");
   expect(await out.text()).toBe("body");
 });
+
+test("a response returned again is merged from its own headers", () => {
+  const res = new Response(null, {
+    headers: { vary: "Accept", "content-type": "text/html" },
+  });
+  withHeaders(res, middleware());
+  const again = withHeaders(res, new Headers({ vary: "Cookie", "x-b": "2" }));
+  expect(again).not.toBe(res);
+  expect(Object.fromEntries(again.headers)).toEqual({
+    vary: "Cookie, Accept",
+    "content-type": "text/html",
+    "x-b": "2",
+  });
+});
