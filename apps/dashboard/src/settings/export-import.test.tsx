@@ -243,6 +243,39 @@ test("deleting only a field asks to confirm", async () => {
   });
 });
 
+test("a collection added after the review is shown again before it is deleted", async () => {
+  let items = collectionsFixture.filter((c) => c.name !== "stats");
+  const server = fakeServer()
+    .on("PUT", "/api/collections/import", () => undefined)
+    .on("GET", "/api/collections", () => ({
+      page: 1,
+      perPage: 1000,
+      totalItems: items.length,
+      totalPages: 1,
+      items,
+    }));
+  const { user } = await openImport(server);
+  await paste(
+    user,
+    screen.getByLabelText("Collections JSON"),
+    JSON.stringify([
+      ...JSON.parse(exportJson(items)),
+      { name: "tags", type: "base" },
+    ]),
+  );
+  await user.click(
+    screen.getByLabelText(
+      "Delete collections and fields missing from the import",
+    ),
+  );
+  await user.click(screen.getByRole("button", { name: "Review" }));
+  const dialog = await screen.findByRole("dialog", { name: "Review import" });
+  items = collectionsFixture;
+  await user.click(within(dialog).getByRole("button", { name: "Import" }));
+  await screen.findByRole("list", { name: "Deleted (1)" });
+  expect(server.find("PUT", "/api/collections/import")).toHaveLength(0);
+});
+
 test("an import error shows the server message", async () => {
   const server = fakeServer().on(
     "PUT",
