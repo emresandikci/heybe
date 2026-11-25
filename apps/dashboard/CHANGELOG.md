@@ -1,3 +1,12 @@
+# [@heybe/dashboard-v1.2.3](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.2...@heybe/dashboard@1.2.3) (2026-11-25)
+
+
+### Bug Fixes
+
+* **dashboard:** check an import against the current collections ([7d3c06a](https://github.com/emresandikci/heybe/commit/7d3c06a26acdbbda6e23eb6383fbc35be58eb799))
+* **dashboard:** collapse the collections list on phones ([e565de7](https://github.com/emresandikci/heybe/commit/e565de755a74ef407083e57933033f1316ad3570))
+* **dashboard:** report only what is known about a restore ([1496641](https://github.com/emresandikci/heybe/commit/1496641e44e4fc73d2d457cc60eb4118cb8585e0))
+
 # [@heybe/dashboard-v1.2.2](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.1...@heybe/dashboard@1.2.2) (2026-11-24)
 
 
