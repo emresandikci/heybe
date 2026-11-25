@@ -55,10 +55,11 @@ function BackupsList() {
   const toast = useToast();
   const confirm = useConfirm();
   const [creating, setCreating] = useState(false);
-  // "started" until the server is seen going down, then "finished" once it answers again
-  const [restoring, setRestoring] = useState<
-    "started" | "down" | "finished" | null
-  >(null);
+  const [restore, setRestore] = useState<{
+    at: number;
+    accepted: boolean;
+    answered: boolean;
+  } | null>(null);
   const backups = useQuery({
     queryKey: keys.backups,
     queryFn: ({ signal }) =>
@@ -74,15 +75,20 @@ function BackupsList() {
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.data.canBackup === false ||
-      restoring === "started" ||
-      restoring === "down"
+      (restore && !restore.answered)
         ? HEALTH_POLL_MS
         : false,
   });
   const busy = health.data?.data.canBackup === false;
-  if (restoring === "started" && health.isError) setRestoring("down");
-  if (restoring === "down" && health.isSuccess && !health.isRefetchError)
-    setRestoring("finished");
+  // the restart can fit between two polls, so an idle server some time after the request counts too
+  if (
+    restore &&
+    !restore.answered &&
+    health.isSuccess &&
+    !busy &&
+    health.dataUpdatedAt > restore.at + RESTORE_SETTLE_MS
+  )
+    setRestore({ ...restore, answered: true });
 
   const refresh = () =>
     Promise.all([
@@ -136,7 +142,7 @@ function BackupsList() {
     }
   };
 
-  const restore = async (key: string) => {
+  const runRestore = async (key: string) => {
     const ok = await confirm({
       title: "Restore backup",
       message: `Restore ${key}? The current data is replaced and the server restarts.`,
@@ -147,26 +153,28 @@ function BackupsList() {
     if (!ok) return;
     try {
       await client.backups.restore(key);
-      setRestoring("started");
+      setRestore({ at: Date.now(), accepted: true, answered: false });
     } catch (err) {
-      // status 0 without an abort: the server dropped the connection while restarting
+      // status 0 without an abort: the server may have restarted, or the request never arrived
       if (err instanceof HeybeError && err.status === 0 && !err.isAbort)
-        setRestoring("started");
+        setRestore({ at: Date.now(), accepted: false, answered: false });
       else toast.error(errorMessage(err));
     }
   };
 
   return (
     <Section title="Backup files">
-      {restoring && (
+      {restore && (
         <div
           role="status"
           className="flex items-center gap-3 rounded border border-warning-line bg-warning-bg p-3 text-sm text-warning-text"
         >
           <p>
-            {restoring === "finished"
-              ? "Restore finished. Reload this page to see the restored data."
-              : "Restore started. The server restarts with the restored data."}
+            {restore.accepted
+              ? "Restore started. The server restarts with the restored data."
+              : "The connection was lost, so the restore may not have started."}
+            {restore.answered &&
+              " The server is answering again: reload this page and check the data."}
           </p>
           <Button onClick={() => window.location.reload()}>Reload</Button>
         </div>
@@ -216,7 +224,10 @@ function BackupsList() {
                     <Button onClick={() => void download(b.key)}>
                       Download
                     </Button>
-                    <Button disabled={busy} onClick={() => void restore(b.key)}>
+                    <Button
+                      disabled={busy}
+                      onClick={() => void runRestore(b.key)}
+                    >
                       Restore
                     </Button>
                     <Button onClick={() => void remove(b.key)}>Delete</Button>
@@ -330,6 +341,7 @@ function NameInput({
 
 const PRESETS = ["", "0 0 * * *", "0 0 * * 0"];
 const HEALTH_POLL_MS = 1000;
+const RESTORE_SETTLE_MS = 5000;
 
 function CronField({ field }: { field: FieldLike<string> }) {
   const value = field.state.value;

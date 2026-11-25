@@ -131,7 +131,9 @@ test("restore still shows the notice when the connection drops", async () => {
   const dialog = within(screen.getByRole("dialog"));
   await user.type(dialog.getByLabelText('Type "a.zip" to confirm'), "a.zip");
   await user.click(dialog.getByRole("button", { name: "Restore" }));
-  expect(await screen.findByText(/Restore started\./)).toBeTruthy();
+  expect(
+    await screen.findByText(/the restore may not have started/),
+  ).toBeTruthy();
 });
 
 test("restore failure from the server shows the message", async () => {
