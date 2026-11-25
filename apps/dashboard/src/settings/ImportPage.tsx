@@ -47,7 +47,7 @@ export function ImportPage() {
     onSubmitMeta: { step: "review" } as
       { step: "review" } | { step: "import"; review: Review },
     onSubmit: async ({ value, meta }) => {
-      if (meta.step === "review") openReview(value);
+      if (meta.step === "review") await openReview(value);
       else await runImport(meta.review, value.deleteMissing);
     },
   });
@@ -72,7 +72,13 @@ export function ImportPage() {
     setError(undefined);
   };
 
-  const openReview = ({
+  // another admin may have changed the collections since they were cached
+  const freshDiff = async (list: Review["list"], deleteMissing: boolean) => {
+    const { data } = await collections.refetch({ throwOnError: true });
+    return diffImport(data!, list, deleteMissing);
+  };
+
+  const openReview = async ({
     text,
     deleteMissing,
   }: {
@@ -82,17 +88,13 @@ export function ImportPage() {
     try {
       const list = parseImport(text);
       setError(undefined);
-      setReview({
-        list,
-        diff: diffImport(collections.data ?? [], list, deleteMissing),
-      });
+      setReview({ list, diff: await freshDiff(list, deleteMissing) });
     } catch (err) {
       setError({ message: errorMessage(err), details: [] });
     }
   };
 
   const runImport = async ({ list, diff }: Review, deleteMissing: boolean) => {
-    setReview(null);
     const fields = diff.changed.reduce(
       (n, c) => n + c.fields.deleted.length,
       0,
@@ -112,6 +114,12 @@ export function ImportPage() {
       if (!ok) return;
     }
     try {
+      const fresh = await freshDiff(list, deleteMissing);
+      if (JSON.stringify(fresh) !== JSON.stringify(diff)) {
+        setReview({ list, diff: fresh });
+        toast.error("The collections changed. Review the import again.");
+        return;
+      }
       await client.collections.import(list, deleteMissing);
       await queryClient.invalidateQueries({ queryKey: keys.collections });
       toast.success("Collections imported.");
