@@ -1,3 +1,10 @@
+# [@heybe/dashboard-v1.3.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.3...@heybe/dashboard@1.3.0) (2026-11-26)
+
+
+### Features
+
+* **dashboard:** reorder collection fields by drag and drop ([40937cd](https://github.com/emresandikci/heybe/commit/40937cd0cd4e106794b01423bbea90ebb0271fa7))
+
 # [@heybe/dashboard-v1.2.3](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.2...@heybe/dashboard@1.2.3) (2026-11-25)
 
 
