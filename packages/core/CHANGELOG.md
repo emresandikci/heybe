@@ -1,3 +1,10 @@
+# [@heybe/core-v1.1.3](https://github.com/emresandikci/heybe/compare/@heybe/core@1.1.2...@heybe/core@1.1.3) (2026-11-26)
+
+
+### Bug Fixes
+
+* **core:** reject a file that is not a Heybe backup before restoring ([40a029e](https://github.com/emresandikci/heybe/commit/40a029e6da3df182cb6d09d3bfc5b15f6797cc24))
+
 # [@heybe/core-v1.1.2](https://github.com/emresandikci/heybe/compare/@heybe/core@1.1.1...@heybe/core@1.1.2) (2026-11-24)
 
 
