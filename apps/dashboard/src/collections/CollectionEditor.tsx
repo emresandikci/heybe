@@ -509,6 +509,13 @@ function FieldsTab({
   let active = 0;
   const activeIndex = removed.map((r) => (r ? -1 : active++));
 
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dropAt, setDropAt] = useState<number | null>(null);
+  const endDrag = () => {
+    setDragFrom(null);
+    setDropAt(null);
+  };
+
   const remove = (i: number) => {
     const field = form.getFieldValue(`fields[${i}]`);
     if (field.system) return;
@@ -520,28 +527,52 @@ function FieldsTab({
   return (
     <div className="flex flex-col gap-3">
       {keys.map((key, i) => (
-        <form.Field key={key} name={`fields[${i}]`}>
-          {(row) => (
-            <FieldRow
-              field={row.state.value}
-              errorPath={`fields.${removed[i] ? -1 : activeIndex[i]}`}
-              canMoveUp={i > 0}
-              canMoveDown={i < keys.length - 1}
-              onChange={(patch) =>
-                row.handleChange((f) => ({ ...f, ...patch }))
-              }
-              onMove={(by) => {
-                clearError();
-                form.moveFieldValues("fields", i, i + by);
-              }}
-              onRemove={() => remove(i)}
-              onRestore={() => {
-                clearError();
-                form.setFieldValue(`fields[${i}]._removed`, false);
-              }}
-            />
-          )}
-        </form.Field>
+        <div
+          key={key}
+          className={
+            dropAt === i && dragFrom !== i
+              ? "rounded outline-2 outline-focus"
+              : undefined
+          }
+          onDragOver={(e) => {
+            if (dragFrom === null) return;
+            e.preventDefault();
+            setDropAt(i);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            if (dragFrom !== null && dragFrom !== i) {
+              clearError();
+              form.moveFieldValues("fields", dragFrom, i);
+            }
+            endDrag();
+          }}
+        >
+          <form.Field name={`fields[${i}]`}>
+            {(row) => (
+              <FieldRow
+                field={row.state.value}
+                errorPath={`fields.${removed[i] ? -1 : activeIndex[i]}`}
+                canMoveUp={i > 0}
+                canMoveDown={i < keys.length - 1}
+                onChange={(patch) =>
+                  row.handleChange((f) => ({ ...f, ...patch }))
+                }
+                onMove={(by) => {
+                  clearError();
+                  form.moveFieldValues("fields", i, i + by);
+                }}
+                onDragStart={() => setDragFrom(i)}
+                onDragEnd={endDrag}
+                onRemove={() => remove(i)}
+                onRestore={() => {
+                  clearError();
+                  form.setFieldValue(`fields[${i}]._removed`, false);
+                }}
+              />
+            )}
+          </form.Field>
+        </div>
       ))}
       <div className="flex items-end gap-2">
         <div className="flex-1">
