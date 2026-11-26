@@ -119,6 +119,17 @@ const cases: {
   },
   { name: "fields without ids", make: (cur) => [noIds(posts(cur))] },
   {
+    name: "fields without default options",
+    make: (cur) => [
+      mapFields(strip(posts(cur)), ({ id, name, type, system }) => ({
+        id,
+        name,
+        type,
+        system,
+      })),
+    ],
+  },
+  {
     name: "field without id changes type",
     make: (cur) => [
       mapFields(noIds(posts(cur)), (f) =>
