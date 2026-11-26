@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import type { App } from "../../app";
 import { authFromToken } from "../../auth/tokens";
+import { checkBackup } from "../../backups/restore";
 import { mimeExtension, sniffMime } from "../../files/mime";
 import { normalizeFilename } from "../../files/name";
 import { NotFoundError, errorMessage, formatDate } from "../../util";
@@ -171,6 +172,11 @@ async function restore(e: RequestEvent) {
       .catch(() => false))
   )
     throw new ApiError(400, "Missing or invalid backup file.");
+  try {
+    await checkBackup(app, key);
+  } catch {
+    throw new ApiError(400, "The file is not a Heybe backup.");
+  }
   // some time to send the response before the restart
   app.timers.setTimeout(() => {
     app.restoreBackup(key).catch((err) =>
