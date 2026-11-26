@@ -403,7 +403,11 @@ async function extractEntry(
 }
 
 // PB tools/archive/extract.go: only dirs and regular files are extracted.
-export async function extractZip(src: string, dest: string): Promise<void> {
+export async function extractZip(
+  src: string,
+  dest: string,
+  only?: string,
+): Promise<void> {
   const fh = await open(src, "r");
   try {
     const { records, size, offset } = await readDirectoryEnd(
@@ -428,6 +432,7 @@ export async function extractZip(src: string, dest: string): Promise<void> {
       return target;
     });
     for (const [i, e] of entries.entries()) {
+      if (only !== undefined && e.name !== only) continue;
       if (e.isDir) await mkdir(targets[i]!, { recursive: true });
       else if (e.isFile) await extractEntry(fh, src, e, targets[i]!);
     }

@@ -455,6 +455,18 @@ describe("POST /api/backups/{key}/restore", () => {
     expect(restore).not.toHaveBeenCalled();
   });
 
+  test("a file that is not a Heybe backup is a 400", async () => {
+    await Bun.write(join(app.dataDir, "backups", "pb.zip"), await zipBytes());
+    const restore = spyOn(app, "restoreBackup");
+    await expectError(
+      await call("POST", "/api/backups/pb.zip/restore"),
+      400,
+      "The file is not a Heybe backup.",
+    );
+    clock.advance(1000);
+    expect(restore).not.toHaveBeenCalled();
+  });
+
   test("a running backup blocks the restore", async () => {
     await app.createBackup("rs.zip");
     let release!: () => void;

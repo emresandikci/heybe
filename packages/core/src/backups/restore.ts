@@ -64,6 +64,51 @@ function checkDataDb(path: string) {
     throw new Error("data.db file is missing or invalid: not a Heybe backup");
 }
 
+async function extractBackup(
+  app: App,
+  name: string,
+  dest: string,
+  only?: string,
+) {
+  if (!app.settings.current().backups.s3.enabled) {
+    await extractZip(
+      join(app.dataDir, LOCAL_BACKUPS_DIR, basename(name)),
+      dest,
+      only,
+    );
+    return;
+  }
+  const tempZip = join(
+    app.dataDir,
+    LOCAL_TEMP_DIR,
+    `hb_restore_zip${randomSecret(10)}`,
+  );
+  try {
+    const file = await app.newBackupsFilesystem().file(name);
+    if (!file)
+      throw new Error(
+        `missing or invalid backup file ${JSON.stringify(name)} to restore`,
+      );
+    await Bun.write(tempZip, file.blob);
+    await extractZip(tempZip, dest, only);
+  } finally {
+    await rm(tempZip, { force: true });
+  }
+}
+
+// lets the restore route reject a wrong file before it answers
+export async function checkBackup(app: App, name: string): Promise<void> {
+  const tempDir = join(app.dataDir, LOCAL_TEMP_DIR);
+  await mkdir(tempDir, { recursive: true });
+  const dest = join(tempDir, `hb_check_${randomSecret(8)}`);
+  try {
+    await extractBackup(app, name, dest, "data.db");
+    checkDataDb(join(dest, "data.db"));
+  } finally {
+    await rm(dest, { recursive: true, force: true });
+  }
+}
+
 // the db files were renamed and moved back, which breaks the open connections on macOS
 const reopenDbs = (app: App) => {
   reopen(app.db);
@@ -100,25 +145,7 @@ export async function restoreBackup(
 
     const extracted = join(tempDir, `hb_restore_${randomSecret(8)}`);
     try {
-      if (e.app.settings.current().backups.s3.enabled) {
-        const tempZip = join(tempDir, `hb_restore_zip${randomSecret(10)}`);
-        try {
-          const file = await fsys.file(name);
-          if (!file)
-            throw new Error(
-              `missing or invalid backup file ${JSON.stringify(name)} to restore`,
-            );
-          await Bun.write(tempZip, file.blob);
-          await extractZip(tempZip, extracted);
-        } finally {
-          await rm(tempZip, { force: true });
-        }
-      } else {
-        await extractZip(
-          join(dataDir, LOCAL_BACKUPS_DIR, basename(name)),
-          extracted,
-        );
-      }
+      await extractBackup(e.app, name, extracted);
       checkDataDb(join(extracted, "data.db"));
 
       const old = join(tempDir, `old_hb_data_${randomSecret(8)}`);
