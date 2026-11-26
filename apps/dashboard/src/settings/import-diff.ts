@@ -1,4 +1,9 @@
 import type { CollectionModel } from "@heybe/client";
+import {
+  FIELD_TYPES,
+  fieldDefaults,
+  type FieldType,
+} from "../collections/field-types";
 
 type Field = Record<string, unknown>;
 
@@ -119,6 +124,13 @@ function mergeFields(
   return fields;
 }
 
+// the server fills options a field leaves out with their defaults
+function withDefaults(f: Field): Field {
+  if (!FIELD_TYPES.some((t) => t.type === f.type)) return f;
+  const { _key, ...defaults } = fieldDefaults(f.type as FieldType);
+  return { ...defaults, ...f };
+}
+
 function diffFields(
   existing: Field[],
   incoming: Field[] | null | undefined,
@@ -131,7 +143,8 @@ function diffFields(
     if (!old) diff.added.push(String(f.name));
     else if (old.name !== f.name)
       diff.changed.push(`${String(old.name)} -> ${String(f.name)}`);
-    else if (stable(f) !== stable(old)) diff.changed.push(String(f.name));
+    else if (stable(withDefaults(f)) !== stable(withDefaults(old)))
+      diff.changed.push(String(f.name));
   }
   for (const e of existing)
     if (!merged.some((f) => f.id === e.id)) diff.deleted.push(String(e.name));
