@@ -8,6 +8,7 @@ import {
   Calendar,
   Clock,
   FileText,
+  GripVertical,
   Hash,
   Link,
   Link2,
@@ -33,6 +34,8 @@ export interface FieldRowProps {
   canMoveDown: boolean;
   onChange: (patch: Partial<FieldModel>) => void;
   onMove: (by: -1 | 1) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   onRemove: () => void;
   onRestore: () => void;
 }
@@ -77,6 +80,8 @@ function ActiveRow({
   canMoveDown,
   onChange,
   onMove,
+  onDragStart,
+  onDragEnd,
   onRemove,
 }: FieldRowProps) {
   const Icon = TYPE_ICONS[field.type];
@@ -91,7 +96,23 @@ function ActiveRow({
   }, [hasOptionErrors]);
   return (
     <fieldset aria-label={field.name || "New field"} className={rowClass}>
-      <div className="grid grid-cols-[auto_1fr_9rem_auto] items-center gap-2">
+      <div className="grid grid-cols-[auto_auto_1fr_9rem_auto] items-center gap-2">
+        <span
+          draggable
+          aria-hidden
+          title="Drag to reorder"
+          className="-ml-1 cursor-grab text-muted active:cursor-grabbing"
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", field.name);
+            const row = e.currentTarget.closest("fieldset");
+            if (row) e.dataTransfer.setDragImage(row, 16, 16);
+            onDragStart();
+          }}
+          onDragEnd={onDragEnd}
+        >
+          <GripVertical size={15} strokeWidth={1.75} />
+        </span>
         <Icon size={15} strokeWidth={1.75} aria-hidden className="text-muted" />
         <div className="[&_label]:sr-only">
           <TextField
