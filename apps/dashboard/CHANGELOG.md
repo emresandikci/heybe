@@ -1,3 +1,10 @@
+# [@heybe/dashboard-v1.3.1](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.3.0...@heybe/dashboard@1.3.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **dashboard:** ignore left-out default field options in the import diff ([0c3727c](https://github.com/emresandikci/heybe/commit/0c3727c3c33abbb3bad6747dd164d810520dd5ed)), closes [#12](https://github.com/emresandikci/heybe/issues/12)
+
 # [@heybe/dashboard-v1.3.0](https://github.com/emresandikci/heybe/compare/@heybe/dashboard@1.2.3...@heybe/dashboard@1.3.0) (2026-11-26)
 
 
