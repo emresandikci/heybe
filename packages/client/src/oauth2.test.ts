@@ -74,7 +74,7 @@ function setup() {
     async connect(id = "c1") {
       await env.advance(0);
       stream().push(
-        `id:${id}\nevent:PB_CONNECT\ndata:{"clientId":"${id}"}\n\n`,
+        `id:${id}\nevent:HB_CONNECT\ndata:{"clientId":"${id}"}\n\n`,
       );
       await env.advance(0);
     },
@@ -259,7 +259,7 @@ describe("withOAuth2", () => {
     }
   });
 
-  test("abort before PB_CONNECT calls no urlCallback", async () => {
+  test("abort before HB_CONNECT calls no urlCallback", async () => {
     const t = setup();
     const controller = new AbortController();
     const result = t.start({ signal: controller.signal });
@@ -271,7 +271,7 @@ describe("withOAuth2", () => {
     expect(t.stream().cancelled).toBe(true);
   });
 
-  test("abort before PB_CONNECT in a browser closes the only popup", async () => {
+  test("abort before HB_CONNECT in a browser closes the only popup", async () => {
     const t = setup();
     const popups: { location: { href: string }; closed: boolean }[] = [];
     (globalThis as { window?: unknown }).window = {
@@ -302,8 +302,8 @@ describe("withOAuth2", () => {
     const b = t.start();
     await t.env.advance(0);
     const [sa, sb] = t.streams;
-    sa!.push(`id:c1\nevent:PB_CONNECT\ndata:{"clientId":"c1"}\n\n`);
-    sb!.push(`id:c2\nevent:PB_CONNECT\ndata:{"clientId":"c2"}\n\n`);
+    sa!.push(`id:c1\nevent:HB_CONNECT\ndata:{"clientId":"c1"}\n\n`);
+    sb!.push(`id:c2\nevent:HB_CONNECT\ndata:{"clientId":"c2"}\n\n`);
     await t.env.advance(0);
     sa!.push(`event:@oauth2\ndata:{"state":"c1","code":"x1"}\n\n`);
     await t.env.advance(0);

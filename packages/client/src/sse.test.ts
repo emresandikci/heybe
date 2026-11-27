@@ -19,9 +19,9 @@ async function read(...chunks: (string | Uint8Array)[]): Promise<Frame[]> {
 describe("readFrames", () => {
   test("one frame per blank line", async () => {
     expect(
-      await read("id:a\nevent:PB_CONNECT\ndata:{}\n\nevent:x\ndata:1\n\n"),
+      await read("id:a\nevent:HB_CONNECT\ndata:{}\n\nevent:x\ndata:1\n\n"),
     ).toEqual([
-      { id: "a", event: "PB_CONNECT", data: "{}" },
+      { id: "a", event: "HB_CONNECT", data: "{}" },
       { id: "", event: "x", data: "1" },
     ]);
   });

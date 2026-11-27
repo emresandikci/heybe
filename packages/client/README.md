@@ -8,7 +8,7 @@ npm install @heybejs/client @heybejs/query
 
 ## Types
 
-`heybe typegen` (and `heybe serve` in dev mode) writes `heybe-env.d.ts` (`--out` sets another path), which adds every collection to the `Collections` interface of `@heybejs/query`. Keep the file inside your tsconfig `include` (or reference it once with `/// <reference path="./heybe-env.d.ts" />`) and the client picks it up:
+`heybe typegen` (and `heybe serve` in dev mode) writes `hb-env.d.ts` (`--out` sets another path), which adds every collection to the `Collections` interface of `@heybejs/query`. Keep the file inside your tsconfig `include` (or reference it once with `/// <reference path="./hb-env.d.ts" />`) and the client picks it up:
 
 ```ts
 import { createClient, type Collections, type Where } from "@heybejs/client";
@@ -48,9 +48,9 @@ Collection types come from the generated `Collections` interface; an unknown col
 
 Requests are auto-cancelled: a new request with the same key (`METHOD + path`) aborts the pending one. Pass `requestKey: null` per request to opt out, or set `autoCancel: false` on the client.
 
-Raw filters: `findMany` and `findFirst` also accept `filter` and `sort` as raw PocketBase strings, for user-typed input. They are sent unchanged and joined with `where` and `orderBy`: `(where) && (filter)` and `orderBy,sort`. `collections.findMany`, `logs.findMany` and `logs.stats` accept them too.
+Raw filters: `findMany` and `findFirst` also accept raw `filter` and `sort` strings in the filter syntax, for user-typed input. They are sent unchanged and joined with `where` and `orderBy`: `(where) && (filter)` and `orderBy,sort`. `collections.findMany`, `logs.findMany` and `logs.stats` accept them too.
 
-On a multi-value field (`select` with `maxSelect > 1`, `relation`, `file`), PocketBase's `tags?="x"` (`anyEq`) matches nothing. Use `each` instead: `where: { tags: { each: { anyEq: "x" } } }` (`tags:each?="x"`).
+On a multi-value field (`select` with `maxSelect > 1`, `relation`, `file`), the filter `tags?="x"` (`anyEq`) matches nothing. Use `each` instead: `where: { tags: { each: { anyEq: "x" } } }` (`tags:each?="x"`).
 
 ## Auth
 
@@ -107,7 +107,7 @@ await heybe.auth("users").withOAuth2({
 });
 ```
 
-`withOAuth2` follows PocketBase's realtime flow: it reads the provider from `methods()`, opens its own realtime connection, subscribes to `@oauth2`, and passes the provider's auth URL (with `state` set to the realtime client id and `redirect_uri` set to the server's `/api/oauth2-redirect`) to the popup or `urlCallback`. When the redirect arrives with a matching `state`, the code is exchanged with `withOAuth2Code` and the store is saved. Without `urlCallback` outside a browser it rejects. A state mismatch, a provider error, a lost realtime connection or an aborted `signal` rejects with a `HeybeError`; every outcome closes the popup and the realtime connection.
+`withOAuth2` uses the realtime OAuth2 flow: it reads the provider from `methods()`, opens its own realtime connection, subscribes to `@oauth2`, and passes the provider's auth URL (with `state` set to the realtime client id and `redirect_uri` set to the server's `/api/oauth2-redirect`) to the popup or `urlCallback`. When the redirect arrives with a matching `state`, the code is exchanged with `withOAuth2Code` and the store is saved. Without `urlCallback` outside a browser it rejects. A state mismatch, a provider error, a lost realtime connection or an aborted `signal` rejects with a `HeybeError`; every outcome closes the popup and the realtime connection.
 
 ## Realtime
 
@@ -124,7 +124,7 @@ await unsubscribe();
 await heybe.records("posts").unsubscribe("RECORD_ID");
 await heybe.records("posts").unsubscribe(); // every topic of the collection
 
-await heybe.realtime.subscribe("PB_CONNECT", ({ clientId }) => {});
+await heybe.realtime.subscribe("HB_CONNECT", ({ clientId }) => {});
 heybe.realtime.onDisconnect = (activeTopics) => {};
 ```
 
