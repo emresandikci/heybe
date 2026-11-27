@@ -1,5 +1,8 @@
 const MAIN_BRANCH_NAME = "main";
-const NPM_PUBLISH = false;
+const NPM_PUBLISH = true;
+// semantic-release runs in each package dir; private packages (the dashboard) are tagged, not published
+const isPrivate =
+  require(require("node:path").resolve("package.json")).private === true;
 
 module.exports = {
   branches: [MAIN_BRANCH_NAME],
@@ -22,7 +25,7 @@ module.exports = {
     ],
     "@semantic-release/release-notes-generator",
     ["@semantic-release/npm", { npmPublish: false }],
-    ...(NPM_PUBLISH
+    ...(NPM_PUBLISH && !isPrivate
       ? [
           [
             "@semantic-release/exec",
