@@ -26,7 +26,7 @@ let seq = 0;
 const VALIDATION = "An error occurred while validating the submitted data.";
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "heybe-backups-api-"));
+  root = await mkdtemp(join(tmpdir(), "hb-backups-api-"));
   clock = fakeClock("2026-01-01T00:00:00Z");
   execs = [];
   execve = (...args) => void execs.push(args);

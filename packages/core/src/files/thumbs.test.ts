@@ -45,7 +45,7 @@ function pngWithHeaderSize(width: number, height: number): Uint8Array {
 describe("createThumb", () => {
   let root: string;
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "heybe-thumbs-"));
+    root = await mkdtemp(join(tmpdir(), "hb-thumbs-"));
   });
   afterEach(() => rm(root, { recursive: true, force: true }));
 
@@ -144,22 +144,22 @@ describe("createThumb", () => {
     expect(await fs.file("c/r/t")).toBeNull();
   });
 
-  describe("PB_THUMBS_MAX_SOURCE_PIXELS", () => {
-    const previous = process.env.PB_THUMBS_MAX_SOURCE_PIXELS;
+  describe("HB_THUMBS_MAX_SOURCE_PIXELS", () => {
+    const previous = process.env.HB_THUMBS_MAX_SOURCE_PIXELS;
     afterEach(() => {
       if (previous === undefined)
-        delete process.env.PB_THUMBS_MAX_SOURCE_PIXELS;
-      else process.env.PB_THUMBS_MAX_SOURCE_PIXELS = previous;
+        delete process.env.HB_THUMBS_MAX_SOURCE_PIXELS;
+      else process.env.HB_THUMBS_MAX_SOURCE_PIXELS = previous;
     });
 
     test("overrides the default limit", async () => {
       const fs = localFilesystem(root);
       await fs.write("c/r/a.img", await source());
-      process.env.PB_THUMBS_MAX_SOURCE_PIXELS = "19999";
+      process.env.HB_THUMBS_MAX_SOURCE_PIXELS = "19999";
       await expect(
         createThumb(fs, "c/r/a.img", "c/r/t", "50x50"),
       ).rejects.toThrow(/too large/);
-      process.env.PB_THUMBS_MAX_SOURCE_PIXELS = "20000";
+      process.env.HB_THUMBS_MAX_SOURCE_PIXELS = "20000";
       await createThumb(fs, "c/r/a.img", "c/r/t", "50x50");
       expect(await fs.file("c/r/t")).not.toBeNull();
     });

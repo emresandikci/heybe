@@ -212,8 +212,8 @@ beforeAll(async () => {
   })
     .png()
     .toBuffer();
-  pbDir = await mkdtemp(join(tmpdir(), "heybe-import-pb-"));
-  hbDir = await mkdtemp(join(tmpdir(), "heybe-import-hb-"));
+  pbDir = await mkdtemp(join(tmpdir(), "hb-import-pb-"));
+  hbDir = await mkdtemp(join(tmpdir(), "hb-import-hb-"));
   const seeded = await startPocketBase(pbDir);
   try {
     await seedPocketBase(seeded);
@@ -228,7 +228,7 @@ beforeAll(async () => {
     "--dir",
     hbDir,
     "--migrationsDir",
-    join(hbDir, "heybe_migrations"),
+    join(hbDir, "hb_migrations"),
   ]);
   pb = await startPocketBase(pbDir);
   hb = await startHeybe(hbDir);

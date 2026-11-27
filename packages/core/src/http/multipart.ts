@@ -479,7 +479,7 @@ export async function readMultipart(
         size += bytes.length;
         chunks.push(bytes);
         if (size <= fileMemory) return;
-        const path = join(tmpdir(), `heybe-upload-${crypto.randomUUID()}`);
+        const path = join(tmpdir(), `hb-upload-${crypto.randomUUID()}`);
         disk.fh = await open(path, "wx", 0o600);
         disk.path = path;
         if (!temp.add(path)) {

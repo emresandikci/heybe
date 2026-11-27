@@ -473,7 +473,7 @@ describe("app logger", () => {
 });
 
 test("terminate flushes queued entries", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "heybe-logs-"));
+  const dir = mkdtempSync(join(tmpdir(), "hb-logs-"));
   try {
     const clock = fakeClock();
     const app = createApp({

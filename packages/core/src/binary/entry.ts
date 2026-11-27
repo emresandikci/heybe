@@ -10,7 +10,7 @@ import { sharpNativeLoader } from "./sharp-native";
 
 declare global {
   // called by the build's replacement of sharp's dist/sharp.mjs
-  var __heybeSharpNative: () => string;
+  var __hbSharpNative: () => string;
 }
 
 // migrations and hooks on disk import "@heybejs/core" (or the legacy "heybe"), which a compiled binary cannot resolve
@@ -22,7 +22,7 @@ Bun.plugin({
   },
 });
 
-globalThis.__heybeSharpNative = sharpNativeLoader(
+globalThis.__hbSharpNative = sharpNativeLoader(
   SHARP_NATIVE_FILES,
   SHARP_NATIVE_ENTRY,
   SHARP_VERSION,

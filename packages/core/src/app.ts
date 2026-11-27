@@ -193,7 +193,7 @@ const TOKENS = [
 // Memory apps copy one bootstrapped data.db made once per process, with their own timestamps and secrets.
 function openMemoryDb(path: string, now: () => Date): Db {
   if (!memoryTemplate) {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-template-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-template-"));
     process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
     const db = openDb(join(dir, "data.db"));
     new CollectionStore(db, now);
@@ -276,10 +276,10 @@ function printsHelp(argv: string[]): boolean {
 export function createApp(opts: AppOptions = {}): App {
   const argv = opts.argv ?? process.argv.slice(2);
   const flags = globalFlags(argv);
-  const dir = opts.dir ?? flags.dir ?? "./heybe_data";
+  const dir = opts.dir ?? flags.dir ?? "./hb_data";
   const memory = dir === "" || dir === ":memory:" || printsHelp(argv);
   if (!memory) mkdirSync(dir, { recursive: true });
-  const dataDir = memory ? mkdtempSync(join(tmpdir(), "heybe-data-")) : dir;
+  const dataDir = memory ? mkdtempSync(join(tmpdir(), "hb-data-")) : dir;
   const now = opts.now ?? (() => new Date());
   const db = memory
     ? openMemoryDb(join(dataDir, "data.db"), now)
@@ -418,7 +418,7 @@ export function createApp(opts: AppOptions = {}): App {
     migrationsDir:
       opts.migrationsDir ??
       flags.migrationsDir ??
-      join(dataDir, "..", "heybe_migrations"),
+      join(dataDir, "..", "hb_migrations"),
     automigrate: opts.automigrate ?? flags.automigrate ?? true,
     migrations: [],
     records: (name: string): RecordService<Record<string, unknown>> => {

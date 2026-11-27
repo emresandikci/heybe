@@ -9,7 +9,7 @@
 **/playwright-report
 apps/dashboard/e2e/.auth
 apps/dashboard/e2e/.state.json
-**/heybe_data
+**/hb_data
 **/*.log
 .env
 .DS_Store

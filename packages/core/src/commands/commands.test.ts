@@ -261,7 +261,7 @@ describe("start", () => {
   });
 
   test("help for a user command leaves the data dir untouched", async () => {
-    const root = mkdtempSync(join(tmpdir(), "heybe-help-"));
+    const root = mkdtempSync(join(tmpdir(), "hb-help-"));
     const dir = join(root, "data");
     try {
       for (const argv of [
@@ -285,7 +285,7 @@ describe("start", () => {
   });
 
   test("help and version through the cli leave the cwd and temp dir untouched, like PB", async () => {
-    const root = mkdtempSync(join(tmpdir(), "heybe-help-"));
+    const root = mkdtempSync(join(tmpdir(), "hb-help-"));
     const cwd = join(root, "cwd");
     const temp = join(root, "tmp");
     mkdirSync(cwd);
@@ -359,7 +359,7 @@ describe("start", () => {
   });
 
   test("global flags come from argv and explicit options win", () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-cmd-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-cmd-"));
     try {
       const flagged = createApp({
         argv: [
@@ -458,7 +458,7 @@ describe("lifecycle", () => {
   });
 
   test("the typegen command writes the types file", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-typegen-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-typegen-"));
     try {
       const out = join(dir, "types.d.ts");
       const cli = testApp({ argv: ["typegen", "--out", out] });
@@ -774,7 +774,7 @@ describe("lifecycle", () => {
 
 describe("import", () => {
   test("import prints the summary", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-import-cmd-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-import-cmd-"));
     try {
       const pbDir = join(dir, "pb_data");
       writePbDataDir(pbDir, {
@@ -800,11 +800,11 @@ describe("import", () => {
 
   test("import with an empty --encryptionEnv variable names it", async () => {
     const cli = testApp({
-      argv: ["import", "pb_data", "--encryptionEnv", "HEYBE_TEST_UNSET_KEY"],
+      argv: ["import", "pb_data", "--encryptionEnv", "HB_TEST_UNSET_KEY"],
     });
     expect(await cli.start()).toBe(1);
     expect(err.at(-1)).toBe(
-      'Error: the --encryptionEnv variable "HEYBE_TEST_UNSET_KEY" is not set or empty',
+      'Error: the --encryptionEnv variable "HB_TEST_UNSET_KEY" is not set or empty',
     );
   });
 

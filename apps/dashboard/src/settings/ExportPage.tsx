@@ -31,7 +31,7 @@ export function ExportPage() {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "heybe_collections.json";
+    link.download = "hb_collections.json";
     link.click();
     // revoking in the same task can cancel the download in Firefox and Safari
     setTimeout(() => URL.revokeObjectURL(url));

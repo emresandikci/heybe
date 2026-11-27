@@ -48,7 +48,7 @@ export async function createThumb(
       : await blob.bytes();
 
   const maxPixels = positiveEnv(
-    "PB_THUMBS_MAX_SOURCE_PIXELS",
+    "HB_THUMBS_MAX_SOURCE_PIXELS",
     DEFAULT_MAX_SOURCE_PIXELS,
   );
   const meta = await sharp(input, { limitInputPixels: false }).metadata();
@@ -102,10 +102,10 @@ export function thumbGenerator(
 ): Generate {
   const workers =
     options.workers ??
-    positiveEnv("PB_THUMBS_MAX_WORKERS", availableParallelism() + 2);
+    positiveEnv("HB_THUMBS_MAX_WORKERS", availableParallelism() + 2);
   const maxWaitMs =
     options.maxWaitMs ??
-    positiveEnv("PB_THUMBS_MAX_WAIT", DEFAULT_MAX_WAIT_SECONDS) * 1000;
+    positiveEnv("HB_THUMBS_MAX_WAIT", DEFAULT_MAX_WAIT_SECONDS) * 1000;
   const setTimer = options.setTimer ?? setTimeout;
   const pending = new Map<string, Promise<void>>();
   const waiting: (() => void)[] = [];

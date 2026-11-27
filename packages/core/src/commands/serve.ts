@@ -18,7 +18,7 @@ import { writeTypesSafely } from "../typegen";
 import { parseCommandArgs } from "./args";
 import type { CommandHelp } from "./help";
 
-export const DEFAULT_TYPES_FILE = "./heybe-env.d.ts";
+export const DEFAULT_TYPES_FILE = "./hb-env.d.ts";
 
 const RENEW_CHECK_INTERVAL = 12 * 60 * 60 * 1000;
 

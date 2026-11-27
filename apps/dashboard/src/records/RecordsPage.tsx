@@ -54,7 +54,7 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
   const navigate = useNavigate();
   const search: RecordsSearch = useSearch({ strict: false });
   const isView = collection.type === "view";
-  const columnsKey = `heybe_columns_${collection.id}`;
+  const columnsKey = `hb_columns_${collection.id}`;
   const [hidden, setHidden] = useState(() => readList(columnsKey));
   const [selected, setSelected] = useState(new Set<string>());
   const [prefill, setPrefill] = useState<

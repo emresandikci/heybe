@@ -82,9 +82,9 @@ const SHARP_MODULE = `import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 let sharp;
 try {
-  sharp = require(globalThis.__heybeSharpNative());
+  sharp = require(globalThis.__hbSharpNative());
 } catch {
-  sharp = require(globalThis.__heybeSharpNative());
+  sharp = require(globalThis.__hbSharpNative());
 }
 export default sharp;`;
 

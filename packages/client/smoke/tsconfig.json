@@ -9,5 +9,5 @@
     "types": [],
     "skipLibCheck": false
   },
-  "include": ["consumer.ts", "heybe-env.d.ts"]
+  "include": ["consumer.ts", "hb-env.d.ts"]
 }

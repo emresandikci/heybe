@@ -74,7 +74,7 @@ const rows = () =>
 const has = (name: string) => app.collections.find(name) !== null;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "heybe-migrations-"));
+  dir = mkdtempSync(join(tmpdir(), "hb-migrations-"));
   now = NOW;
   app = testApp({ migrationsDir: dir, now: () => now, argv: [] });
   lines = [];

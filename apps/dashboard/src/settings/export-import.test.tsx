@@ -51,12 +51,12 @@ test("export selection narrows the preview and Select all toggles", async () => 
   ).toBe(true);
 });
 
-test("Download saves heybe_collections.json from a Blob URL", async () => {
+test("Download saves hb_collections.json from a Blob URL", async () => {
   const create = spyOn(URL, "createObjectURL").mockReturnValue("blob:x");
   const revoke = spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   const click = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
     function (this: HTMLAnchorElement) {
-      expect(this.download).toBe("heybe_collections.json");
+      expect(this.download).toBe("hb_collections.json");
       expect(this.href).toBe("blob:x");
     },
   );

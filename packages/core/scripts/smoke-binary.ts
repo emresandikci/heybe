@@ -59,7 +59,7 @@ function freePort(): number {
 }
 
 export async function smoke(binary: string): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), "heybe-smoke-"));
+  const root = mkdtempSync(join(tmpdir(), "hb-smoke-"));
   const dir = join(root, "data");
   const migrations = join(root, "migrations");
   const cwd = join(root, "cwd");
@@ -168,7 +168,7 @@ export async function smoke(binary: string): Promise<void> {
       backup.status === 204,
       `backup create answered ${backup.status} ${await backup.text()}`,
     );
-    // restore needs a process restart, which Windows does not support (same as PocketBase)
+    // restore needs a process restart, which Windows does not support
     if (process.platform !== "win32") {
       const recordUrl = `/api/collections/smoke/records/${record.id}`;
       check(

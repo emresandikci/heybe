@@ -51,7 +51,7 @@ const open = (opts: AppOptions = {}) => {
 };
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "heybe-backups-"));
+  root = await mkdtemp(join(tmpdir(), "hb-backups-"));
   dir = join(root, "data");
   clock = fakeClock("2026-01-01T00:00:00Z");
   execs = [];

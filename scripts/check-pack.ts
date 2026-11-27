@@ -14,7 +14,7 @@ const run = (cmd: string[]) => {
   return r.stdout.toString();
 };
 
-const tmp = mkdtempSync(join(tmpdir(), "heybe-pack-"));
+const tmp = mkdtempSync(join(tmpdir(), "hb-pack-"));
 const versions: Record<string, string> = {};
 const tarballs: Record<string, string> = {};
 
@@ -114,7 +114,7 @@ const smokeInstalled = async () => {
   writeFileSync(
     join(dir, "package.json"),
     JSON.stringify({
-      name: "heybe-pack-smoke",
+      name: "hb-pack-smoke",
       private: true,
       dependencies: {
         "@heybejs/core": core,

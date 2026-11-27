@@ -157,13 +157,13 @@ test("hidden columns persist per collection", async () => {
   await user.click(screen.getByRole("checkbox", { name: "views" }));
   expect(screen.queryByRole("columnheader", { name: "views" })).toBeNull();
   expect(screen.getByRole("columnheader", { name: "title" })).toBeTruthy();
-  expect(JSON.parse(localStorage.getItem("heybe_columns_hbc_posts")!)).toEqual([
+  expect(JSON.parse(localStorage.getItem("hb_columns_hbc_posts")!)).toEqual([
     "views",
   ]);
 });
 
 test("stored hidden columns apply on load", async () => {
-  localStorage.setItem("heybe_columns_hbc_posts", JSON.stringify(["title"]));
+  localStorage.setItem("hb_columns_hbc_posts", JSON.stringify(["title"]));
   open(serve());
   await screen.findByRole("columnheader", { name: "views" });
   expect(screen.queryByRole("columnheader", { name: "title" })).toBeNull();
@@ -192,9 +192,9 @@ test("recent filters keep the last 10", async () => {
   const { user } = open(serve());
   const input = await screen.findByLabelText("Filter records");
   for (let i = 1; i <= 11; i++) await applyFilter(user, `views > ${i}`);
-  expect(
-    JSON.parse(localStorage.getItem("heybe_filter_history")!),
-  ).toHaveLength(10);
+  expect(JSON.parse(localStorage.getItem("hb_filter_history")!)).toHaveLength(
+    10,
+  );
   await user.click(screen.getByRole("button", { name: "Recent filters" }));
   const menu = screen.getByRole("menu", { name: "Recent filters" });
   const items = within(menu).getAllByRole("menuitem");

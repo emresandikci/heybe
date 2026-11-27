@@ -250,7 +250,7 @@ async function testEmail(e: RequestEvent): Promise<Response> {
     resetPassword: () => sendFlowMail(e.app, "passwordReset", record),
     confirmEmailChange: () =>
       sendFlowMail(e.app, "emailChange", record, form.email),
-    otp: () => sendOtpMail(e.app, record, "_PB_TEST_OTP_ID_", "123456"),
+    otp: () => sendOtpMail(e.app, record, "_HB_TEST_OTP_ID_", "123456"),
     authAlert: () =>
       sendAuthAlert(
         e.app,

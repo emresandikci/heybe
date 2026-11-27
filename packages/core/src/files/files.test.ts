@@ -24,7 +24,7 @@ import { appFilesystem, fileKey, localFilesystem } from "./storage";
 describe("localFilesystem", () => {
   let root: string;
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "heybe-fs-"));
+    root = await mkdtemp(join(tmpdir(), "hb-fs-"));
   });
   afterEach(() => rm(root, { recursive: true, force: true }));
 
@@ -221,7 +221,7 @@ describe("localFilesystem", () => {
 describe("appFilesystem", () => {
   let root: string;
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "heybe-fs-"));
+    root = await mkdtemp(join(tmpdir(), "hb-fs-"));
   });
   afterEach(() => rm(root, { recursive: true, force: true }));
 
@@ -253,7 +253,7 @@ describe("appFilesystem", () => {
   });
 
   test("delegates each call to the current filesystem", async () => {
-    const other = await mkdtemp(join(tmpdir(), "heybe-fs-"));
+    const other = await mkdtemp(join(tmpdir(), "hb-fs-"));
     try {
       let current = localFilesystem(root);
       const fs = appFilesystem(() => current);
@@ -492,7 +492,7 @@ describe("app.files", () => {
   });
 
   test("a disk app stores under <dir>/storage", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "heybe-app-"));
+    const dir = await mkdtemp(join(tmpdir(), "hb-app-"));
     try {
       const app = createApp({ dir });
       expect(app.dataDir).toBe(dir);

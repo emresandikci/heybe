@@ -16,7 +16,7 @@ const { version } = JSON.parse(
 
 export default defineConfig({
   base: "/_/",
-  define: { __HEYBE_VERSION__: JSON.stringify(version) },
+  define: { __HB_VERSION__: JSON.stringify(version) },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: [

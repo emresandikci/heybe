@@ -40,7 +40,7 @@ const io: Io = {
 };
 
 function tempDir(): string {
-  const d = mkdtempSync(join(tmpdir(), "heybe-automigrate-"));
+  const d = mkdtempSync(join(tmpdir(), "hb-automigrate-"));
   dirs.push(d);
   return d;
 }

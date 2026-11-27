@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button, CodeArea, Menu, type CodeSuggest } from "@heybejs/ui";
 import { readList, writeList } from "./storage";
 
-const HISTORY_KEY = "heybe_filter_history";
+const HISTORY_KEY = "hb_filter_history";
 
 export function SearchBar({
   filter,

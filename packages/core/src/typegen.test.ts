@@ -120,7 +120,7 @@ test("a failed write is only a warning", () => {
   console.warn = (...args) => warnings.push(args);
   try {
     expect(() =>
-      writeTypesSafely(app, "/nonexistent-dir/heybe-env.d.ts"),
+      writeTypesSafely(app, "/nonexistent-dir/hb-env.d.ts"),
     ).not.toThrow();
   } finally {
     console.warn = warn;

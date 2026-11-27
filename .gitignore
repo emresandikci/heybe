@@ -12,6 +12,6 @@ playwright-report/
 apps/dashboard/e2e/.auth/
 apps/dashboard/e2e/.state.json
 
-heybe_data/
-packages/core/heybe-env.d.ts
+hb_data/
+packages/core/hb-env.d.ts
 .superpowers/

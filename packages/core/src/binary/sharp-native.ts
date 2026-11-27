@@ -11,7 +11,7 @@ export function sharpNativeLoader(
   version: string,
   root = join(
     tmpdir(),
-    `heybe-sharp-${process.getuid?.() ?? "user"}`,
+    `hb-sharp-${process.getuid?.() ?? "user"}`,
     `${version}-${process.platform}-${process.arch}`,
   ),
 ): () => string {

@@ -131,7 +131,7 @@ describe("records", () => {
   });
 
   test("a throw in onRecordCreateExecute leaves no row and no file, and fires the after-error hooks", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-"));
     const disk = testApp({ dir });
     try {
       await disk.collections.save({
@@ -460,7 +460,7 @@ describe("short-circuits and errors", () => {
   });
 
   test("a throwing after-success hook keeps the committed row and its files", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-"));
     const disk = testApp({ dir });
     const stored = () =>
       readdirSync(join(dir, "storage"), {

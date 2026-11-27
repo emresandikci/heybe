@@ -114,7 +114,7 @@ describe("s3Filesystem", () => {
   });
 
   test("a write past 5 MiB goes multipart and reads back intact", async () => {
-    const path = join(tmpdir(), `heybe-s3-${crypto.randomUUID()}.bin`);
+    const path = join(tmpdir(), `hb-s3-${crypto.randomUUID()}.bin`);
     const data = crypto.getRandomValues(new Uint8Array(65536));
     await Bun.write(path, new Blob(Array(200).fill(data)));
     try {

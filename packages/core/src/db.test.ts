@@ -428,7 +428,7 @@ test("collectionsVersion bumps after exclusive and reopen", async () => {
 
 describe("checkpoint worker", () => {
   function setup() {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-ckpt-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-ckpt-"));
     const path = join(dir, "data.db");
     const clock = fakeClock();
     const db = openDb(path, 10_000, clock.timers);

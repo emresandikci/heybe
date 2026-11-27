@@ -10,7 +10,7 @@ describe("theme", () => {
     expect(resolveTheme("dark", false)).toBe("dark");
   });
 
-  test("applyTheme sets data-theme and persists heybe_theme", () => {
+  test("applyTheme sets data-theme and persists hb_theme", () => {
     applyTheme("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem(THEME_KEY)).toBe("dark");
