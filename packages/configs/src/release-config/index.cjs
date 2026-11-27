@@ -1,20 +1,8 @@
 const MAIN_BRANCH_NAME = "main";
 const NPM_PUBLISH = false;
 
-const isMainBranch =
-  process.env.GITHUB_REF_NAME === MAIN_BRANCH_NAME ||
-  process.env.GITHUB_REF === `refs/heads/${MAIN_BRANCH_NAME}`;
-
-const changeLogPlugin = isMainBranch
-  ? [["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }]]
-  : [];
-
-const gitAssets = isMainBranch
-  ? ["package.json", "../../pnpm-lock.yaml", "CHANGELOG.md"]
-  : [];
-
 module.exports = {
-  branches: ["main"],
+  branches: [MAIN_BRANCH_NAME],
   plugins: [
     [
       "@semantic-release/commit-analyzer",
@@ -35,7 +23,6 @@ module.exports = {
       },
     ],
     "@semantic-release/release-notes-generator",
-    ...changeLogPlugin,
     ["@semantic-release/npm", { npmPublish: false }],
     ...(NPM_PUBLISH
       ? [
@@ -45,13 +32,5 @@ module.exports = {
           ],
         ]
       : []),
-    [
-      "@semantic-release/git",
-      {
-        assets: gitAssets,
-        message:
-          "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}",
-      },
-    ],
   ],
 };
