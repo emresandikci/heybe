@@ -99,11 +99,14 @@ export async function buildBinary(o: {
   const outfile = resolve(o.outfile ?? join(PKG, "dist", exe));
   const sharp = await sharpNative(target);
 
-  const ui = Bun.spawnSync(["pnpm", "--filter", "@heybe/dashboard", "build"], {
-    cwd: PKG,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+  const ui = Bun.spawnSync(
+    ["pnpm", "--filter", "@heybejs/dashboard", "build"],
+    {
+      cwd: PKG,
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  );
   if (!ui.success) throw new Error("dashboard build failed");
   const dashboard = new Map(
     filesUnder(UI_DIST).map((f) => [key(UI_DIST, f), f]),

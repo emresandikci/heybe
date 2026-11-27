@@ -3,7 +3,7 @@ import {
   type CollectionName,
   type Collections,
   type Expand,
-} from "@heybe/query";
+} from "@heybejs/query";
 import type { HeybeClient } from "./client.js";
 import type { WriteData } from "./records.js";
 import { serializeQuery, type RequestOptions } from "./send.js";

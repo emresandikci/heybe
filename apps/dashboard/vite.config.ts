@@ -20,9 +20,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: [
-      { find: "@heybe/client", replacement: src("client") },
-      { find: "@heybe/query", replacement: src("query") },
-      { find: /^@heybe\/ui$/, replacement: src("ui") },
+      { find: "@heybejs/client", replacement: src("client") },
+      { find: "@heybejs/query", replacement: src("query") },
+      { find: /^@heybejs\/ui$/, replacement: src("ui") },
     ],
   },
   build: {

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { formatDate } from "../app/format";
-import { Button, CopyButton, Dialog } from "@heybe/ui";
+import { Button, CopyButton, Dialog } from "@heybejs/ui";
 import { levelName } from "./level";
 
 const text = (value: unknown) =>

@@ -1,4 +1,4 @@
-import { Tooltip } from "@heybe/ui";
+import { Tooltip } from "@heybejs/ui";
 import { formatDate } from "../app/format";
 
 const HOUR = 3_600_000;

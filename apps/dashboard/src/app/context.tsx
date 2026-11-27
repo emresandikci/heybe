@@ -1,8 +1,8 @@
-import type { HeybeClient } from "@heybe/client";
+import type { HeybeClient } from "@heybejs/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import type { ExtensionRegistry } from "./extensions";
-import { ConfirmProvider, ToastProvider } from "@heybe/ui";
+import { ConfirmProvider, ToastProvider } from "@heybejs/ui";
 
 export interface AppContext {
   client: HeybeClient;

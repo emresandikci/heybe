@@ -11,7 +11,7 @@ Checks:
 ```bash
 pnpm typecheck
 pnpm test             # unit tests of every package
-pnpm test:contract    # HTTP API contract tests of @heybe/core
+pnpm test:contract    # HTTP API contract tests of @heybejs/core
 ```
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org). Direct `git commit` is blocked, use:
@@ -24,19 +24,19 @@ Each package is versioned and released on its own with semantic-release when cha
 
 ## Dashboard
 
-The dashboard lives in `apps/dashboard` (React, Vite) and talks to the server only through `@heybe/client`. Build it before serving:
+The dashboard lives in `apps/dashboard` (React, Vite) and talks to the server only through `@heybejs/client`. Build it before serving:
 
 ```bash
-pnpm --filter @heybe/dashboard build
+pnpm --filter @heybejs/dashboard build
 ```
 
-The build writes `packages/core/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
+The build writes `packages/core/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybejs/dashboard dev`.
 
 Tests:
 
 ```bash
-pnpm --filter @heybe/dashboard test
-pnpm --filter @heybe/dashboard exec playwright install chromium   # once
+pnpm --filter @heybejs/dashboard test
+pnpm --filter @heybejs/dashboard exec playwright install chromium   # once
 pnpm test:e2e
 ```
 

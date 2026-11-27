@@ -6,7 +6,7 @@ import { tempDb } from "../test-db";
 import { type CompileCtx, QueryCompiler, type RequestInfo } from "./compile";
 import { macroValue } from "./macros";
 import { FilterError, parseFilter, parseSort } from "./parse";
-import type { Expr } from "@heybe/query";
+import type { Expr } from "@heybejs/query";
 
 const now = () => new Date("2026-01-15T10:00:00.000Z");
 

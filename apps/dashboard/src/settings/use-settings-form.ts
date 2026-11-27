@@ -1,7 +1,7 @@
 import { useForm, useStore } from "@tanstack/react-form";
 import { useBlocker } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useConfirm, useToast } from "@heybe/ui";
+import { useConfirm, useToast } from "@heybejs/ui";
 import {
   changedSections,
   useSaveSettings,

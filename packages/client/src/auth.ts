@@ -1,4 +1,4 @@
-import { toExpand, type Expand } from "@heybe/query";
+import { toExpand, type Expand } from "@heybejs/query";
 import { type AuthRecord, SUPERUSER_IDS } from "./auth-store.js";
 import type { HeybeClient } from "./client.js";
 import { tokenPayload } from "./jwt.js";

@@ -1,9 +1,9 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button, Dialog, TextField } from "@heybe/ui";
+import { Button, Dialog, TextField } from "@heybejs/ui";
 import { presentableLabel } from "./cell";
 import { normalizeSearchFilter } from "./search-filter";
 

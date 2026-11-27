@@ -1,6 +1,6 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useQuery } from "@tanstack/react-query";
-import { Tooltip } from "@heybe/ui";
+import { Tooltip } from "@heybejs/ui";
 import type { ReactNode } from "react";
 import { useClient } from "../app/context";
 import { keys, useCollections } from "../app/queries";

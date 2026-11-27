@@ -10,7 +10,7 @@ Heybe is an open source backend in a single binary, built with TypeScript on [Bu
 - **Fast.** Bun, built-in SQLite, prepared statement caching and no heavy layers. Response times should be on par with PocketBase or better.
 - **Extend with classes or functions**, in plain TypeScript or JavaScript, no build step and no decorators.
 - **One type-safe query syntax** shared by the server and the frontend.
-- **Own client** (`@heybe/client`) with auth, realtime, files and queries behind one typed API.
+- **Own client** (`@heybejs/client`) with auth, realtime, files and queries behind one typed API.
 - **New dashboard** for collections, records and settings.
 - **Own storage format** with `heybe import` to migrate from an existing `pb_data`.
 
@@ -30,7 +30,7 @@ On the first start Heybe prints a link to create your first superuser. The dashb
 
 ## Features
 
-- **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybe/query`, superusers, password auth, settings.
+- **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybejs/query`, superusers, password auth, settings.
 - **Relations and files:** expand, back-relations, indexes, view collections, batch API, file uploads, thumbnails, protected files, type generation.
 - **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
 - **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
@@ -42,7 +42,7 @@ On the first start Heybe prints a link to create your first superuser. The dashb
 ### Hooks and routes
 
 ```ts
-import { RecordHooks, Route } from "@heybe/core";
+import { RecordHooks, Route } from "@heybejs/core";
 
 class PostHooks extends RecordHooks {
   collection = "posts";
@@ -128,12 +128,12 @@ window.heybe.dashboard.addPage({
 });
 ```
 
-An extension can build its page with the dashboard components from `@heybe/ui`. Install `react`, `react-dom` and `@heybe/ui` in the extension, bundle it, and render with your own root:
+An extension can build its page with the dashboard components from `@heybejs/ui`. Install `react`, `react-dom` and `@heybejs/ui` in the extension, bundle it, and render with your own root:
 
 ```tsx
 import { createRoot } from "react-dom/client";
-import { Button } from "@heybe/ui";
-import "@heybe/ui/style.css";
+import { Button } from "@heybejs/ui";
+import "@heybejs/ui/style.css";
 
 window.heybe.dashboard.addPage({
   path: "demo",
@@ -146,7 +146,7 @@ window.heybe.dashboard.addPage({
 });
 ```
 
-Use `@heybe/ui` for styled components (buttons, fields, `FileField`, `Select`, `Checkbox`, `Switch`, `Table`, `Dialog`, `Disclosure`, `Badge`, `CodeArea`, toasts and more) and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybe/ui/style.css` for compiled styles or `@heybe/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
+Use `@heybejs/ui` for styled components (buttons, fields, `FileField`, `Select`, `Checkbox`, `Switch`, `Table`, `Dialog`, `Disclosure`, `Badge`, `CodeArea`, toasts and more) and `@heybejs/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybejs/ui/style.css` for compiled styles or `@heybejs/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
 
 ## Docker
 
@@ -167,11 +167,11 @@ Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no
 
 ## npm
 
-The packages are not published yet. Once they are, `@heybe/core` runs on Bun only. Install it globally to get the `heybe` command, or add it to a project to use it as a library:
+The packages are not published yet. Once they are, `@heybejs/core` runs on Bun only. Install it globally to get the `heybe` command, or add it to a project to use it as a library:
 
 ```bash
-bun add -g @heybe/core
-bun add @heybe/core
+bun add -g @heybejs/core
+bun add @heybejs/core
 ```
 
 ## Contributing

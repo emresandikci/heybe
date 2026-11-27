@@ -5,7 +5,7 @@ import { Check, ChevronDown, LogOut, Menu as MenuIcon } from "lucide-react";
 import { signOut } from "../auth/session";
 import { useClient } from "../app/context";
 import { useTheme, type ThemeChoice } from "../app/theme";
-import { Button, Menu, type MenuItem } from "@heybe/ui";
+import { Button, Menu, type MenuItem } from "@heybejs/ui";
 import { useSettings } from "../settings/use-settings";
 import { Sidebar } from "./Sidebar";
 

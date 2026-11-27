@@ -1,5 +1,5 @@
 {
-  "name": "@heybe/ui",
+  "name": "@heybejs/ui",
   "version": "1.0.2",
   "type": "module",
   "license": "MIT",
@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",
-    "@heybe/configs": "workspace:*",
+    "@heybejs/configs": "workspace:*",
     "@tailwindcss/cli": "^4.3.0",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",

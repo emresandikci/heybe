@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { CollectionName, Collections } from "@heybe/query";
+import type { CollectionName, Collections } from "@heybejs/query";
 import pkg from "../package.json" with { type: "json" };
 import { parseCommandArgs } from "./commands/args";
 import { type CommandHelp, printsOnly, routeArgv } from "./commands/help";

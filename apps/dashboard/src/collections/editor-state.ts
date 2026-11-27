@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useForm } from "@tanstack/react-form";
 import { fieldDefaults, nextKey, type FieldType } from "./field-types";
 import { IDENT, quote, randomIndexName, unquote } from "./index-sql";

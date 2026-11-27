@@ -8,7 +8,7 @@ import { type Io, MigrationsRunner } from "../migrations/runner";
 import { GLOBAL_OPTIONS, parseCommandArgs } from "./args";
 import type { CommandHelp } from "./help";
 
-const BLANK_TEMPLATE = `import { migrate } from "@heybe/core";
+const BLANK_TEMPLATE = `import { migrate } from "@heybejs/core";
 
 export default migrate(async (app) => {
   // add up queries...

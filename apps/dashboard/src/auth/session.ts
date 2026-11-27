@@ -1,4 +1,4 @@
-import { HeybeError, tokenExpired, type HeybeClient } from "@heybe/client";
+import { HeybeError, tokenExpired, type HeybeClient } from "@heybejs/client";
 import { onUnauthorized } from "../app/client";
 import { redirect, type ParsedLocation } from "@tanstack/react-router";
 import type { AppContext } from "../app/context";

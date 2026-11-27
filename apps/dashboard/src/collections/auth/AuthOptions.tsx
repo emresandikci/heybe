@@ -1,8 +1,8 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useState } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { useCollections } from "../../app/queries";
-import { Button, Checkbox, Select } from "@heybe/ui";
+import { Button, Checkbox, Select } from "@heybejs/ui";
 import {
   activeFields,
   finalIndexes,

@@ -1,5 +1,5 @@
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 import { errorMessage } from "../app/errors";
 
 export function QueryStatus({ query }: { query: UseQueryResult }) {

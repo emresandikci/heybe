@@ -1,7 +1,7 @@
 import type { DeepKeysOfType } from "@tanstack/react-form";
 import { useState, type ReactNode } from "react";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
-import { Checkbox, Disclosure, NumberField, TextField } from "@heybe/ui";
+import { Checkbox, Disclosure, NumberField, TextField } from "@heybejs/ui";
 import type { CollectionDraft, EditorForm } from "../editor-state";
 
 export function getIn(obj: unknown, path: string): unknown {

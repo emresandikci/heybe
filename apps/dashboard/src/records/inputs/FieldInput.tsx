@@ -1,5 +1,5 @@
 import { useFieldError } from "../../app/errors";
-import { Checkbox, NumberField, TextField } from "@heybe/ui";
+import { Checkbox, NumberField, TextField } from "@heybejs/ui";
 import type { CellField } from "../cell";
 import { isMulti, type FileValue } from "../record-form";
 import { DateInput } from "./DateInput";

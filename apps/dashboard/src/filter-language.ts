@@ -1,5 +1,5 @@
-import type { CollectionModel } from "@heybe/client";
-import type { CodeSuggest, CodeSuggestion } from "@heybe/ui";
+import type { CollectionModel } from "@heybejs/client";
+import type { CodeSuggest, CodeSuggestion } from "@heybejs/ui";
 
 type SchemaField = {
   name: string;

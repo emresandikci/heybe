@@ -1,4 +1,4 @@
-import { toAst } from "@heybe/query";
+import { toAst } from "@heybejs/query";
 import type { App } from "../app";
 import type { Collection } from "../collections/model";
 import type { RequestInfo } from "../filter/compile";

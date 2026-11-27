@@ -1,5 +1,5 @@
 {
-  "name": "@heybe/query",
+  "name": "@heybejs/query",
   "version": "1.0.0",
   "type": "module",
   "license": "MIT",
@@ -26,6 +26,6 @@
     "test": "bun test src"
   },
   "devDependencies": {
-    "@heybe/configs": "workspace:*"
+    "@heybejs/configs": "workspace:*"
   }
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { memoryStore } from "@heybe/client";
+import { memoryStore } from "@heybejs/client";
 import { fakeServer } from "../test/fake-server";
 import { SUPERUSER, fakeToken } from "../test/render";
 import {

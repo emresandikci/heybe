@@ -6,7 +6,7 @@ Same method, machine, data and scenarios as phase 6 (`phase-6.md`); the scenario
 
 - Heybe commit measured: a004afe
 - Bun 1.4.4, PocketBase 0.41.1, autocannon 9, 100 connections, 10 s after a 3 s warm-up
-- Commands: `pnpm --filter @heybe/dashboard build`, then `caffeinate -i pnpm bench`
+- Commands: `pnpm --filter @heybejs/dashboard build`, then `caffeinate -i pnpm bench`
 - Every run has zero non-2xx responses and zero errors.
 - Load: `uptime` before the run showed load averages 2.57, 3.38 and 7.82 (1, 5 and 15 minutes), so the machine may have been under external load earlier. The benchmark itself drives the load to about 7.8.
 
@@ -83,7 +83,7 @@ The ratios stay within the run-to-run spread seen between phases 4 and 6 (the ma
 
 ## Dashboard bundle size
 
-From the Vite build (`pnpm --filter @heybe/dashboard build`), gzip as reported by Vite:
+From the Vite build (`pnpm --filter @heybejs/dashboard build`), gzip as reported by Vite:
 
 | file                                  | type | raw (bytes) | gzip (kB) | loaded                   |
 | ------------------------------------- | ---- | ----------- | --------- | ------------------------ |

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { toAst, toFilter } from "@heybe/query";
+import { toAst, toFilter } from "@heybejs/query";
 import { FilterError, parseFilter, parseSort } from "./parse";
 
 describe("parseFilter", () => {

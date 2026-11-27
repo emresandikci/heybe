@@ -5,7 +5,7 @@ import {
   type ListResult,
   type OrderBy,
   type Where,
-} from "@heybe/query";
+} from "@heybejs/query";
 import type { HeybeClient } from "./client.js";
 import { joinFilter, joinSort, type RawListArgs } from "./raw.js";
 import type { RequestOptions } from "./send.js";

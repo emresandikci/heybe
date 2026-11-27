@@ -5,7 +5,7 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "types": ["bun"],
-    "paths": { "@heybe/query": ["../query/src/index.ts"] }
+    "paths": { "@heybejs/query": ["../query/src/index.ts"] }
   },
   "include": ["src", "integration"]
 }

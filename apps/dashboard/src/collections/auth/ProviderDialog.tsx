@@ -10,7 +10,7 @@ import {
   NumberField,
   Select,
   TextField,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import type { Provider } from "../editor-state";
 import { OAUTH2_PROVIDERS } from "../oauth2-providers";
 import { groupClass } from "./opts";

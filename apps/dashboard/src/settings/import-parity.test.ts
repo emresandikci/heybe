@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { expect, test } from "bun:test";
 import type { App } from "../../../../packages/core/src/app";
 import { serializeCollection } from "../../../../packages/core/src/collections/codec";

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Publish the image and binaries for an existing @heybe/core release (x.y.z) instead of releasing"
+        description: "Publish the image and binaries for an existing @heybejs/core release (x.y.z) instead of releasing"
         required: false
 
 permissions:
@@ -46,9 +46,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git tag --list '@heybe/core@*' | sort > /tmp/core-tags-before
+          git tag --list '@heybejs/core@*' | sort > /tmp/core-tags-before
           pnpm release
-          git tag --list '@heybe/core@*' | sort > /tmp/core-tags-after
+          git tag --list '@heybejs/core@*' | sort > /tmp/core-tags-after
           tag=$(comm -13 /tmp/core-tags-before /tmp/core-tags-after | tail -n 1)
           echo "NEW_CORE_TAG=$tag" >> "$GITHUB_ENV"
 
@@ -57,7 +57,7 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          version="${INPUT_VERSION:-${NEW_CORE_TAG#@heybe/core@}}"
+          version="${INPUT_VERSION:-${NEW_CORE_TAG#@heybejs/core@}}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   image:
@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "@heybe/core@${{ needs.release.outputs.version }}"
+          ref: "@heybejs/core@${{ needs.release.outputs.version }}"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -181,7 +181,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "@heybe/core@${{ needs.release.outputs.version }}"
+          ref: "@heybejs/core@${{ needs.release.outputs.version }}"
 
       - uses: pnpm/action-setup@v4
 
@@ -230,7 +230,7 @@ jobs:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAG: "@heybe/core@${{ needs.release.outputs.version }}"
+      TAG: "@heybejs/core@${{ needs.release.outputs.version }}"
     steps:
       - uses: actions/download-artifact@v4
         with:

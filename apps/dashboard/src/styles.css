@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@import "@heybe/ui/theme.css";
+@import "@heybejs/ui/theme.css";
 
 body {
   @apply bg-bg font-sans text-sm text-text;

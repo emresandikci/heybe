@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { FieldShell, useFieldIds } from "@heybe/ui";
+import { FieldShell, useFieldIds } from "@heybejs/ui";
 
 const RichTextEditor = lazy(() => import("./RichTextEditor"));
 

@@ -1,4 +1,4 @@
-import { HeybeError } from "@heybe/client";
+import { HeybeError } from "@heybejs/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
@@ -23,7 +23,7 @@ import {
   Th,
   useConfirm,
   useToast,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import { formatBytes } from "./format";
 import { NumberInput, TextInput, type FieldLike } from "./inputs";
 import { QueryStatus } from "./QueryStatus";

@@ -22,7 +22,7 @@ import {
   Type,
   type LucideIcon,
 } from "lucide-react";
-import { Badge, Button, Checkbox, Menu, TextField } from "@heybe/ui";
+import { Badge, Button, Checkbox, Menu, TextField } from "@heybejs/ui";
 import type { FieldModel } from "../editor-state";
 import { fieldTypeLabel, type FieldType } from "../field-types";
 import { FieldOptions } from "./FieldOptions";

@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
@@ -6,7 +6,7 @@ import { useClient } from "../app/context";
 import { filterError } from "../app/errors";
 import { keys, useCollections } from "../app/queries";
 import { Inbox, SearchX, Settings } from "lucide-react";
-import { Button, EmptyState, Tooltip, useConfirm, useToast } from "@heybe/ui";
+import { Button, EmptyState, Tooltip, useConfirm, useToast } from "@heybejs/ui";
 import { Page } from "../layout/Page";
 import { ApiPreview } from "../collections/ApiPreview";
 import { useOpenEditor } from "../collections/CollectionsSidebar";

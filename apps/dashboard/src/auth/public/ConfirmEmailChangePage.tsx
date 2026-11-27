@@ -3,7 +3,7 @@ import { useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../../app/context";
 import { ErrorScope, UnclaimedErrors } from "../../app/errors";
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 import { AuthCard, Field } from "../AuthCard";
 import { collectionIdOf } from "./collection";
 import { InvalidLink } from "./InvalidLink";

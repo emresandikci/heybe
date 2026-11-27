@@ -10,7 +10,7 @@ import {
   type NoExtraExpand,
   type Where,
   type WithExpand,
-} from "@heybe/query";
+} from "@heybejs/query";
 import type { AuthRecord } from "./auth-store.js";
 import type { HeybeClient } from "./client.js";
 import { HeybeError } from "./error.js";

@@ -1,4 +1,4 @@
-import type { CollectionModel, ListResult } from "@heybe/client";
+import type { CollectionModel, ListResult } from "@heybejs/client";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useClient } from "./context";
 

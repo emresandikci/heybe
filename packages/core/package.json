@@ -1,5 +1,5 @@
 {
-  "name": "@heybe/core",
+  "name": "@heybejs/core",
   "version": "1.1.4",
   "type": "module",
   "license": "MIT",
@@ -32,15 +32,15 @@
     "bench": "bun bench/run.ts",
     "build:binary": "bun scripts/build-binary.ts",
     "smoke:binary": "bun scripts/smoke-binary.ts",
-    "prepack": "pnpm --filter @heybe/dashboard build"
+    "prepack": "pnpm --filter @heybejs/dashboard build"
   },
   "devDependencies": {
-    "@heybe/configs": "workspace:*",
+    "@heybejs/configs": "workspace:*",
     "@types/nodemailer": "^8.0.2",
     "autocannon": "catalog:"
   },
   "dependencies": {
-    "@heybe/query": "workspace:^",
+    "@heybejs/query": "workspace:^",
     "acme-client": "^5.4.0",
     "file-type": "^22.3.0",
     "nodemailer": "^10.4.0",

@@ -1,9 +1,15 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button, CopyButton, Dialog, NumberField, TextField } from "@heybe/ui";
+import {
+  Button,
+  CopyButton,
+  Dialog,
+  NumberField,
+  TextField,
+} from "@heybejs/ui";
 
 export function ImpersonateDialog({
   collection,

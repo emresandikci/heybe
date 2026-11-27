@@ -9,7 +9,7 @@ import {
   toAst,
   toExpand,
   toSort,
-} from "@heybe/query";
+} from "@heybejs/query";
 import type { App } from "../app";
 import { quote } from "../collections/ddl";
 import type { Collection, Field } from "../collections/model";

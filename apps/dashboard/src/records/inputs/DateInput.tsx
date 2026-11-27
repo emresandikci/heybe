@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { FieldShell, useFieldIds } from "@heybe/ui";
+import { FieldShell, useFieldIds } from "@heybejs/ui";
 
 export function DateInput({
   name,

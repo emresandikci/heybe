@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { EmptyState } from "@heybe/ui";
+import { EmptyState } from "@heybejs/ui";
 import { Page } from "./Page";
 
 export function NotFound() {

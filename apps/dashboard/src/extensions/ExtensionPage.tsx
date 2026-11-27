@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useClient, useExtensions } from "../app/context";
-import { EmptyState } from "@heybe/ui";
+import { EmptyState } from "@heybejs/ui";
 import { Page } from "../layout/Page";
 
 export function ExtensionPage() {

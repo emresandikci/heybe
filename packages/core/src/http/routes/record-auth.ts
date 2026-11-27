@@ -1,4 +1,4 @@
-import { toAst } from "@heybe/query";
+import { toAst } from "@heybejs/query";
 import { verifyPassword as verifyBcrypt } from "../../auth/password";
 import type { App } from "../../app";
 import { authTokenFromRequest, checkSuperuserIp, realIp } from "../middlewares";

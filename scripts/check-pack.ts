@@ -33,7 +33,7 @@ const check = (name: string) => {
 
   const required = ["package/LICENSE", "package/package.json"];
   const forbidden: RegExp[] = [];
-  if (name === "@heybe/core") {
+  if (name === "@heybejs/core") {
     required.push(
       "package/src/cli.ts",
       "package/src/index.ts",
@@ -48,7 +48,7 @@ const check = (name: string) => {
   } else {
     required.push("package/dist/index.js", "package/dist/index.d.ts");
   }
-  if (name === "@heybe/ui") {
+  if (name === "@heybejs/ui") {
     required.push(
       "package/dist/style.css",
       "package/src/theme.css",
@@ -68,16 +68,16 @@ const check = (name: string) => {
   if (manifestText.includes("workspace:")) {
     throw new Error(`${name}: packed package.json contains workspace:`);
   }
-  if (name === "@heybe/client") {
-    const expected = `^${versions["@heybe/query"]}`;
-    const actual = manifest.peerDependencies?.["@heybe/query"];
+  if (name === "@heybejs/client") {
+    const expected = `^${versions["@heybejs/query"]}`;
+    const actual = manifest.peerDependencies?.["@heybejs/query"];
     if (actual !== expected) {
       throw new Error(
-        `${name}: @heybe/query peer is ${actual}, expected ${expected}`,
+        `${name}: @heybejs/query peer is ${actual}, expected ${expected}`,
       );
     }
   }
-  if (name === "@heybe/ui") {
+  if (name === "@heybejs/ui") {
     for (const dep of ["react", "react-dom"]) {
       if (!manifest.peerDependencies?.[dep]) {
         throw new Error(`${name}: missing ${dep} peer dependency`);
@@ -109,17 +109,17 @@ const waitFor = async (probe: () => Promise<boolean>, maxMs: number) => {
 const smokeInstalled = async () => {
   const dir = join(tmp, "install");
   mkdirSync(dir);
-  const query = `file:${tarballs["@heybe/query"]}`;
-  const core = `file:${tarballs["@heybe/core"]}`;
+  const query = `file:${tarballs["@heybejs/query"]}`;
+  const core = `file:${tarballs["@heybejs/core"]}`;
   writeFileSync(
     join(dir, "package.json"),
     JSON.stringify({
       name: "heybe-pack-smoke",
       private: true,
       dependencies: {
-        "@heybe/core": core,
+        "@heybejs/core": core,
       },
-      overrides: { "@heybe/core": core, "@heybe/query": query },
+      overrides: { "@heybejs/core": core, "@heybejs/query": query },
     }),
   );
   run(["bun", "install", "--cwd", dir]);
@@ -155,10 +155,10 @@ const smokeInstalled = async () => {
 
 try {
   for (const name of [
-    "@heybe/query",
-    "@heybe/client",
-    "@heybe/ui",
-    "@heybe/core",
+    "@heybejs/query",
+    "@heybejs/client",
+    "@heybejs/ui",
+    "@heybejs/core",
   ])
     check(name);
   await smokeInstalled();

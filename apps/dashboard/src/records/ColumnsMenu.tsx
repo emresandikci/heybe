@@ -1,4 +1,4 @@
-import { Button, Checkbox, Popover } from "@heybe/ui";
+import { Button, Checkbox, Popover } from "@heybejs/ui";
 
 export function ColumnsMenu({
   names,

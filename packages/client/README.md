@@ -1,29 +1,29 @@
-# @heybe/client
+# @heybejs/client
 
 ```sh
-npm install @heybe/client @heybe/query
+npm install @heybejs/client @heybejs/query
 ```
 
-`@heybe/query` is a peer dependency: the generated collection types augment it, so the app and the client must share one copy.
+`@heybejs/query` is a peer dependency: the generated collection types augment it, so the app and the client must share one copy.
 
 ## Types
 
-`heybe typegen` (and `heybe serve` in dev mode) writes `heybe-env.d.ts` (`--out` sets another path), which adds every collection to the `Collections` interface of `@heybe/query`. Keep the file inside your tsconfig `include` (or reference it once with `/// <reference path="./heybe-env.d.ts" />`) and the client picks it up:
+`heybe typegen` (and `heybe serve` in dev mode) writes `heybe-env.d.ts` (`--out` sets another path), which adds every collection to the `Collections` interface of `@heybejs/query`. Keep the file inside your tsconfig `include` (or reference it once with `/// <reference path="./heybe-env.d.ts" />`) and the client picks it up:
 
 ```ts
-import { createClient, type Collections, type Where } from "@heybe/client";
+import { createClient, type Collections, type Where } from "@heybejs/client";
 
 const heybe = createClient("http://127.0.0.1:8090");
 const where: Where<Collections["posts"]> = { status: "published" };
 const page = await heybe.records("posts").findMany({ where }); // typed items
 ```
 
-`Where`, `OrderBy`, `Expand`, `ListResult`, `Relation`, `WithExpand`, `Collections` and `CollectionName` are re-exported from `@heybe/client`.
+`Where`, `OrderBy`, `Expand`, `ListResult`, `Relation`, `WithExpand`, `Collections` and `CollectionName` are re-exported from `@heybejs/client`.
 
 ## Records
 
 ```ts
-import { createClient } from "@heybe/client";
+import { createClient } from "@heybejs/client";
 
 const heybe = createClient("http://127.0.0.1:8090");
 const posts = heybe.records("posts");

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useCollections } from "../app/queries";
-import { Button, Checkbox, CopyButton } from "@heybe/ui";
+import { Button, Checkbox, CopyButton } from "@heybejs/ui";
 import { exportJson } from "./import-diff";
 import { QueryStatus } from "./QueryStatus";
 import { SettingsPage } from "./SettingsPage";

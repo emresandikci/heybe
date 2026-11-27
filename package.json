@@ -1,5 +1,5 @@
 {
-  "name": "@heybe/root",
+  "name": "@heybejs/root",
   "version": "0.0.0",
   "description": "Heybe monorepo",
   "private": true,
@@ -24,14 +24,14 @@
     "commit": "SKIP_COMMIT_CHECK=true git-cz",
     "release": "pnpm -r --sequential release",
     "prepare": "node .husky/install.mjs",
-    "test:contract": "pnpm --filter @heybe/core test:contract",
+    "test:contract": "pnpm --filter @heybejs/core test:contract",
     "typecheck": "pnpm -r --filter ./packages/query --filter ./packages/core --filter ./packages/client --filter ./packages/ui --filter ./apps/dashboard exec tsc -p .",
-    "test:e2e": "pnpm --filter @heybe/dashboard e2e",
-    "bench": "pnpm --filter @heybe/core bench",
+    "test:e2e": "pnpm --filter @heybejs/dashboard e2e",
+    "bench": "pnpm --filter @heybejs/core bench",
     "check:pack": "bun scripts/check-pack.ts",
-    "smoke:binary": "pnpm --filter @heybe/core smoke:binary",
-    "test:client": "pnpm --filter @heybe/client test:integration",
-    "smoke:node": "pnpm -r --filter ./packages/query --filter ./packages/client build && pnpm --filter @heybe/client exec node --input-type=module -e \"await import('@heybe/query'); await import('@heybe/client')\"  && pnpm --filter @heybe/client exec tsc -p smoke"
+    "smoke:binary": "pnpm --filter @heybejs/core smoke:binary",
+    "test:client": "pnpm --filter @heybejs/client test:integration",
+    "smoke:node": "pnpm -r --filter ./packages/query --filter ./packages/client build && pnpm --filter @heybejs/client exec node --input-type=module -e \"await import('@heybejs/query'); await import('@heybejs/client')\"  && pnpm --filter @heybejs/client exec tsc -p smoke"
   },
   "config": {
     "commitizen": {

@@ -464,7 +464,7 @@ describe("lifecycle", () => {
       const cli = testApp({ argv: ["typegen", "--out", out] });
       expect(await cli.start()).toBe(0);
       expect(await Bun.file(out).text()).toContain(
-        'declare module "@heybe/query"',
+        'declare module "@heybejs/query"',
       );
     } finally {
       rmSync(dir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, CodeArea, Menu, type CodeSuggest } from "@heybe/ui";
+import { Button, CodeArea, Menu, type CodeSuggest } from "@heybejs/ui";
 import { readList, writeList } from "./storage";
 
 const HISTORY_KEY = "heybe_filter_history";

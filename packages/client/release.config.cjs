@@ -1,6 +1,6 @@
 const { name } = require("./package.json");
 
 module.exports = {
-  ...require("@heybe/configs/release-configs"),
+  ...require("@heybejs/configs/release-configs"),
   tagFormat: `${name}@\${version}`,
 };

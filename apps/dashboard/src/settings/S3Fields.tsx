@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button, useToast } from "@heybe/ui";
+import { Button, useToast } from "@heybejs/ui";
 import {
   DependentFields,
   EnabledBadge,

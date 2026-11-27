@@ -1,4 +1,4 @@
-import type { CollectionName } from "@heybe/query";
+import type { CollectionName } from "@heybejs/query";
 import type * as ev from "./events";
 import { type BindOptions, Hook, type HookHandler } from "./hook";
 

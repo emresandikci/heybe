@@ -1,5 +1,5 @@
 import { screen, within } from "@testing-library/react";
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { serveCollections } from "../test/editor";
 import { fakeServer, type FakeServer } from "../test/fake-server";
 import { collectionsFixture } from "../test/fixtures";

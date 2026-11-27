@@ -9,7 +9,7 @@ const PNG_4X4 = Uint8Array.fromBase64(
   "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWP4z8AARwgWXg4ArpMP8bh5W0YAAAAASUVORK5CYII=",
 );
 
-const MIGRATION = `import { migrate } from "@heybe/core";
+const MIGRATION = `import { migrate } from "@heybejs/core";
 export default migrate(async (app) => {
   await app.collections.save({
     name: "smoke",

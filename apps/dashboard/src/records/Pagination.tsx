@@ -1,4 +1,4 @@
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 
 export function Pagination({
   page,

@@ -1,4 +1,4 @@
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 import { UnclaimedErrors } from "../app/errors";
 
 export function FormFooter({

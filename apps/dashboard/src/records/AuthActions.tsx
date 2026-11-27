@@ -1,9 +1,9 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { useToast, type MenuItem } from "@heybe/ui";
+import { useToast, type MenuItem } from "@heybejs/ui";
 import { ImpersonateDialog } from "./ImpersonateDialog";
 
 export function useAuthActions(

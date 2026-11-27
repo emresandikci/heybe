@@ -1,7 +1,7 @@
 import { Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { ErrorScope, useFieldError } from "../app/errors";
-import { Button, Select, Table, Td, TextField, Th } from "@heybe/ui";
+import { Button, Select, Table, Td, TextField, Th } from "@heybejs/ui";
 import {
   DependentFields,
   EnabledBadge,

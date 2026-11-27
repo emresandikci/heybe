@@ -36,7 +36,7 @@ import {
   Popover,
   Tooltip,
   useFieldIds,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import type { EditorInputProps } from "./EditorInput";
 
 const ALIASES: Record<string, string> = {

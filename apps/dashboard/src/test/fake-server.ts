@@ -1,4 +1,4 @@
-import type { Fetch } from "@heybe/client";
+import type { Fetch } from "@heybejs/client";
 
 export interface FakeRequest {
   method: string;

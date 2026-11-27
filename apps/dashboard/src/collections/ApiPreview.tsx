@@ -1,5 +1,13 @@
-import type { CollectionModel } from "@heybe/client";
-import { Badge, CodeArea, CopyButton, Dialog, Table, Td, Th } from "@heybe/ui";
+import type { CollectionModel } from "@heybejs/client";
+import {
+  Badge,
+  CodeArea,
+  CopyButton,
+  Dialog,
+  Table,
+  Td,
+  Th,
+} from "@heybejs/ui";
 
 function ruleText(rule: unknown): string {
   if (rule === null || rule === undefined) return "Superusers only";
@@ -33,7 +41,7 @@ export function ApiPreview({
       c.authRule,
     ]);
   const snippet = [
-    'import { createClient } from "@heybe/client";',
+    'import { createClient } from "@heybejs/client";',
     "",
     `const heybe = createClient(${JSON.stringify(location.origin)});`,
     `const page = await heybe.records(${JSON.stringify(c.name)}).findMany({ page: 1, perPage: 20 });`,
