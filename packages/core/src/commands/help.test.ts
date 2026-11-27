@@ -9,6 +9,7 @@ const GLOBAL_FLAGS = `Global Flags:
       --automigrate            enable/disable auto migrations (default true)
       --dev                    enable dev mode, aka. printing logs and sql statements to the console
       --dir string             the Heybe data directory (default "./hb_data")
+      --hooksDir string        the directory with the user defined hooks and routes
       --migrationsDir string   the directory with the user defined migrations
 `;
 
@@ -95,6 +96,7 @@ Flags:
       --dev                    enable dev mode, aka. printing logs and sql statements to the console
       --dir string             the Heybe data directory (default "./hb_data")
   -h, --help                   help for heybe
+      --hooksDir string        the directory with the user defined hooks and routes
       --migrationsDir string   the directory with the user defined migrations
   -v, --version                version for heybe
 

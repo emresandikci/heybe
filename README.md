@@ -47,6 +47,7 @@ Images are published for `linux/amd64` and `linux/arm64` and tagged `latest`, `x
 | ---------------------- | ------------------------------ |
 | `/heybe/hb_data`       | Database, uploaded files, logs |
 | `/heybe/hb_migrations` | Your migrations                |
+| `/heybe/hb_hooks`      | Your hooks and routes          |
 
 Create a superuser from the command line:
 
@@ -56,9 +57,10 @@ docker exec <container> heybe superuser upsert <email> <password> --dir /heybe/h
 
 ## Extending
 
-Register hooks and routes as classes:
+Put TypeScript or JavaScript files in `hb_hooks`, next to `hb_data`. The binary loads them on start, in file name order, with no build step. Each file exports a function that takes the app:
 
 ```ts
+// hb_hooks/posts.ts
 import { RecordHooks, Route } from "@heybejs/core";
 
 class PostHooks extends RecordHooks {
@@ -79,15 +81,20 @@ class HelloRoute extends Route {
   }
 }
 
-app.register(PostHooks, HelloRoute);
+export default (app) => app.register(PostHooks, HelloRoute);
 ```
 
-Or as functions:
+Or register functions:
 
 ```ts
-app.onRecordCreate("posts", async (e) => e.next());
-app.get("/hello/{name}", (e) => e.json(200, { message: "Hello" }));
+// hb_hooks/hello.ts
+export default (app) => {
+  app.onRecordCreate("posts", async (e) => e.next());
+  app.get("/hello/{name}", (e) => e.json(200, { message: "Hello" }));
+};
 ```
+
+`--hooksDir` points to another directory. Migrations work the same way from `hb_migrations`.
 
 ## Queries
 

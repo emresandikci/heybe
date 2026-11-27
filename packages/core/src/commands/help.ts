@@ -37,6 +37,11 @@ export const GLOBAL_FLAG_HELP: FlagHelp[] = [
     type: "string",
     usage: "the directory with the user defined migrations",
   },
+  {
+    name: "hooksDir",
+    type: "string",
+    usage: "the directory with the user defined hooks and routes",
+  },
 ];
 
 const commandName = (cmd: CommandHelp) => cmd.use.split(" ")[0]!;

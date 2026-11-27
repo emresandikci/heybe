@@ -27,6 +27,7 @@ import {
   appFilesystem,
   localFilesystem,
 } from "./files/storage";
+import { loadHooksDir } from "./extend/hooks-dir";
 import { RecordHooks, bindRecordHooks } from "./extend/record-hooks";
 import { Cron } from "./extend/cron";
 import { Route } from "./extend/route";
@@ -69,6 +70,7 @@ export interface AppOptions {
   // embedded dashboard of a compiled binary, served instead of dashboardDir
   dashboardFiles?: ReadonlyMap<string, string>;
   migrationsDir?: string;
+  hooksDir?: string;
   automigrate?: boolean;
   now?: () => Date;
   timers?: Timers;
@@ -126,6 +128,7 @@ export interface App extends HookBinders, RouterMethods {
   dashboardDir: string;
   dashboardFiles: ReadonlyMap<string, string> | null;
   migrationsDir: string;
+  hooksDir: string;
   automigrate: boolean;
   migrations: MigrationDef[];
   records<N extends CollectionName>(name: N): RecordService<Collections[N]>;
@@ -171,6 +174,7 @@ function globalFlags(argv: string[]) {
       typeof values.migrationsDir === "string"
         ? values.migrationsDir
         : undefined,
+    hooksDir: typeof values.hooksDir === "string" ? values.hooksDir : undefined,
     automigrate: !automigrate
       ? undefined
       : raw === undefined || TRUE_VALUES.includes(raw)
@@ -419,6 +423,8 @@ export function createApp(opts: AppOptions = {}): App {
       opts.migrationsDir ??
       flags.migrationsDir ??
       join(dataDir, "..", "hb_migrations"),
+    hooksDir:
+      opts.hooksDir ?? flags.hooksDir ?? join(dataDir, "..", "hb_hooks"),
     automigrate: opts.automigrate ?? flags.automigrate ?? true,
     migrations: [],
     records: (name: string): RecordService<Record<string, unknown>> => {
@@ -468,6 +474,7 @@ export function createApp(opts: AppOptions = {}): App {
       if (app.automigrate) bindAutomigrate(app);
       let code = 0;
       try {
+        await loadHooksDir(app);
         await app.bootstrap();
         await command.run(
           argv.filter((_, i) => i !== route.index),

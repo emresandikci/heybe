@@ -20,7 +20,7 @@ COPY --from=build /src/packages/core/dist/heybe /usr/local/bin/heybe
 COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/heybe/
 USER heybe
 WORKDIR /heybe
-RUN mkdir hb_data hb_migrations
+RUN mkdir hb_data hb_migrations hb_hooks
 VOLUME /heybe/hb_data
 EXPOSE 8090
 ENTRYPOINT ["heybe"]
