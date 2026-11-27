@@ -65,9 +65,6 @@ describe("memoryStore", () => {
     const a = memoryStore();
     a.save(jwt({ type: "auth" }), rec("_superusers"));
     expect(a.isSuperuser).toBe(true);
-    const b = memoryStore();
-    b.save(jwt({ type: "auth", collectionId: "pbc_3142635823" }), null);
-    expect(b.isSuperuser).toBe(true);
     const e = memoryStore();
     e.save(jwt({ type: "auth", collectionId: "hbc_3142635823" }), null);
     expect(e.isSuperuser).toBe(true);
@@ -133,10 +130,10 @@ describe("localStorageStore", () => {
     expect(storage.data.has("k")).toBe(false);
   });
 
-  test("default key is heybe_auth", () => {
+  test("default key is hb_auth", () => {
     const storage = fakeStorage();
     localStorageStore(undefined, storage).save("t", null);
-    expect(storage.data.has("heybe_auth")).toBe(true);
+    expect(storage.data.has("hb_auth")).toBe(true);
   });
 
   test("corrupt storage JSON loads as empty", () => {

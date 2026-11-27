@@ -1,7 +1,6 @@
 import { tokenExpired, tokenPayload } from "./jwt.js";
 
-// Heybe's superusers collection id, and PocketBase's for a PocketBase server
-export const SUPERUSER_IDS = ["hbc_3142635823", "pbc_3142635823"];
+export const SUPERUSER_ID = "hbc_3142635823";
 
 export type AuthRecord = {
   id: string;
@@ -58,7 +57,7 @@ function createStore(
       return (
         payload.type === "auth" &&
         (record?.collectionName === "_superusers" ||
-          SUPERUSER_IDS.includes(payload.collectionId as string))
+          payload.collectionId === SUPERUSER_ID)
       );
     },
     save: (t, r) => update(t, r, true),
@@ -116,7 +115,7 @@ function safeStorage(get: () => StorageLike | undefined): StorageLike {
 }
 
 export function localStorageStore(
-  key = "heybe_auth",
+  key = "hb_auth",
   storage?: StorageLike,
   now: () => number = Date.now,
 ): AuthStore {
