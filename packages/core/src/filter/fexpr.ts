@@ -438,7 +438,7 @@ export function textReader(input: string): (start: number) => [string, number] {
   };
 }
 
-// Mirrors the syntax errors of github.com/ganigeorgiev/fexpr, which PocketBase reports in rule validation.
+// Syntax errors of the filter parser, reported in rule validation.
 export function filterSyntaxError(text: string): string | null {
   try {
     parse(text);

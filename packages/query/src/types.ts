@@ -21,7 +21,7 @@ type Operators<V> = {
   lte?: V | null;
   like?: string | null;
   notLike?: string | null;
-  /** On a multi-value field PocketBase's `tags?="x"` matches nothing; use `each: { anyEq: "x" }` (`tags:each?="x"`) instead. */
+  /** On a multi-value field the filter `tags?="x"` matches nothing; use `each: { anyEq: "x" }` (`tags:each?="x"`) instead. */
   anyEq?: V | null;
   anyNeq?: V | null;
   anyGt?: V | null;

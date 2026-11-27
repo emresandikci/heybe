@@ -251,7 +251,7 @@ export function usersScaffold(): Collection {
   return c;
 }
 
-// Same collections and order as a fresh PocketBase data directory.
+// The system collections of a fresh data directory, in creation order.
 export function bootstrapCollections(): Collection[] {
   return [
     systemBase(
