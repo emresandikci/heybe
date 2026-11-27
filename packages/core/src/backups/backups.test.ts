@@ -96,6 +96,9 @@ async function listing(base = dir): Promise<string[]> {
       const name = rel + e.name;
       if (name === LOCAL_TEMP_DIR) continue;
       if (e.isDirectory()) await walk(join(d, e.name), `${name}/`);
+      // a checkpoint on close moves pages from -wal into .db depending on the SQLite build,
+      // so database files are listed by name and their content is checked through records
+      else if (/\.db(-wal|-shm)?$/.test(name)) out.push(name);
       else out.push(`${name} ${(await stat(join(d, e.name))).size}`);
     }
   };

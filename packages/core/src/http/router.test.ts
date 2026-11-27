@@ -756,7 +756,9 @@ describe("request body", () => {
       process.env.TMPDIR = dir;
     });
     afterAll(async () => {
-      process.env.TMPDIR = savedTmp;
+      // assigning undefined would store the string "undefined"
+      if (savedTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = savedTmp;
       await rm(dir, { recursive: true, force: true });
     });
 
