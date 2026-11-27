@@ -79,4 +79,4 @@ jobs:
         with:
           name: heybe-${{ matrix.target }}
           path: packages/core/dist/${{ matrix.binary || 'heybe' }}
-          retention-days: 14
+          retention-days: 1
