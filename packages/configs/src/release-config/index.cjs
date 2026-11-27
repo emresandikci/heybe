@@ -9,11 +9,9 @@ module.exports = {
       {
         preset: "angular",
         releaseRules: [
-          // Pre-1.0: breaking changes bump minor so main stays on 0.x. Remove at 1.0.
-          { breaking: true, release: "minor" },
           { type: "feat", release: "minor" },
           { type: "fix", release: "patch" },
-          { type: "docs", release: "patch" },
+          { type: "docs", release: false },
           { type: "style", release: false },
           { type: "refactor", release: "patch" },
           { type: "perf", release: false },
