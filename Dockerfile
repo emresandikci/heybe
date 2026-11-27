@@ -17,6 +17,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --home-dir /heybe --shell /usr/sbin/nologin heybe
 COPY --from=build /src/packages/core/dist/heybe /usr/local/bin/heybe
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/heybe/
 USER heybe
 WORKDIR /heybe
 RUN mkdir heybe_data heybe_migrations
