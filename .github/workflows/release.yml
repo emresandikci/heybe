@@ -209,10 +209,11 @@ jobs:
         shell: bash
         run: |
           archive=heybe_${{ needs.release.outputs.version }}_${{ matrix.name }}.zip
+          cp ../../../LICENSE ../../../THIRD_PARTY_NOTICES.md .
           if [ "$RUNNER_OS" = "Windows" ]; then
-            powershell -Command "Compress-Archive -Path heybe.exe -DestinationPath $archive"
+            powershell -Command "Compress-Archive -Path heybe.exe,LICENSE,THIRD_PARTY_NOTICES.md -DestinationPath $archive"
           else
-            zip "$archive" heybe
+            zip "$archive" heybe LICENSE THIRD_PARTY_NOTICES.md
           fi
 
       - uses: actions/upload-artifact@v4

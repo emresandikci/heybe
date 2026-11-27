@@ -13,7 +13,8 @@
     "!src/**/*.fixture*.ts",
     "!src/import/pb-fixture.ts",
     "!src/**/testdata",
-    "ui/dist"
+    "ui/dist",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
     "bun": ">=1.4.4"
