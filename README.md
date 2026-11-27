@@ -4,9 +4,7 @@
 
 Heybe is an open source backend in a single binary, built with TypeScript on [Bun](https://bun.sh). It brings the feature set of [PocketBase](https://pocketbase.io) to the JavaScript ecosystem, so you can extend and read it without leaving TypeScript.
 
-> **Status:** the 1.x feature set is in place, but the packages are not published to npm yet and the API may still change.
-
-## Goals
+> **Status:** the npm packages and the Docker image are not published yet. Use the binaries from GitHub Releases.
 
 - **PocketBase compatible HTTP API** (based on v0.41.1), so existing apps can switch by changing the URL.
 - **Fast.** Bun, built-in SQLite, prepared statement caching and no heavy layers. Response times should be on par with PocketBase or better.
@@ -16,7 +14,30 @@ Heybe is an open source backend in a single binary, built with TypeScript on [Bu
 - **New dashboard** for collections, records and settings.
 - **Own storage format** with `heybe import` to migrate from an existing `pb_data`.
 
-## API
+## Quick start
+
+Get the archive for your OS and architecture (Linux, macOS, Windows) from [GitHub Releases](https://github.com/emresandikci/heybe/releases), unzip it and run it:
+
+```bash
+./heybe serve          # Windows: heybe.exe serve
+```
+
+On the first start Heybe prints a link to create your first superuser. The dashboard is at `http://127.0.0.1:8090/_/` and the REST API at `http://127.0.0.1:8090/api/`.
+
+`checksums.txt` on each release lists the SHA-256 of every archive. Like PocketBase, the Windows binary cannot restore a backup in place (restoring needs a process restart); restore on Linux, macOS or in Docker.
+
+`heybe serve example.com` serves HTTPS with a Let's Encrypt certificate (HTTP-01). Port 80 and 443 must be reachable from the internet. The certificate is cached in `<dir>/.autocert_cache`.
+
+## Features
+
+- **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybe/query`, superusers, password auth, settings.
+- **Relations and files:** expand, back-relations, indexes, view collections, batch API, file uploads, thumbnails, protected files, type generation.
+- **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
+- **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
+- **Operations:** rate limiting, logs, backups, S3, SQL API.
+- **Distribution:** `heybe import`, single binary.
+
+## Extending
 
 ### Hooks and routes
 
@@ -66,79 +87,6 @@ const posts = await heybe.records("posts").findMany({
 });
 ```
 
-## Features
-
-- **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybe/query`, superusers, password auth, settings.
-- **Relations and files:** expand, back-relations, indexes, view collections, batch API, file uploads, thumbnails, protected files, type generation.
-- **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
-- **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
-- **Operations:** rate limiting, logs, backups, S3, SQL API.
-- **Distribution:** `heybe import`, single binary.
-
-## Development
-
-Requirements: Node.js 24 and pnpm 10 for the tooling, Bun 1.4 for the runtime.
-
-```bash
-pnpm install
-```
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org). Direct `git commit` is blocked, use:
-
-```bash
-pnpm commit
-```
-
-Each package is versioned and released on its own with semantic-release when changes land on `main`.
-
-## Download
-
-Get the archive for your OS and architecture (Linux, macOS, Windows) from [GitHub Releases](https://github.com/emresandikci/heybe/releases), unzip it and run it:
-
-```bash
-./heybe serve          # Windows: heybe.exe serve
-```
-
-`checksums.txt` on each release lists the SHA-256 of every archive. Docker is the other option, see below. Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no Windows container image. Like PocketBase, the Windows binary cannot restore a backup in place (restoring needs a process restart); restore on Linux, macOS or in Docker.
-
-## Docker
-
-```bash
-docker run -d -p 8090:8090 -v heybe_data:/heybe/heybe_data ghcr.io/emresandikci/heybe
-```
-
-The dashboard is at `http://localhost:8090/_/`. Data lives in `/heybe/heybe_data`. User migrations are read from `/heybe/heybe_migrations`, mount your directory there:
-
-```bash
-docker run -d -p 8090:8090 \
-  -v heybe_data:/heybe/heybe_data \
-  -v ./heybe_migrations:/heybe/heybe_migrations \
-  ghcr.io/emresandikci/heybe
-```
-
-Create a superuser in a running container:
-
-```bash
-docker exec <container> heybe superuser upsert <email> <password> --dir /heybe/heybe_data
-```
-
-The image (linux/amd64 and linux/arm64) is published to GHCR from every `@heybe/core` release, tagged `x.y.z`, `x.y`, `x` and `latest`. Build it yourself with `docker build -t heybe .`.
-
-## Single binary
-
-Build one executable that embeds the dashboard and the sharp native files (needs Bun 1.4 and a prior `pnpm install`):
-
-```bash
-cd packages/core
-bun scripts/build-binary.ts          # writes dist/heybe for this machine
-bun scripts/smoke-binary.ts --binary dist/heybe
-./dist/heybe serve
-```
-
-`--target bun-linux-x64` (or `bun-linux-arm64`, `bun-darwin-arm64`) builds for another platform; build on a matching machine so sharp's native package fits. The thumbnail libraries are extracted to the temp directory on first use.
-
-`heybe serve example.com` serves HTTPS with a Let's Encrypt certificate (HTTP-01). Port 80 and 443 must be reachable from the internet. The certificate is cached in `<dir>/.autocert_cache`.
-
 ## Migrating from PocketBase
 
 Stop PocketBase, then import its data directory into a fresh Heybe one:
@@ -151,44 +99,15 @@ Imported: collections (with their rules, indexes and auth token secrets, so issu
 
 Collection ids are rewritten to Heybe's prefix: `pbc_<n>` becomes `hbc_<n>` and `_pb_users_auth_` becomes `_hb_users_auth_`, in collections, relation fields, the auth system tables and the storage directories. Code or migrations that hardcode a PocketBase collection id need the new one. Tokens PocketBase issued still carry the old id and are still accepted.
 
-## npm
-
-The packages are not published yet. Once they are, `@heybe/core` runs on Bun only. Install it globally to get the `heybe` command:
-
-```bash
-bun add -g @heybe/core
-heybe serve
-```
-
-To use it as a library:
-
-```bash
-bun add @heybe/core
-```
-
 ## Dashboard
 
-The superuser panel lives in `apps/dashboard` (React, Vite) and is served by `heybe serve` at `/_/` once it is built. It talks to the server only through `@heybe/client`.
-
-```bash
-pnpm --filter @heybe/dashboard build
-```
-
-The build writes `packages/core/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
-
-It covers collections (with a field, rule and index editor), records, logs, backups and all settings. OAuth2 providers of an auth collection are managed under Settings > Auth providers. The records filter, the logs filter, API rules and the SQL fields (view query, indexes, SQL page) autocomplete fields, operators, modifiers, macros and `@request` params as you type.
+The superuser panel is served at `/_/`. It covers collections (with a field, rule and index editor), records, logs, backups and all settings. OAuth2 providers of an auth collection are managed under Settings > Auth providers. The records filter, the logs filter, API rules and the SQL fields (view query, indexes, SQL page) autocomplete fields, operators, modifiers, macros and `@request` params as you type.
 
 Record previews block remote images (the dashboard CSP allows none, like PocketBase).
 
 Email templates are written in MJML and compiled in the browser (`mjml-browser`, loaded on demand). The server stores the HTML with the MJML source embedded as a trailing `<!-- heybe:mjml:<base64> -->` comment.
 
-Tests:
-
-```bash
-pnpm --filter @heybe/dashboard test
-pnpm --filter @heybe/dashboard exec playwright install chromium   # once
-pnpm test:e2e
-```
+### Extensions
 
 Extensions add pages and links to the panel. Register a directory in `onServe` and put a `main.js` in it:
 
@@ -229,8 +148,38 @@ window.heybe.dashboard.addPage({
 
 Use `@heybe/ui` for styled components (buttons, fields, `FileField`, `Select`, `Checkbox`, `Switch`, `Table`, `Dialog`, `Disclosure`, `Badge`, `CodeArea`, toasts and more) and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybe/ui/style.css` for compiled styles or `@heybe/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
 
+## Docker
+
+The image is not published yet. Build it from the repository:
+
+```bash
+docker build -t heybe .
+docker run -d -p 8090:8090 -v heybe_data:/heybe/heybe_data heybe
+```
+
+Data lives in `/heybe/heybe_data`. User migrations are read from `/heybe/heybe_migrations`, mount your directory there with `-v ./heybe_migrations:/heybe/heybe_migrations`. Create a superuser in a running container:
+
+```bash
+docker exec <container> heybe superuser upsert <email> <password> --dir /heybe/heybe_data
+```
+
+Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no Windows container image.
+
+## npm
+
+The packages are not published yet. Once they are, `@heybe/core` runs on Bun only. Install it globally to get the `heybe` command, or add it to a project to use it as a library:
+
+```bash
+bun add -g @heybe/core
+bun add @heybe/core
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, building the binary and running the tests.
+
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Parts of Heybe are ported from PocketBase, fexpr and mimetype, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Heybe is an independent project and is not affiliated with or endorsed by PocketBase or its author.
