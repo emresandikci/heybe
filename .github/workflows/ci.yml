@@ -36,4 +36,6 @@ jobs:
 
       - run: pnpm build
 
+      # a hanging test stops here and the log is still uploaded
       - run: pnpm test
+        timeout-minutes: 10
