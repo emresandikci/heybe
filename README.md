@@ -12,6 +12,8 @@ Heybe is an open source backend in a single binary: database, auth, file storage
 
 Throughput is close to PocketBase and tail latency is lower in our [benchmarks](docs/benchmarks/phase-9.md).
 
+Documentation: https://emresandikci.github.io/heybe/
+
 > The npm packages are not published yet. Use the binaries or the Docker image.
 
 ## Quick start

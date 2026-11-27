@@ -15,3 +15,4 @@ apps/dashboard/e2e/.state.json
 hb_data/
 packages/core/hb-env.d.ts
 .superpowers/
+doc_build/
