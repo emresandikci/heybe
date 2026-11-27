@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { useFieldError } from "../../app/errors";
-import { Button, CodeArea, useConfirm } from "@heybe/ui";
+import { Button, CodeArea, useConfirm } from "@heybejs/ui";
 import { compileMjml, readSource, stripSource, withSource } from "./mjml";
 import { mjmlStarter, type TemplateKind } from "./mjml-starters";
 import type { EmailTemplate } from "../editor-state";

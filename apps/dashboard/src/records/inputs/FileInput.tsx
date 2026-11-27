@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useClient } from "../../app/context";
-import { Button, FileField } from "@heybe/ui";
+import { Button, FileField } from "@heybejs/ui";
 import { IMAGE, list, useFileToken, type CellField } from "../cell";
 import { FilePreview } from "../FilePreview";
 import { isMulti, type FileValue } from "../record-form";

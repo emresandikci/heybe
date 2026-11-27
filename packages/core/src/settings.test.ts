@@ -225,7 +225,7 @@ describe("settings", () => {
   });
 
   test("settings survive reopening the database", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-settings-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-settings-"));
     const first = createApp({ dir });
     await first.settings.update({ meta: { appName: "Kept" } } as never);
     first.close();

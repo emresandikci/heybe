@@ -10,7 +10,7 @@ function token(): string {
   };
   const entry = origins
     .flatMap((o) => o.localStorage)
-    .find((e) => e.name === "heybe_superuser_auth");
+    .find((e) => e.name === "hb_superuser_auth");
   if (!entry) throw new Error("No superuser session in the storage state");
   return JSON.parse(entry.value).token;
 }

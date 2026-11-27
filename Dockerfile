@@ -17,10 +17,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --home-dir /heybe --shell /usr/sbin/nologin heybe
 COPY --from=build /src/packages/core/dist/heybe /usr/local/bin/heybe
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/doc/heybe/
 USER heybe
 WORKDIR /heybe
-RUN mkdir heybe_data heybe_migrations
-VOLUME /heybe/heybe_data
+RUN mkdir hb_data hb_migrations hb_hooks
+VOLUME /heybe/hb_data
 EXPOSE 8090
 ENTRYPOINT ["heybe"]
-CMD ["serve", "--http", "0.0.0.0:8090", "--dir", "/heybe/heybe_data"]
+CMD ["serve", "--http", "0.0.0.0:8090", "--dir", "/heybe/hb_data"]

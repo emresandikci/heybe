@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export type ThemeChoice = "light" | "dark" | "system";
 
-export const THEME_KEY = "heybe_theme";
+export const THEME_KEY = "hb_theme";
 
 export function resolveTheme(
   choice: ThemeChoice,

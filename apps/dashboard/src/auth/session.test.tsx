@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { memoryStore } from "@heybe/client";
+import { memoryStore } from "@heybejs/client";
 import { MutationObserver } from "@tanstack/react-query";
 import { screen } from "@testing-library/react";
 import { createDashboardClient } from "../app/client";

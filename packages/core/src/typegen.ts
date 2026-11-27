@@ -61,9 +61,9 @@ export function generateTypes(collections: Collection[]): string {
     c.fields.some((f) => f.type === "relation" && !f.hidden),
   );
   const header = usesRelation
-    ? 'import type { Relation } from "@heybe/query";\n\n'
+    ? 'import type { Relation } from "@heybejs/query";\n\n'
     : "";
-  return `${header}declare module "@heybe/query" {\n  interface Collections {\n${body}\n  }\n}\nexport {};\n`;
+  return `${header}declare module "@heybejs/query" {\n  interface Collections {\n${body}\n  }\n}\nexport {};\n`;
 }
 
 export function writeTypes(app: App, out: string) {

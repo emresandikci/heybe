@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
-import { Button, TextField } from "@heybe/ui";
+import { Button, TextField } from "@heybejs/ui";
 import { AuthCard } from "./AuthCard";
 
 export function RequestResetPage() {

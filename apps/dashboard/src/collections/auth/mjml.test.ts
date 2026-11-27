@@ -5,11 +5,11 @@ import { TEMPLATE_KINDS, mjmlStarter } from "./mjml-starters";
 test("the MJML source round trips through the marker, unicode included", () => {
   const source = "<mjml><mj-body>Merhaba ğüşİ 👋</mj-body></mjml>";
   const body = withSource("<p>html</p>", source);
-  expect(body).toMatch(/\n<!-- heybe:mjml:[A-Za-z0-9+/=]+ -->$/);
+  expect(body).toMatch(/\n<!-- hb:mjml:[A-Za-z0-9+/=]+ -->$/);
   expect(readSource(body)).toBe(source);
   expect(stripSource(body)).toBe("<p>html</p>");
   expect(readSource("<p>plain</p>")).toBeNull();
-  expect(readSource("<p>x</p>\n<!-- heybe:mjml:%%% -->")).toBeNull();
+  expect(readSource("<p>x</p>\n<!-- hb:mjml:%%% -->")).toBeNull();
 });
 
 test("every starter compiles and keeps its placeholders, in text and in href", async () => {

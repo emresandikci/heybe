@@ -1,4 +1,4 @@
-import type { CollectionModel, WriteData } from "@heybe/client";
+import type { CollectionModel, WriteData } from "@heybejs/client";
 import { useForm } from "@tanstack/react-form";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -14,7 +14,7 @@ import {
   useConfirm,
   useToast,
   type MenuItem,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import { formatDate } from "../app/format";
 import { useAuthActions } from "./AuthActions";
 import type { CellField } from "./cell";

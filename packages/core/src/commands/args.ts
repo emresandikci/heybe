@@ -4,6 +4,7 @@ export const GLOBAL_OPTIONS = {
   dir: { type: "string" },
   dev: { type: "boolean" },
   migrationsDir: { type: "string" },
+  hooksDir: { type: "string" },
   automigrate: { type: "boolean" },
 } as const;
 

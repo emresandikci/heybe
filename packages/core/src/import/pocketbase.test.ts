@@ -155,7 +155,7 @@ let pbDir: string;
 
 beforeEach(() => {
   app = testApp({ argv: [] });
-  dir = mkdtempSync(join(tmpdir(), "heybe-import-"));
+  dir = mkdtempSync(join(tmpdir(), "hb-import-"));
   pbDir = join(dir, "pb_data");
 });
 
@@ -419,7 +419,7 @@ describe("importPocketBase", () => {
     }
   });
 
-  test("refuses a non-empty Heybe dir, a missing data.db, a non-PB db and encrypted settings without a key, leaving the Heybe dir unchanged", async () => {
+  test("refuses a non-empty Heybe dir, a missing data.db, a non-PB db, a pre-v0.23 db and encrypted settings without a key, leaving the Heybe dir unchanged", async () => {
     const snapshot = () => ({
       collections: raw("SELECT * FROM _collections ORDER BY id"),
       params: raw("SELECT * FROM _params"),
@@ -452,6 +452,14 @@ describe("importPocketBase", () => {
     otherDb.close();
     expect(await failure(other)).toBe(
       `"${other}" is not a PocketBase data directory: _collections is missing`,
+    );
+    const old = join(dir, "old");
+    mkdirSync(old);
+    const oldDb = new Database(join(old, "data.db"));
+    oldDb.run("CREATE TABLE _collections (id, name, schema)");
+    oldDb.close();
+    expect(await failure(old)).toBe(
+      `"${old}" was created by PocketBase older than v0.23, which is not supported: start PocketBase v0.23 or newer on it once to upgrade it, then import`,
     );
     expect(await failure(pbDir)).toBe(
       "the PocketBase settings are encrypted, pass --encryptionEnv with the name of the variable that holds the key",

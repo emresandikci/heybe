@@ -1,11 +1,11 @@
-import { HeybeError } from "@heybe/client";
+import { HeybeError } from "@heybejs/client";
 import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, errorMessage } from "../app/errors";
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 import { AuthCard, Field } from "./AuthCard";
 import { safeRedirect } from "./session";
 

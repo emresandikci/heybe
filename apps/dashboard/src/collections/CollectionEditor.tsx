@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-form";
@@ -24,7 +24,7 @@ import {
   TextField,
   useConfirm,
   useToast,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import { QueryStatus } from "../settings/QueryStatus";
 import { ChangesDialog } from "./ChangesDialog";
 import {

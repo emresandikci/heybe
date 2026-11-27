@@ -1,4 +1,4 @@
-import { tokenPayload } from "@heybe/client";
+import { tokenPayload } from "@heybejs/client";
 
 export function collectionIdOf(token: string): string | null {
   const id = tokenPayload(token).collectionId;

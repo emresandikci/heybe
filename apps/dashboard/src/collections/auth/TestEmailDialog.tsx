@@ -2,7 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../../app/errors";
-import { Button, Dialog, TextField, useToast } from "@heybe/ui";
+import { Button, Dialog, TextField, useToast } from "@heybejs/ui";
 
 export function TestEmailDialog({
   collection,

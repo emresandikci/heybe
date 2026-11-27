@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { Link, useParams } from "@tanstack/react-router";
 import {
   ChevronDown,
@@ -15,7 +15,7 @@ import {
 import { createContext, useContext, useId, useState } from "react";
 import { useCollections } from "../app/queries";
 import { useHideControls } from "../settings/use-settings";
-import { Button, inputClass } from "@heybe/ui";
+import { Button, inputClass } from "@heybejs/ui";
 import { OverviewDialog } from "./OverviewDialog";
 
 export const EditorContext = createContext<

@@ -1,4 +1,4 @@
-import type { SqlResult } from "@heybe/client";
+import type { SqlResult } from "@heybejs/client";
 import { useForm } from "@tanstack/react-form";
 import { useState } from "react";
 import { useClient } from "../app/context";
@@ -6,7 +6,7 @@ import { errorMessage } from "../app/errors";
 import { useCollections, useSqlSchema } from "../app/queries";
 import { QueryStatus } from "./QueryStatus";
 import { SettingsPage } from "./SettingsPage";
-import { Button, CodeArea, Table, Td, Th, useConfirm } from "@heybe/ui";
+import { Button, CodeArea, Table, Td, Th, useConfirm } from "@heybejs/ui";
 
 const CODE_ONLY =
   /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|--[^\n]*|\/\*[\s\S]*?\*\//g;

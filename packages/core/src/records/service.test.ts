@@ -600,7 +600,7 @@ describe("auth records", () => {
 
 describe("concurrency", () => {
   test("50 parallel creates on a file-backed db all succeed", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-"));
     const file = testApp({ dir, now });
     try {
       await file.collections.save({
@@ -638,7 +638,7 @@ describe("file uploads", () => {
     names.map((n) => join(disk.collections.find(c)!.id, r.id as string, n));
 
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), "heybe-"));
+    dir = mkdtempSync(join(tmpdir(), "hb-"));
     disk = testApp({ dir, now });
     await disk.collections.save({
       name: "docs",

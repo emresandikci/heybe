@@ -1,4 +1,4 @@
-import type { HeybeClient } from "@heybe/client";
+import type { HeybeClient } from "@heybejs/client";
 
 export interface ExtensionPage {
   path: string;

@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { NumberField } from "@heybe/ui";
+import { NumberField } from "@heybejs/ui";
 
 export type GeoValue = { lon: string; lat: string };
 

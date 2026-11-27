@@ -11,7 +11,7 @@ import { SearchBar } from "../records/SearchBar";
 const suggest = createSuggest(logsSchema);
 import { QueryStatus } from "../settings/QueryStatus";
 import { useSettings } from "../settings/use-settings";
-import { Button, Checkbox, Table, Td, Th } from "@heybe/ui";
+import { Button, Checkbox, Table, Td, Th } from "@heybejs/ui";
 import { LogDialog } from "./LogDialog";
 import { LogsChart } from "./LogsChart";
 import { LogsSettingsDialog } from "./LogsSettingsDialog";

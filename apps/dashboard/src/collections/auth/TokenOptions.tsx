@@ -1,4 +1,4 @@
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 import { randomSecret } from "../oauth2-providers";
 import { NumOpt, AuthSection, groupClass, type OptCtx } from "./opts";
 

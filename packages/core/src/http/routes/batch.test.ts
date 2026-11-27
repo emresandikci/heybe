@@ -34,7 +34,7 @@ let time = Date.parse("2026-01-01T00:00:00Z");
 let step = 0;
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), "heybe-batch-"));
+  dir = mkdtempSync(join(tmpdir(), "hb-batch-"));
   step = 0;
   app = testApp({ dir, now: () => new Date((time += step)) });
   await app.settings.update({

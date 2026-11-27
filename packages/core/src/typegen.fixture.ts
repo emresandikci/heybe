@@ -1,6 +1,6 @@
-import type { Relation } from "@heybe/query";
+import type { Relation } from "@heybejs/query";
 
-declare module "@heybe/query" {
+declare module "@heybejs/query" {
   interface Collections {
     fx_posts: {
       id: string;

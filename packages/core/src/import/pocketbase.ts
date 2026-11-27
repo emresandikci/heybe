@@ -141,7 +141,7 @@ export async function importPocketBase(
     new Error(`"${pbDataDir}" is not a PocketBase data directory: ${reason}`);
   const dbPath = join(pbDataDir, "data.db");
   if (!existsSync(dbPath)) throw notPb("data.db is missing");
-  const temp = mkdtempSync(join(tmpdir(), "heybe-import-"));
+  const temp = mkdtempSync(join(tmpdir(), "hb-import-"));
   let pb: Database | undefined;
   try {
     copyFileSync(dbPath, join(temp, "data.db"));
@@ -153,6 +153,14 @@ export async function importPocketBase(
       .query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
       .get("_collections");
     if (!hasCollections) throw notPb("_collections is missing");
+    const hasFields = pb
+      .query<{ name: string }, []>(tableInfo("_collections"))
+      .all()
+      .some((c) => c.name === "fields");
+    if (!hasFields)
+      throw new Error(
+        `"${pbDataDir}" was created by PocketBase older than v0.23, which is not supported: start PocketBase v0.23 or newer on it once to upgrade it, then import`,
+      );
     const storageDir = join(app.dataDir, "storage");
     assertFresh(app, storageDir);
     const settings = readSettings(pb, opts.encryptionKey);

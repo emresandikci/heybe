@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { Checkbox, Select } from "@heybe/ui";
+import { Checkbox, Select } from "@heybejs/ui";
 
 export function SelectInput({
   name,

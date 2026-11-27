@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import {
   FIELD_TYPES,
   fieldDefaults,

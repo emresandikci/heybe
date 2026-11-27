@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import type { SettingsModel } from "../settings/use-settings";
 
 const field = (name: string, type: string, extra: object = {}) => ({

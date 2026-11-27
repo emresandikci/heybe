@@ -33,7 +33,7 @@ function setup(opts: ClientOptions = {}) {
   const lastPost = () => JSON.parse(posts().at(-1)!.body as string);
   const stream = () => streams.at(-1)!;
   const connect = async (id: string) => {
-    stream().push(`id:${id}\nevent:PB_CONNECT\ndata:{"clientId":"${id}"}\n\n`);
+    stream().push(`id:${id}\nevent:HB_CONNECT\ndata:{"clientId":"${id}"}\n\n`);
     await env.advance(0);
   };
   const emit = async (event: string, data: string) => {
@@ -65,14 +65,14 @@ function setup(opts: ClientOptions = {}) {
 }
 
 describe("realtime", () => {
-  test("subscribe connects, reads PB_CONNECT and posts the subscriptions", async () => {
+  test("subscribe connects, reads HB_CONNECT and posts the subscriptions", async () => {
     const t = setup();
     const connected: unknown[] = [];
     let resolved = false;
     const pending = t.client.realtime
       .subscribe("posts/*", () => {})
       .then(() => (resolved = true));
-    void t.client.realtime.subscribe("PB_CONNECT", (e) => connected.push(e));
+    void t.client.realtime.subscribe("HB_CONNECT", (e) => connected.push(e));
     await t.env.advance(0);
     expect(t.gets()).toHaveLength(1);
     expect(t.gets()[0]!.headers.get("Accept")).toBe("text/event-stream");
@@ -85,7 +85,7 @@ describe("realtime", () => {
     expect(t.posts()[0]!.url).toBe("http://a/api/realtime");
     expect(t.lastPost()).toEqual({
       clientId: "c1",
-      subscriptions: ["posts/*", "PB_CONNECT"],
+      subscriptions: ["posts/*", "HB_CONNECT"],
     });
     expect(t.client.realtime.clientId).toBe("c1");
     expect(t.client.realtime.isConnected).toBe(true);

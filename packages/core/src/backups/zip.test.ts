@@ -27,7 +27,7 @@ let src: string;
 let dest: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "heybe-zip-"));
+  dir = await mkdtemp(join(tmpdir(), "hb-zip-"));
   src = join(dir, "src");
   dest = join(dir, "dest");
   await mkdir(src);

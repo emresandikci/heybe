@@ -95,7 +95,7 @@ describe("text", () => {
     [{ max: 2 }, "çğ", null],
     [{ pattern: "^\\d+$" }, "abc", "validation_invalid_format"],
     [{ pattern: "^\\d+$" }, "123", null],
-  ])("validate %p %p", (opts, value, expected) => {
+  ])("validate %p, case %#", (opts, value, expected) => {
     expect(code("text", opts, value)).toBe(expected);
   });
 
@@ -519,7 +519,7 @@ describe("json", () => {
     [{ maxSize: 6 }, "aaaa", null],
     [{}, "a".repeat(1 << 20), "validation_json_size_limit"],
     [{}, { a: 1 }, null],
-  ])("validate %p %p", (opts, value, expected) => {
+  ])("validate %p, case %#", (opts, value, expected) => {
     expect(code("json", opts, value)).toBe(expected);
   });
 
@@ -945,7 +945,7 @@ describe("editor", () => {
     [{ maxSize: 5 }, "abcdef", "validation_content_size_limit"],
     [{ maxSize: 5 }, "abcde", null],
     [{ maxSize: 5 }, "\u00e9\u00e9\u00e9", "validation_content_size_limit"],
-  ])("validate %p %p", (opts, value, expected) => {
+  ])("validate %p, case %#", (opts, value, expected) => {
     expect(code("editor", opts, value)).toBe(expected);
   });
 

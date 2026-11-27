@@ -1,6 +1,6 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useState } from "react";
-import { Button } from "@heybe/ui";
+import { Button } from "@heybejs/ui";
 import type { TemplateKind } from "./mjml-starters";
 import { TemplateBody } from "./TemplateBody";
 import { TestEmailDialog } from "./TestEmailDialog";

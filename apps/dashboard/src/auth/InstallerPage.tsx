@@ -1,10 +1,10 @@
-import { tokenExpired } from "@heybe/client";
+import { tokenExpired } from "@heybejs/client";
 import { useForm } from "@tanstack/react-form";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors } from "../app/errors";
-import { Button, FileField } from "@heybe/ui";
+import { Button, FileField } from "@heybejs/ui";
 import { AuthCard, Field } from "./AuthCard";
 
 export function InstallerPage() {

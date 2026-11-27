@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useState } from "react";
@@ -6,7 +6,7 @@ import { useClient } from "../app/context";
 import { filterError } from "../app/errors";
 import { keys, useCollections } from "../app/queries";
 import { Inbox, SearchX, Settings } from "lucide-react";
-import { Button, EmptyState, Tooltip, useConfirm, useToast } from "@heybe/ui";
+import { Button, EmptyState, Tooltip, useConfirm, useToast } from "@heybejs/ui";
 import { Page } from "../layout/Page";
 import { ApiPreview } from "../collections/ApiPreview";
 import { useOpenEditor } from "../collections/CollectionsSidebar";
@@ -54,7 +54,7 @@ export function RecordsPage({ collection }: { collection: CollectionModel }) {
   const navigate = useNavigate();
   const search: RecordsSearch = useSearch({ strict: false });
   const isView = collection.type === "view";
-  const columnsKey = `heybe_columns_${collection.id}`;
+  const columnsKey = `hb_columns_${collection.id}`;
   const [hidden, setHidden] = useState(() => readList(columnsKey));
   const [selected, setSelected] = useState(new Set<string>());
   const [prefill, setPrefill] = useState<

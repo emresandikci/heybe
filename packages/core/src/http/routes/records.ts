@@ -1,4 +1,4 @@
-import { type Expr, type ListResult } from "@heybe/query";
+import { type Expr, type ListResult } from "@heybejs/query";
 import { verifyPassword } from "../../auth/password";
 import type { App } from "../../app";
 import type { Collection } from "../../collections/model";

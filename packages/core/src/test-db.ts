@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { type Db, openDb } from "./db";
 
 export function tempDb(): Db {
-  const dir = mkdtempSync(join(tmpdir(), "heybe-db-"));
+  const dir = mkdtempSync(join(tmpdir(), "hb-db-"));
   const db = openDb(join(dir, "data.db"));
   const close = db.close;
   db.close = () => {

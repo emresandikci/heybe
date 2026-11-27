@@ -1,4 +1,4 @@
-import type { ListResult } from "@heybe/query";
+import type { ListResult } from "@heybejs/query";
 import type { App } from "../app";
 import type { AuthUser, Provider } from "../auth/oauth2/flow";
 import type { Collection, Field } from "../collections/model";

@@ -4,7 +4,7 @@ Heybe includes code ported from these projects. The ported code has since diverg
 
 ## PocketBase
 
-https://github.com/pocketbase/pocketbase
+https://ganigeorgiev.com/pocketbase/pocketbase
 
 Ported from v0.41.1.
 
@@ -30,7 +30,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 ## fexpr
 
-https://github.com/ganigeorgiev/fexpr
+https://ganigeorgiev.com/fexpr
 
 Ported from v0.6.0.
 

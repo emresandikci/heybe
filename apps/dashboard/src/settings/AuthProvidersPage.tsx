@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PowerOff, Settings as GearIcon } from "lucide-react";
 import { useState } from "react";
@@ -10,7 +10,7 @@ import {
   Switch,
   useConfirm,
   useToast,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors } from "../app/errors";
 import { keys, useCollections } from "../app/queries";

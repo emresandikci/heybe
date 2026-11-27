@@ -10,7 +10,7 @@ export type {
   Relation,
   Where,
   WithExpand,
-} from "@heybe/query";
+} from "@heybejs/query";
 export { HeybeError } from "./error.js";
 export type { RawListArgs } from "./raw.js";
 export type { RequestOptions, SendOptions } from "./send.js";

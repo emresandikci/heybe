@@ -1,5 +1,5 @@
 import { filterSyntaxError, textReader } from "./fexpr";
-import type { Expr, Op, Operand } from "@heybe/query";
+import type { Expr, Op, Operand } from "@heybejs/query";
 
 export class FilterError extends Error {}
 

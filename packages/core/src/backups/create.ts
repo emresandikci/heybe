@@ -9,7 +9,7 @@ import { type ZipWriter, createZipWriter } from "./zip";
 // Port of PB core/backup.go and core/backup_create.go.
 
 export const LOCAL_BACKUPS_DIR = "backups";
-export const LOCAL_TEMP_DIR = ".heybe_temp_to_delete";
+export const LOCAL_TEMP_DIR = ".hb_temp_to_delete";
 export const BACKUP_EXCLUDE = [LOCAL_BACKUPS_DIR, LOCAL_TEMP_DIR, "lost+found"];
 
 // PB inflector.Snakecase

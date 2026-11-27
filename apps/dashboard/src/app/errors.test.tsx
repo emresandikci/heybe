@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { render, screen } from "@testing-library/react";
-import { HeybeError } from "@heybe/client";
+import { HeybeError } from "@heybejs/client";
 import {
   ErrorScope,
   UnclaimedErrors,

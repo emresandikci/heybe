@@ -1,6 +1,6 @@
 import { errorMessage } from "../../app/errors";
 
-const MARKER = /\n?<!-- heybe:mjml:([A-Za-z0-9+/=]*) -->\s*$/;
+const MARKER = /\n?<!-- hb:mjml:([A-Za-z0-9+/=]*) -->\s*$/;
 
 function encode(text: string): string {
   let binary = "";
@@ -15,7 +15,7 @@ function decode(base64: string): string {
 }
 
 export function withSource(html: string, source: string): string {
-  return `${html}\n<!-- heybe:mjml:${encode(source)} -->`;
+  return `${html}\n<!-- hb:mjml:${encode(source)} -->`;
 }
 
 export function readSource(body: string): string | null {

@@ -139,7 +139,7 @@ const settings = async (patch: (t: Target) => Json) => {
 };
 
 beforeAll(async () => {
-  const dir = await mkdtemp(join(tmpdir(), "heybe-backups-contract-"));
+  const dir = await mkdtemp(join(tmpdir(), "hb-backups-contract-"));
   try {
     await writeFile(join(dir, "entry.txt"), "hello");
     const writer = await createZipWriter(join(dir, "up.zip"));

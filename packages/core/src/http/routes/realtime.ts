@@ -77,10 +77,10 @@ async function realtimeConnect(e: RequestEvent): Promise<void> {
         ce.stream(200, "text/event-stream", body);
         opened();
         try {
-          await send({
-            name: "PB_CONNECT",
-            data: `{"clientId":"${client.id}"}`,
-          });
+          const data = `{"clientId":"${client.id}"}`;
+          // PB_CONNECT first, for apps that come from PocketBase with its SDK
+          await send({ name: "PB_CONNECT", data });
+          await send({ name: "HB_CONNECT", data });
         } catch {
           return;
         }

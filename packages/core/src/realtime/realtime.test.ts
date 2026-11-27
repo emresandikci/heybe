@@ -54,8 +54,16 @@ async function connect() {
     }
   };
   const first = (await frame())!;
+  const own = (await frame())!;
   const id = /^id:(\w+)\n/.exec(first)![1]!;
-  return { reader, first, id, client: app.realtime.clientById(id)!, frame };
+  return {
+    reader,
+    first,
+    own,
+    id,
+    client: app.realtime.clientById(id)!,
+    frame,
+  };
 }
 
 // sends a message and waits for the loop to write it and reset its idle timer
@@ -115,6 +123,9 @@ describe("connection", () => {
     const conn = await connect();
     expect(conn.first).toBe(
       `id:${conn.id}\nevent:PB_CONNECT\ndata:{"clientId":"${conn.id}"}\n\n`,
+    );
+    expect(conn.own).toBe(
+      `id:${conn.id}\nevent:HB_CONNECT\ndata:{"clientId":"${conn.id}"}\n\n`,
     );
     expect(conn.client.get(IP_KEY)).toBe("9.9.9.9");
     conn.client.send({ name: "posts/*", data: '{"a":1}' });

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useClient } from "../app/context";
 import { errorMessage } from "../app/errors";
 import { keys } from "../app/queries";
-import { Button, Table, Td, Th, useToast } from "@heybe/ui";
+import { Button, Table, Td, Th, useToast } from "@heybejs/ui";
 import { describeCron } from "./cron-text";
 import { QueryStatus } from "./QueryStatus";
 import { SettingsPage } from "./SettingsPage";

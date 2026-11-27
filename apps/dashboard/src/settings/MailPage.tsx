@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useClient } from "../app/context";
 import { ErrorScope, UnclaimedErrors, useFieldError } from "../app/errors";
 import { useCollections } from "../app/queries";
-import { Button, Dialog, Select, TextField, useToast } from "@heybe/ui";
+import { Button, Dialog, Select, TextField, useToast } from "@heybejs/ui";
 import {
   DependentFields,
   EnabledBadge,

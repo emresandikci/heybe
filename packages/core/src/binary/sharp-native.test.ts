@@ -12,7 +12,7 @@ let root: string;
 let files: Map<string, string>;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(join(tmpdir(), "heybe-sharp-native-"));
+  dir = fs.mkdtempSync(join(tmpdir(), "hb-sharp-native-"));
   root = join(dir, "extract");
   files = new Map([
     [ENTRY, join(dir, "addon")],
@@ -45,7 +45,7 @@ test("the default root is per user, version and platform under the temp dir", ()
     expect(top).toBe(
       join(
         tmpdir(),
-        `heybe-sharp-${process.getuid!()}`,
+        `hb-sharp-${process.getuid!()}`,
         `${version}-${process.platform}-${process.arch}`,
       ),
     );

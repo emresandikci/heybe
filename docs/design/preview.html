@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Heybe design system preview</title>
+    <style>
+      /* Current: the values of packages/ui/src/theme.css */
+      .scheme-current {
+        --bg: #eef0f4;
+        --surface: #ffffff;
+        --raised: #ffffff;
+        --glass: rgba(255, 255, 255, 0.55);
+        --line: rgba(15, 15, 30, 0.08);
+        --field: #f5f6f8;
+        --field-line: #84848f;
+        --text: #15151a;
+        --muted: #61616c;
+        --hover: rgba(15, 15, 30, 0.05);
+        --accent: #1b7b9b;
+        --accent-hover: #166a86;
+        --accent-fg: #ffffff;
+        --accent-text: #1b7b9b;
+        --danger: #d6393f;
+        --danger-text: #a82a30;
+        --success-text: #14683a;
+        --warning-bg: #fdf3dc;
+        --warning-line: #e6c978;
+        --warning-text: #70440a;
+        --radius: 7px;
+        --radius-control: 8px;
+        --blur: 20px;
+        --font: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      [data-theme="dark"] .scheme-current {
+        --bg: #0b0b0e;
+        --surface: #121216;
+        --raised: #1a1a20;
+        --glass: rgba(255, 255, 255, 0.04);
+        --line: rgba(255, 255, 255, 0.07);
+        --field: #1d1d23;
+        --field-line: #6e6e79;
+        --text: #ececf1;
+        --muted: #9a9aa6;
+        --hover: rgba(255, 255, 255, 0.06);
+        --accent-text: #3aa6c9;
+        --danger-text: #f87171;
+        --success-text: #4ade80;
+        --warning-bg: #261f12;
+        --warning-line: #4f4020;
+        --warning-text: #f0c36b;
+      }
+      /* Alternative A, Wool: warm neutrals, terracotta accent, softer corners, no glass */
+      .scheme-wool {
+        --bg: #f4f1ec;
+        --surface: #ffffff;
+        --raised: #ffffff;
+        --glass: #ffffff;
+        --line: rgba(60, 40, 20, 0.1);
+        --field: #faf8f5;
+        --field-line: #8a7f74;
+        --text: #1f1b16;
+        --muted: #6b6157;
+        --hover: rgba(60, 40, 20, 0.05);
+        --accent: #a8452a;
+        --accent-hover: #8f3a23;
+        --accent-fg: #ffffff;
+        --accent-text: #a8452a;
+        --danger: #c0392b;
+        --danger-text: #a3301f;
+        --success-text: #2f6b2f;
+        --warning-bg: #fbf0d9;
+        --warning-line: #dcbf7a;
+        --warning-text: #6b4508;
+        --radius: 10px;
+        --radius-control: 12px;
+        --blur: 0px;
+        --font: "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      [data-theme="dark"] .scheme-wool {
+        --bg: #14110e;
+        --surface: #1c1814;
+        --raised: #26211b;
+        --glass: #1c1814;
+        --line: rgba(255, 240, 220, 0.08);
+        --field: #231e19;
+        --field-line: #7d7266;
+        --text: #efe8df;
+        --muted: #a89d90;
+        --hover: rgba(255, 240, 220, 0.06);
+        --accent: #b04a28;
+        --accent-hover: #c0572f;
+        --accent-text: #e58a66;
+        --danger-text: #f07a6c;
+        --success-text: #7fcf7f;
+        --warning-bg: #2a2114;
+        --warning-line: #5a4522;
+        --warning-text: #f0c36b;
+      }
+      /* Alternative B, Graphite: near monochrome, indigo accent, tight corners, solid lines */
+      .scheme-graphite {
+        --bg: #f6f6f7;
+        --surface: #ffffff;
+        --raised: #ffffff;
+        --glass: #ffffff;
+        --line: #e4e4e7;
+        --field: #ffffff;
+        --field-line: #71717a;
+        --text: #111114;
+        --muted: #5c5c66;
+        --hover: #f1f1f3;
+        --accent: #4338ca;
+        --accent-hover: #3730a3;
+        --accent-fg: #ffffff;
+        --accent-text: #4338ca;
+        --danger: #c62828;
+        --danger-text: #b71c1c;
+        --success-text: #1b6b3a;
+        --warning-bg: #fef7e0;
+        --warning-line: #e5c66b;
+        --warning-text: #6d4a00;
+        --radius: 4px;
+        --radius-control: 6px;
+        --blur: 0px;
+        --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      [data-theme="dark"] .scheme-graphite {
+        --bg: #0d0d10;
+        --surface: #16161a;
+        --raised: #1e1e23;
+        --glass: #16161a;
+        --line: #2a2a31;
+        --field: #16161a;
+        --field-line: #71717a;
+        --text: #ededf0;
+        --muted: #a0a0ab;
+        --hover: #1f1f25;
+        --accent: #6366f1;
+        --accent-hover: #7477f3;
+        --accent-fg: #ffffff;
+        --accent-text: #a5a8ff;
+        --danger-text: #f87171;
+        --success-text: #4ade80;
+        --warning-bg: #241f10;
+        --warning-line: #4d4120;
+        --warning-text: #f0c36b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          14px/1.45 ui-sans-serif,
+          system-ui,
+          sans-serif;
+        background: #d9dbe0;
+        color: #15151a;
+      }
+      [data-theme="dark"] body {
+        background: #050507;
+        color: #ececf1;
+      }
+      .top {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 24px;
+      }
+      .top h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .top button {
+        margin-left: auto;
+        font: inherit;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid currentColor;
+        background: none;
+        color: inherit;
+        cursor: pointer;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+        gap: 16px;
+        padding: 0 24px 24px;
+      }
+
+      .scheme {
+        font-family: var(--font);
+        background: var(--bg);
+        color: var(--text);
+        border-radius: 12px;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        min-height: 560px;
+      }
+      .scheme h2 {
+        grid-column: 1 / -1;
+        margin: 0;
+        padding: 12px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+      }
+      .scheme h2 span {
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .side {
+        background: var(--glass);
+        backdrop-filter: blur(var(--blur));
+        border-right: 1px solid var(--line);
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 13.5px;
+      }
+      .side a {
+        padding: 6px 8px;
+        border-radius: var(--radius);
+        color: var(--text);
+        text-decoration: none;
+      }
+      .side a:hover {
+        background: var(--hover);
+      }
+      .side a[aria-current] {
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+        color: var(--accent-text);
+        font-weight: 500;
+      }
+      .main {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-width: 0;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .btn {
+        height: 36px;
+        padding: 0 16px;
+        border-radius: var(--radius-control);
+        font: 500 14px var(--font);
+        border: 1px solid transparent;
+        cursor: pointer;
+      }
+      .btn:focus-visible,
+      .input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      .primary:hover {
+        background: var(--accent-hover);
+      }
+      .secondary {
+        background: var(--surface);
+        color: var(--text);
+        border-color: var(--line);
+      }
+      .secondary:hover {
+        background: var(--hover);
+      }
+      .danger {
+        background: var(--danger);
+        color: #fff;
+      }
+      .ghost {
+        background: none;
+        color: var(--text);
+      }
+      .ghost:hover {
+        background: var(--hover);
+      }
+      .input {
+        height: 36px;
+        padding: 0 10px;
+        border-radius: var(--radius-control);
+        border: 1px solid var(--field-line);
+        background: var(--field);
+        color: var(--text);
+        font: 14px var(--font);
+        flex: 1;
+        min-width: 0;
+      }
+      .badge {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 12.5px;
+        font-weight: 500;
+        border: 1px solid var(--line);
+      }
+      .badge.ok {
+        color: var(--success-text);
+      }
+      .badge.err {
+        color: var(--danger-text);
+      }
+      .card {
+        overflow-x: auto;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th {
+        text-align: left;
+        font-size: 12.5px;
+        font-weight: 500;
+        color: var(--muted);
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      tr:last-child td {
+        border-bottom: 0;
+      }
+      code,
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12.5px;
+      }
+      .warn {
+        background: var(--warning-bg);
+        border: 1px solid var(--warning-line);
+        color: var(--warning-text);
+        border-radius: var(--radius);
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .swatches {
+        display: flex;
+        gap: 6px;
+      }
+      .swatches span {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+      }
+      .link {
+        color: var(--accent-text);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <h1>Heybe design system: current look and two alternatives</h1>
+      <button type="button" id="theme">Switch to dark</button>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <template id="sample">
+      <section class="scheme">
+        <h2></h2>
+        <nav class="side" aria-label="Sections">
+          <a href="#" aria-current="page">posts</a>
+          <a href="#">users</a>
+          <a href="#">comments</a>
+          <a href="#">Logs</a>
+          <a href="#">Settings</a>
+        </nav>
+        <div class="main">
+          <div class="row">
+            <input
+              class="input"
+              aria-label="Filter"
+              value='status = "published" &amp;&amp; views > 50'
+            />
+            <button class="btn primary" type="button">New record</button>
+          </div>
+          <div class="card">
+            <table>
+              <thead>
+                <tr>
+                  <th>id</th>
+                  <th>title</th>
+                  <th>status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="mono">r8k2m1x0</td>
+                  <td>Hello Heybe</td>
+                  <td><span class="badge ok">published</span></td>
+                </tr>
+                <tr>
+                  <td class="mono">q1w2e3r4</td>
+                  <td>Draft notes</td>
+                  <td><span class="badge">draft</span></td>
+                </tr>
+                <tr>
+                  <td class="mono">z9x8c7v6</td>
+                  <td>Broken import</td>
+                  <td><span class="badge err">failed</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="row">
+            <button class="btn secondary" type="button">Export</button>
+            <button class="btn ghost" type="button">Cancel</button>
+            <button class="btn danger" type="button">Delete 3 records</button>
+          </div>
+          <div class="warn">
+            SMTP is not configured, verification emails are not sent.
+          </div>
+          <p class="muted" style="margin: 0">
+            Rules use the filter syntax, for example
+            <code>@request.auth.id != ""</code>.
+            <a class="link" href="#">Read the docs</a>
+          </p>
+          <div class="swatches" aria-hidden="true">
+            <span style="background: var(--bg)"></span>
+            <span style="background: var(--surface)"></span>
+            <span style="background: var(--accent)"></span>
+            <span style="background: var(--danger)"></span>
+            <span style="background: var(--warning-bg)"></span>
+            <span style="background: var(--text)"></span>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <script>
+      const schemes = [
+        ["current", "Current", "teal accent, cool grays, glass sidebar, Inter"],
+        [
+          "wool",
+          "Alternative A: Wool",
+          "terracotta accent, warm neutrals, softer corners",
+        ],
+        [
+          "graphite",
+          "Alternative B: Graphite",
+          "indigo accent, near monochrome, tight corners, system font",
+        ],
+      ];
+      const grid = document.getElementById("grid");
+      const sample = document.getElementById("sample");
+      for (const [key, name, note] of schemes) {
+        const node = sample.content.firstElementChild.cloneNode(true);
+        node.classList.add(`scheme-${key}`);
+        node.querySelector("h2").innerHTML = `${name} <span>${note}</span>`;
+        grid.append(node);
+      }
+      const button = document.getElementById("theme");
+      button.addEventListener("click", () => {
+        const dark = document.documentElement.dataset.theme !== "dark";
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        button.textContent = dark ? "Switch to light" : "Switch to dark";
+      });
+    </script>
+  </body>
+</html>

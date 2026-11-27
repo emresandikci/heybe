@@ -49,7 +49,7 @@ test("Page footer shows the version and Docs link", async () => {
     </Page>,
   );
   expect(await screen.findByText("left")).toBeTruthy();
-  expect(screen.getByText(`Heybe v${__HEYBE_VERSION__}`)).toBeTruthy();
+  expect(screen.getByText(`Heybe v${__HB_VERSION__}`)).toBeTruthy();
   expect(
     screen.getByRole("link", { name: "Docs" }).getAttribute("href"),
   ).toContain("github.com");

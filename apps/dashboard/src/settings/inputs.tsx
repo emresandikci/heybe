@@ -12,7 +12,7 @@ import {
   NumberField,
   Switch,
   TextField,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 
 export interface FieldLike<T> {
   state: { value: T };

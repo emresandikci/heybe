@@ -24,7 +24,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default async function globalSetup() {
   clearState();
-  const tmp = mkdtempSync(join(tmpdir(), "heybe-e2e-"));
+  const tmp = mkdtempSync(join(tmpdir(), "hb-e2e-"));
   const dataDir = join(tmp, "hb_data");
   const migrationsDir = join(tmp, "migrations");
   const port = await freePort();

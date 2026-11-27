@@ -1,4 +1,8 @@
-import { memoryStore, type AuthRecord, type HeybeClient } from "@heybe/client";
+import {
+  memoryStore,
+  type AuthRecord,
+  type HeybeClient,
+} from "@heybejs/client";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { render, type RenderResult } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";

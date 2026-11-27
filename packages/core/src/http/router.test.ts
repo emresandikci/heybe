@@ -689,7 +689,7 @@ describe("RequestEvent parity", () => {
   });
 
   test("fileFS serves index.html for a dir and rejects ../", async () => {
-    const root = await mkdtemp(join(tmpdir(), "heybe-filefs-"));
+    const root = await mkdtemp(join(tmpdir(), "hb-filefs-"));
     try {
       await mkdir(join(root, "pub", "sub"), { recursive: true });
       await Bun.write(join(root, "pub", "index.html"), "home");
@@ -752,11 +752,13 @@ describe("request body", () => {
     let dir = "";
     const savedTmp = process.env.TMPDIR;
     beforeAll(async () => {
-      dir = await mkdtemp(join(tmpdir(), "heybe-spill-"));
+      dir = await mkdtemp(join(tmpdir(), "hb-spill-"));
       process.env.TMPDIR = dir;
     });
     afterAll(async () => {
-      process.env.TMPDIR = savedTmp;
+      // assigning undefined would store the string "undefined"
+      if (savedTmp === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = savedTmp;
       await rm(dir, { recursive: true, force: true });
     });
 

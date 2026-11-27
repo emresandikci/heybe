@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { createSuggest } from "../../filter-language";
 import { activeFields, type CollectionDraft } from "../editor-state";
 

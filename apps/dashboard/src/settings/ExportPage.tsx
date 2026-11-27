@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useCollections } from "../app/queries";
-import { Button, Checkbox, CopyButton } from "@heybe/ui";
+import { Button, Checkbox, CopyButton } from "@heybejs/ui";
 import { exportJson } from "./import-diff";
 import { QueryStatus } from "./QueryStatus";
 import { SettingsPage } from "./SettingsPage";
@@ -31,7 +31,7 @@ export function ExportPage() {
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = "heybe_collections.json";
+    link.download = "hb_collections.json";
     link.click();
     // revoking in the same task can cancel the download in Firefox and Safari
     setTimeout(() => URL.revokeObjectURL(url));

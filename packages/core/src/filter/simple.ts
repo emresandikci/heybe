@@ -1,4 +1,4 @@
-import type { Expr, Operand } from "@heybe/query";
+import type { Expr, Operand } from "@heybejs/query";
 import { call, wrapLike } from "./compile";
 import { macroValue } from "./macros";
 import { FilterError, parseFilter, parseSort } from "./parse";

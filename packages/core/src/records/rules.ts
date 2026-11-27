@@ -1,4 +1,4 @@
-import { type Expr, toAst } from "@heybe/query";
+import { type Expr, toAst } from "@heybejs/query";
 import type { App } from "../app";
 import { quote } from "../collections/ddl";
 import type { Collection } from "../collections/model";

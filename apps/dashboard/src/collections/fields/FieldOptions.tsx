@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { chipClass } from "../chip";
 import { useErrorsUnder, useFieldError } from "../../app/errors";
 import { useCollections } from "../../app/queries";
-import { Checkbox, CodeArea, NumberField, Select, TextField } from "@heybe/ui";
+import {
+  Checkbox,
+  CodeArea,
+  NumberField,
+  Select,
+  TextField,
+} from "@heybejs/ui";
 import type { FieldModel } from "../editor-state";
 
 export interface OptionsProps {

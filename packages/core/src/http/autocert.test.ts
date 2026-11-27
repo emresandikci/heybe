@@ -26,7 +26,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "heybe-autocert-"));
+  dir = mkdtempSync(join(tmpdir(), "hb-autocert-"));
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 

@@ -1,4 +1,4 @@
-import { CodeArea } from "@heybe/ui";
+import { CodeArea } from "@heybejs/ui";
 
 export function JsonInput({
   name,

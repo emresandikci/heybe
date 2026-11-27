@@ -1,4 +1,4 @@
-import { Badge } from "@heybe/ui";
+import { Badge } from "@heybejs/ui";
 import { levelName } from "./level";
 
 const tone = {

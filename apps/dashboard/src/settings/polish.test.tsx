@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { screen, within } from "@testing-library/react";
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { echoPatch, serveCollections, setCode } from "../test/editor";
 import { fakeServer } from "../test/fake-server";
 import { collectionsFixture, settingsFixture } from "../test/fixtures";

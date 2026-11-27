@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { collectionsFixture, scaffoldsFixture } from "../test/fixtures";
 import {
   addField,

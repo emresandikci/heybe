@@ -148,7 +148,7 @@ test("authStore.clear() stops private events", async () => {
     const admin = pair.admin[t.name];
     const c = await authed(t);
     const s = collector();
-    await c.realtime.subscribe("PB_CONNECT", s.on("connect"));
+    await c.realtime.subscribe("HB_CONNECT", s.on("connect"));
     await c.records("secrets").subscribe("*", s.on("secrets"));
     await c.records("posts").subscribe("*", s.on("posts"));
     await s.until(() => s.count("connect") >= 1, "the first connect");

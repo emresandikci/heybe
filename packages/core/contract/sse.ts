@@ -78,6 +78,9 @@ export async function connect(
   };
   const raw = await bounded();
   const clientId = parse(raw).id;
+  // Heybe sends its own HB_CONNECT right after PB_CONNECT; PocketBase has no counterpart
+  if (t.name === "heybe" && parse(await bounded()).event !== "HB_CONNECT")
+    throw new Error("heybe: no HB_CONNECT frame after PB_CONNECT");
   return {
     target: t,
     status: res.status,

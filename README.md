@@ -2,26 +2,68 @@
 
 # Heybe
 
-Heybe is an open source backend in a single binary, built with TypeScript on [Bun](https://bun.sh). It brings the feature set of [PocketBase](https://pocketbase.io) to the JavaScript ecosystem, so you can extend and read it without leaving TypeScript.
+Heybe is an open source backend in a single binary: database, auth, file storage, realtime and an admin dashboard. It implements the [PocketBase](https://pocketbase.io) HTTP API in TypeScript on [Bun](https://bun.sh), so you can extend it, read its source and debug it without leaving the JavaScript ecosystem.
 
-> **Status:** the 1.x feature set is in place, but the packages are not published to npm yet and the API may still change.
+- Compatible with the PocketBase v0.41.1 HTTP API. Existing PocketBase apps can switch by changing the URL.
+- Hooks, routes, cron jobs and migrations in plain TypeScript or JavaScript. No build step, no decorators.
+- One typed query syntax for the server and the browser, with types generated from your collections.
+- A typed client, `@heybejs/client`, for auth, records, files, realtime and queries.
+- `heybe import` moves an existing `pb_data` directory over.
 
-## Goals
+Throughput is close to PocketBase and tail latency is lower in our [benchmarks](docs/benchmarks/phase-9.md).
 
-- **PocketBase compatible HTTP API** (based on v0.41.1), so existing apps can switch by changing the URL.
-- **Fast.** Bun, built-in SQLite, prepared statement caching and no heavy layers. Response times should be on par with PocketBase or better.
-- **Extend with classes or functions**, in plain TypeScript or JavaScript, no build step and no decorators.
-- **One type-safe query syntax** shared by the server and the frontend.
-- **Own client** (`@heybe/client`) with auth, realtime, files and queries behind one typed API.
-- **New dashboard** for collections, records and settings.
-- **Own storage format** with `heybe import` to migrate from an existing `pb_data`.
+Documentation: https://emresandikci.github.io/heybe/
 
-## API
+> The npm packages are not published yet. Use the binaries or the Docker image.
 
-### Hooks and routes
+## Quick start
+
+Download the archive for your platform from [GitHub Releases](https://github.com/emresandikci/heybe/releases), unzip it and start the server:
+
+```bash
+./heybe serve
+```
+
+On the first start Heybe prints a link to create the first superuser. Then open:
+
+- Dashboard: http://127.0.0.1:8090/_/
+- REST API: http://127.0.0.1:8090/api/
+
+Each release has a `checksums.txt` with the SHA-256 of every archive.
+
+To serve HTTPS with a Let's Encrypt certificate, pass your domain. Ports 80 and 443 must be reachable from the internet:
+
+```bash
+./heybe serve example.com
+```
+
+## Docker
+
+```bash
+docker run -d -p 8090:8090 -v hb_data:/heybe/hb_data ghcr.io/emresandikci/heybe
+```
+
+Images are published for `linux/amd64` and `linux/arm64` and tagged `latest`, `x`, `x.y` and `x.y.z`.
+
+| Path                   | Contents                       |
+| ---------------------- | ------------------------------ |
+| `/heybe/hb_data`       | Database, uploaded files, logs |
+| `/heybe/hb_migrations` | Your migrations                |
+| `/heybe/hb_hooks`      | Your hooks and routes          |
+
+Create a superuser from the command line:
+
+```bash
+docker exec <container> heybe superuser upsert <email> <password> --dir /heybe/hb_data
+```
+
+## Extending
+
+Put TypeScript or JavaScript files in `hb_hooks`, next to `hb_data`. The binary loads them on start, in file name order, with no build step. Each file exports a function that takes the app:
 
 ```ts
-import { RecordHooks, Route } from "@heybe/core";
+// hb_hooks/posts.ts
+import { RecordHooks, Route } from "@heybejs/core";
 
 class PostHooks extends RecordHooks {
   collection = "posts";
@@ -41,21 +83,29 @@ class HelloRoute extends Route {
   }
 }
 
-app.register(PostHooks, HelloRoute);
-
-// or with functions
-app.onRecordCreate("posts", async (e) => e.next());
-app.get("/hello/{name}", (e) => e.json(200, { message: "Hello" }));
+export default (app) => app.register(PostHooks, HelloRoute);
 ```
 
-### Queries
+Or register functions:
 
-The same syntax works on the server and in the frontend. Types are generated from your collection schema.
+```ts
+// hb_hooks/hello.ts
+export default (app) => {
+  app.onRecordCreate("posts", async (e) => e.next());
+  app.get("/hello/{name}", (e) => e.json(200, { message: "Hello" }));
+};
+```
+
+`--hooksDir` points to another directory. Migrations work the same way from `hb_migrations`.
+
+## Queries
+
+The same query works on the server and in the browser. Conditions with an `undefined` value are skipped, so form inputs can be passed directly:
 
 ```ts
 const posts = await heybe.records("posts").findMany({
   where: {
-    status: form.status, // skipped when undefined
+    status: form.status,
     comments: { gt: 50 },
     OR: [{ title: { like: form.search } }, { tags: { anyLike: form.tag } }],
   },
@@ -68,129 +118,36 @@ const posts = await heybe.records("posts").findMany({
 
 ## Features
 
-- **Core:** HTTP server, storage, base and auth collections, all field types, record CRUD, filter language, API rules, `@heybe/query`, superusers, password auth, settings.
-- **Relations and files:** expand, back-relations, indexes, view collections, batch API, file uploads, thumbnails, protected files, type generation.
-- **Auth:** mail and templates, verification, password reset, email change, OAuth2, OTP, MFA, impersonation.
-- **Extending and realtime:** hooks, routes, middleware, cron, migrations, console commands, realtime (SSE).
-- **Operations:** rate limiting, logs, backups, S3, SQL API.
-- **Distribution:** `heybe import`, single binary.
-
-## Development
-
-Requirements: Node.js 24 and pnpm 10 for the tooling, Bun 1.4 for the runtime.
-
-```bash
-pnpm install
-```
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org). Direct `git commit` is blocked, use:
-
-```bash
-pnpm commit
-```
-
-Each package is versioned and released on its own with semantic-release when changes land on `main`.
-
-## Download
-
-Get the archive for your OS and architecture (Linux, macOS, Windows) from [GitHub Releases](https://github.com/emresandikci/heybe/releases), unzip it and run it:
-
-```bash
-./heybe serve          # Windows: heybe.exe serve
-```
-
-`checksums.txt` on each release lists the SHA-256 of every archive. Docker is the other option, see below. Windows hosts can run the Linux image through Docker Desktop (WSL2), there is no Windows container image. Like PocketBase, the Windows binary cannot restore a backup in place (restoring needs a process restart); restore on Linux, macOS or in Docker.
-
-## Docker
-
-```bash
-docker run -d -p 8090:8090 -v heybe_data:/heybe/heybe_data ghcr.io/emresandikci/heybe
-```
-
-The dashboard is at `http://localhost:8090/_/`. Data lives in `/heybe/heybe_data`. User migrations are read from `/heybe/heybe_migrations`, mount your directory there:
-
-```bash
-docker run -d -p 8090:8090 \
-  -v heybe_data:/heybe/heybe_data \
-  -v ./heybe_migrations:/heybe/heybe_migrations \
-  ghcr.io/emresandikci/heybe
-```
-
-Create a superuser in a running container:
-
-```bash
-docker exec <container> heybe superuser upsert <email> <password> --dir /heybe/heybe_data
-```
-
-The image (linux/amd64 and linux/arm64) is published to GHCR from every `@heybe/core` release, tagged `x.y.z`, `x.y`, `x` and `latest`. Build it yourself with `docker build -t heybe .`.
-
-## Single binary
-
-Build one executable that embeds the dashboard and the sharp native files (needs Bun 1.4 and a prior `pnpm install`):
-
-```bash
-cd packages/core
-bun scripts/build-binary.ts          # writes dist/heybe for this machine
-bun scripts/smoke-binary.ts --binary dist/heybe
-./dist/heybe serve
-```
-
-`--target bun-linux-x64` (or `bun-linux-arm64`, `bun-darwin-arm64`) builds for another platform; build on a matching machine so sharp's native package fits. The thumbnail libraries are extracted to the temp directory on first use.
-
-`heybe serve example.com` serves HTTPS with a Let's Encrypt certificate (HTTP-01). Port 80 and 443 must be reachable from the internet. The certificate is cached in `<dir>/.autocert_cache`.
+| Area       | Included                                                                                                    |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| Data       | Base, auth and view collections, all field types, relations and back-relations, indexes, filters, API rules |
+| Auth       | Password, OAuth2, OTP, MFA, verification, password reset, email change, impersonation                       |
+| Files      | Uploads, thumbnails, protected files, local or S3 storage                                                   |
+| Realtime   | Server-sent events, per collection or per record                                                            |
+| Extending  | Hooks, routes, middleware, cron, migrations, console commands, type generation                              |
+| Operations | Dashboard, logs, backups, rate limiting, batch API, SQL API, Let's Encrypt                                  |
 
 ## Migrating from PocketBase
 
-Stop PocketBase, then import its data directory into a fresh Heybe one:
+Heybe imports data directories of PocketBase v0.23 or newer. Older ones have a different format: start PocketBase v0.23 or newer on them once to upgrade them first.
+
+Stop PocketBase, then import its data directory into a new Heybe directory:
 
 ```bash
-heybe import ./pb_data --dir ./heybe_data [--encryptionEnv PB_KEY]
+heybe import ./pb_data --dir ./hb_data
 ```
 
-Imported: collections (with their rules, indexes and auth token secrets, so issued tokens stay valid), all records, settings and uploaded files (not when PocketBase uses S3). Not imported: logs, backups, migration history, `pb_hooks` and `pb_migrations`. Port hooks and migrations by hand. `--encryptionEnv` names the environment variable that holds the key when PocketBase settings are encrypted.
+Collections, rules, indexes, records, settings and uploaded files are imported. Auth token secrets are kept, so tokens PocketBase issued stay valid. If your PocketBase settings are encrypted, pass the name of the variable that holds the key with `--encryptionEnv PB_KEY`.
 
-Collection ids are rewritten to Heybe's prefix: `pbc_<n>` becomes `hbc_<n>` and `_pb_users_auth_` becomes `_hb_users_auth_`, in collections, relation fields, the auth system tables and the storage directories. Code or migrations that hardcode a PocketBase collection id need the new one. Tokens PocketBase issued still carry the old id and are still accepted.
+Not imported: logs, backups, migration history, `pb_hooks` and `pb_migrations`. Hooks and migrations have to be ported by hand. Files stored on S3 stay where they are.
 
-## npm
-
-The packages are not published yet. Once they are, `@heybe/core` runs on Bun only. Install it globally to get the `heybe` command:
-
-```bash
-bun add -g @heybe/core
-heybe serve
-```
-
-To use it as a library:
-
-```bash
-bun add @heybe/core
-```
+Collection ids get Heybe's prefix: `pbc_<n>` becomes `hbc_<n>` and `_pb_users_auth_` becomes `_hb_users_auth_`. Update any code that hardcodes a PocketBase collection id.
 
 ## Dashboard
 
-The superuser panel lives in `apps/dashboard` (React, Vite) and is served by `heybe serve` at `/_/` once it is built. It talks to the server only through `@heybe/client`.
+The dashboard at `/_/` manages collections (fields, rules and indexes), records, logs, backups and settings. Filters, API rules and SQL fields autocomplete fields, operators, macros and `@request` params. Email templates are written in MJML.
 
-```bash
-pnpm --filter @heybe/dashboard build
-```
-
-The build writes `packages/core/ui/dist`. Without it the server does not register `/_/`. For development run `heybe serve` on 8090 and `pnpm --filter @heybe/dashboard dev`.
-
-It covers collections (with a field, rule and index editor), records, logs, backups and all settings. OAuth2 providers of an auth collection are managed under Settings > Auth providers. The records filter, the logs filter, API rules and the SQL fields (view query, indexes, SQL page) autocomplete fields, operators, modifiers, macros and `@request` params as you type.
-
-Record previews block remote images (the dashboard CSP allows none, like PocketBase).
-
-Email templates are written in MJML and compiled in the browser (`mjml-browser`, loaded on demand). The server stores the HTML with the MJML source embedded as a trailing `<!-- heybe:mjml:<base64> -->` comment.
-
-Tests:
-
-```bash
-pnpm --filter @heybe/dashboard test
-pnpm --filter @heybe/dashboard exec playwright install chromium   # once
-pnpm test:e2e
-```
-
-Extensions add pages and links to the panel. Register a directory in `onServe` and put a `main.js` in it:
+Extensions add pages to the dashboard. Register a directory in `onServe` and put a `main.js` in it:
 
 ```ts
 app.onServe((e) => {
@@ -204,17 +161,17 @@ window.heybe.dashboard.addPage({
   path: "demo",
   title: "Demo",
   mount(el, { client }) {
-    el.textContent = "Demo extension for " + client.authStore.record.email;
+    el.textContent = "Signed in as " + client.authStore.record.email;
   },
 });
 ```
 
-An extension can build its page with the dashboard components from `@heybe/ui`. Install `react`, `react-dom` and `@heybe/ui` in the extension, bundle it, and render with your own root:
+To match the dashboard's look, build the extension with React and `@heybejs/ui`, and return a cleanup function from `mount`:
 
 ```tsx
 import { createRoot } from "react-dom/client";
-import { Button } from "@heybe/ui";
-import "@heybe/ui/style.css";
+import { Button } from "@heybejs/ui";
+import "@heybejs/ui/style.css";
 
 window.heybe.dashboard.addPage({
   path: "demo",
@@ -227,10 +184,20 @@ window.heybe.dashboard.addPage({
 });
 ```
 
-Use `@heybe/ui` for styled components (buttons, fields, `FileField`, `Select`, `Checkbox`, `Switch`, `Table`, `Dialog`, `Disclosure`, `Badge`, `CodeArea`, toasts and more) and `@heybe/ui/primitives` for Popover, Menu, MenuItem, Tooltip, Combobox, Tabs, tabPanelIds, Switch, RadioGroup, Dialog and Placement. `ConfirmProvider` and `ToastProvider` must wrap the extension root to use `useConfirm` and `useToast`. Import `@heybe/ui/style.css` for compiled styles or `@heybe/ui/theme.css` with Tailwind v4. Light is the default theme; set `data-theme="dark"` on the `html` element for dark mode.
+`@heybejs/ui` has the styled components and `@heybejs/ui/primitives` the unstyled ones. Wrap the root in `ConfirmProvider` and `ToastProvider` to use `useConfirm` and `useToast`. Use `@heybejs/ui/theme.css` instead of `style.css` with Tailwind v4, and set `data-theme="dark"` on `<html>` for the dark theme.
+
+## Platform notes
+
+- The Windows binary cannot restore a backup in place, because a restore needs a process restart. Restore on Linux, macOS or in Docker.
+- There is no Windows container image. Windows hosts can run the Linux image with Docker Desktop (WSL2).
+- `@heybejs/core` runs on Bun only. `@heybejs/client` and `@heybejs/query` also run in Node and browsers.
+
+## Contributing
+
+Development setup, tests and building the binary are described in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Parts of Heybe are ported from PocketBase, fexpr and mimetype; their licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Heybe is an independent project and is not affiliated with or endorsed by PocketBase or its author.

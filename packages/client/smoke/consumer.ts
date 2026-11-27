@@ -1,4 +1,4 @@
-import { createClient, type Collections, type Where } from "@heybe/client";
+import { createClient, type Collections, type Where } from "@heybejs/client";
 
 const heybe = createClient("http://127.0.0.1:8090");
 const where: Where<Collections["posts"]> = { status: "published" };

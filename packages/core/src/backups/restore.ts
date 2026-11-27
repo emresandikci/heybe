@@ -41,7 +41,7 @@ function moveDirContent(src: string, dest: string, exclude: string[]) {
   }
 }
 
-// a Heybe data.db has _collections with a data column (a PocketBase one has fields instead)
+// a Heybe data.db has _collections with a data column; a backup without it is rejected
 function checkDataDb(path: string) {
   try {
     statSync(path);

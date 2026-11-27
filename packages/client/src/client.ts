@@ -1,4 +1,4 @@
-import type { CollectionName, Collections } from "@heybe/query";
+import type { CollectionName, Collections } from "@heybejs/query";
 import {
   localStorageStore,
   memoryStore,

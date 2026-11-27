@@ -8,7 +8,7 @@ const ESCAPES: Record<string, string> = {
   "\r": "\\r",
 };
 
-// Only the escapes the PocketBase filter scanner (fexpr) decodes.
+// Only the escapes the filter scanner decodes.
 const quote = (value: string) =>
   `"${value.replace(/[\\"\n\t\r]/g, (ch) => ESCAPES[ch]!)}"`;
 

@@ -6,7 +6,7 @@ import {
   CodeArea,
   type CodeAreaHandle,
   type CodeSuggest,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 
 export function RuleInput({
   label,

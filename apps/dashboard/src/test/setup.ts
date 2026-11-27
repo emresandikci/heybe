@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterEach, expect } from "bun:test";
 
-(globalThis as { __HEYBE_VERSION__?: string }).__HEYBE_VERSION__ = "1.2.3";
+(globalThis as { __HB_VERSION__?: string }).__HB_VERSION__ = "1.2.3";
 
 GlobalRegistrator.register({ url: "http://localhost/_/" });
 

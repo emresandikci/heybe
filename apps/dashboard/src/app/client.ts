@@ -4,9 +4,9 @@ import {
   type AuthStore,
   type Fetch,
   type HeybeClient,
-} from "@heybe/client";
+} from "@heybejs/client";
 
-export const AUTH_STORE_KEY = "heybe_superuser_auth";
+export const AUTH_STORE_KEY = "hb_superuser_auth";
 
 const unauthorizedHandlers = new WeakMap<HeybeClient, () => void>();
 

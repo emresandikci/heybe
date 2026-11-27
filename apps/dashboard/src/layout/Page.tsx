@@ -75,7 +75,7 @@ export function Page({
           >
             Docs
           </a>
-          <span>Heybe v{__HEYBE_VERSION__}</span>
+          <span>Heybe v{__HB_VERSION__}</span>
         </div>
       </footer>
     </div>

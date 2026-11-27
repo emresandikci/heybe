@@ -1,4 +1,4 @@
-import type { CollectionModel } from "@heybe/client";
+import type { CollectionModel } from "@heybejs/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useForm } from "@tanstack/react-form";
 import { useId, useState } from "react";
@@ -14,7 +14,7 @@ import {
   FileField,
   useConfirm,
   useToast,
-} from "@heybe/ui";
+} from "@heybejs/ui";
 import {
   diffImport,
   parseImport,

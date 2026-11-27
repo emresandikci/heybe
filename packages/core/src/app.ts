@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { CollectionName, Collections } from "@heybe/query";
+import type { CollectionName, Collections } from "@heybejs/query";
 import pkg from "../package.json" with { type: "json" };
 import { parseCommandArgs } from "./commands/args";
 import { type CommandHelp, printsOnly, routeArgv } from "./commands/help";
@@ -27,6 +27,7 @@ import {
   appFilesystem,
   localFilesystem,
 } from "./files/storage";
+import { loadHooksDir } from "./extend/hooks-dir";
 import { RecordHooks, bindRecordHooks } from "./extend/record-hooks";
 import { Cron } from "./extend/cron";
 import { Route } from "./extend/route";
@@ -69,6 +70,7 @@ export interface AppOptions {
   // embedded dashboard of a compiled binary, served instead of dashboardDir
   dashboardFiles?: ReadonlyMap<string, string>;
   migrationsDir?: string;
+  hooksDir?: string;
   automigrate?: boolean;
   now?: () => Date;
   timers?: Timers;
@@ -126,6 +128,7 @@ export interface App extends HookBinders, RouterMethods {
   dashboardDir: string;
   dashboardFiles: ReadonlyMap<string, string> | null;
   migrationsDir: string;
+  hooksDir: string;
   automigrate: boolean;
   migrations: MigrationDef[];
   records<N extends CollectionName>(name: N): RecordService<Collections[N]>;
@@ -171,6 +174,7 @@ function globalFlags(argv: string[]) {
       typeof values.migrationsDir === "string"
         ? values.migrationsDir
         : undefined,
+    hooksDir: typeof values.hooksDir === "string" ? values.hooksDir : undefined,
     automigrate: !automigrate
       ? undefined
       : raw === undefined || TRUE_VALUES.includes(raw)
@@ -193,7 +197,7 @@ const TOKENS = [
 // Memory apps copy one bootstrapped data.db made once per process, with their own timestamps and secrets.
 function openMemoryDb(path: string, now: () => Date): Db {
   if (!memoryTemplate) {
-    const dir = mkdtempSync(join(tmpdir(), "heybe-template-"));
+    const dir = mkdtempSync(join(tmpdir(), "hb-template-"));
     process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
     const db = openDb(join(dir, "data.db"));
     new CollectionStore(db, now);
@@ -276,10 +280,10 @@ function printsHelp(argv: string[]): boolean {
 export function createApp(opts: AppOptions = {}): App {
   const argv = opts.argv ?? process.argv.slice(2);
   const flags = globalFlags(argv);
-  const dir = opts.dir ?? flags.dir ?? "./heybe_data";
+  const dir = opts.dir ?? flags.dir ?? "./hb_data";
   const memory = dir === "" || dir === ":memory:" || printsHelp(argv);
   if (!memory) mkdirSync(dir, { recursive: true });
-  const dataDir = memory ? mkdtempSync(join(tmpdir(), "heybe-data-")) : dir;
+  const dataDir = memory ? mkdtempSync(join(tmpdir(), "hb-data-")) : dir;
   const now = opts.now ?? (() => new Date());
   const db = memory
     ? openMemoryDb(join(dataDir, "data.db"), now)
@@ -418,7 +422,9 @@ export function createApp(opts: AppOptions = {}): App {
     migrationsDir:
       opts.migrationsDir ??
       flags.migrationsDir ??
-      join(dataDir, "..", "heybe_migrations"),
+      join(dataDir, "..", "hb_migrations"),
+    hooksDir:
+      opts.hooksDir ?? flags.hooksDir ?? join(dataDir, "..", "hb_hooks"),
     automigrate: opts.automigrate ?? flags.automigrate ?? true,
     migrations: [],
     records: (name: string): RecordService<Record<string, unknown>> => {
@@ -468,6 +474,7 @@ export function createApp(opts: AppOptions = {}): App {
       if (app.automigrate) bindAutomigrate(app);
       let code = 0;
       try {
+        await loadHooksDir(app);
         await app.bootstrap();
         await command.run(
           argv.filter((_, i) => i !== route.index),

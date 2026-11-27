@@ -30,12 +30,17 @@ export const GLOBAL_FLAG_HELP: FlagHelp[] = [
     name: "dir",
     type: "string",
     usage: "the Heybe data directory",
-    default: '"./heybe_data"',
+    default: '"./hb_data"',
   },
   {
     name: "migrationsDir",
     type: "string",
     usage: "the directory with the user defined migrations",
+  },
+  {
+    name: "hooksDir",
+    type: "string",
+    usage: "the directory with the user defined hooks and routes",
   },
 ];
 

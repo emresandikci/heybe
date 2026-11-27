@@ -74,7 +74,7 @@ const rows = () =>
 const has = (name: string) => app.collections.find(name) !== null;
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "heybe-migrations-"));
+  dir = mkdtempSync(join(tmpdir(), "hb-migrations-"));
   now = NOW;
   app = testApp({ migrationsDir: dir, now: () => now, argv: [] });
   lines = [];
@@ -301,7 +301,7 @@ describe("migrate create", () => {
       `Successfully created file ${JSON.stringify(file)}`,
     ]);
     expect(readFileSync(file, "utf8"))
-      .toBe(`import { migrate } from "@heybe/core";
+      .toBe(`import { migrate } from "@heybejs/core";
 
 export default migrate(async (app) => {
   // add up queries...

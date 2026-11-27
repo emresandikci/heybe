@@ -1,4 +1,4 @@
-import { Dialog } from "@heybe/ui";
+import { Dialog } from "@heybejs/ui";
 
 export function FilePreview({
   name,

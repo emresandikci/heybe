@@ -1,1 +1,1 @@
-declare const __HEYBE_VERSION__: string;
+declare const __HB_VERSION__: string;

@@ -1,0 +1,47 @@
+/* Heybe tokens from packages/ui/src/theme.css, see docs/design/design-system.md */
+@import "@fontsource-variable/inter";
+
+:root {
+  --rp-c-brand: #1b7b9b;
+  --rp-c-brand-dark: #166a86;
+  --rp-c-brand-darker: #125a72;
+  --rp-c-brand-light: #2390b4;
+  --rp-c-brand-lighter: #3aa6c9;
+  --rp-c-brand-rgb: 27, 123, 155;
+  --rp-c-brand-tint: color-mix(in srgb, #1b7b9b 18%, transparent);
+  --rp-c-bg: #ffffff;
+  --rp-c-bg-soft: #f5f6f8;
+  --rp-c-bg-mute: #eef0f4;
+  --rp-c-bg-alt: #eef0f4;
+  --rp-c-text-1: #15151a;
+  --rp-c-text-2: #61616c;
+  --rp-c-text-3: #6c6c77;
+  --rp-font-family-base:
+    "Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif;
+  --rp-font-family-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --rp-radius: 8px;
+  --rp-radius-small: 7px;
+  --rp-radius-large: 12px;
+}
+
+.dark {
+  --rp-c-brand: #3aa6c9;
+  --rp-c-brand-dark: #2390b4;
+  --rp-c-brand-light: #5bb8d6;
+  --rp-c-brand-rgb: 58, 166, 201;
+  --rp-c-brand-tint: color-mix(in srgb, #3aa6c9 18%, transparent);
+  --rp-c-bg: #121216;
+  --rp-c-bg-soft: #1a1a20;
+  --rp-c-bg-mute: #0b0b0e;
+  --rp-c-bg-alt: #0b0b0e;
+  --rp-c-text-1: #ececf1;
+  --rp-c-text-2: #9a9aa6;
+  --rp-c-text-3: #83838e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0ms !important;
+  }
+}

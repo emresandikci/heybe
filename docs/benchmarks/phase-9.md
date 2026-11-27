@@ -4,7 +4,7 @@ Same method, machine and scenarios as phases 6 to 8 (`phase-6.md`, `phase-7.md`,
 
 ## Setup
 
-- Heybe commit measured: 814c3a7 (package `@heybe/core` 1.1.1)
+- Heybe commit measured: 814c3a7 (package `@heybejs/core` 1.1.1)
 - Machine: 8-core Apple arm64
 - Bun 1.4.4, PocketBase 0.41.1, autocannon 9, 100 connections, 10 s after a 3 s warm-up
 - Command: `caffeinate -i pnpm bench`

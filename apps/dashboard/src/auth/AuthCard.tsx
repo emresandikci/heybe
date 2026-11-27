@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useFieldError } from "../app/errors";
-import { TextField } from "@heybe/ui";
+import { TextField } from "@heybejs/ui";
 import { Logo } from "../layout/Logo";
 
 export function AuthCard({

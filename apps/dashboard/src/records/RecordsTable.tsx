@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Checkbox, Table, Td, Th } from "@heybe/ui";
+import { Checkbox, Table, Td, Th } from "@heybejs/ui";
 import { CellValue, type CellField } from "./cell";
 
 const STICKY_FIRST =

@@ -16,13 +16,13 @@ const { version } = JSON.parse(
 
 export default defineConfig({
   base: "/_/",
-  define: { __HEYBE_VERSION__: JSON.stringify(version) },
+  define: { __HB_VERSION__: JSON.stringify(version) },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: [
-      { find: "@heybe/client", replacement: src("client") },
-      { find: "@heybe/query", replacement: src("query") },
-      { find: /^@heybe\/ui$/, replacement: src("ui") },
+      { find: "@heybejs/client", replacement: src("client") },
+      { find: "@heybejs/query", replacement: src("query") },
+      { find: /^@heybejs\/ui$/, replacement: src("ui") },
     ],
   },
   build: {

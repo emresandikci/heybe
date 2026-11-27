@@ -1,4 +1,4 @@
-import { Button, Dialog } from "@heybe/ui";
+import { Button, Dialog } from "@heybejs/ui";
 import type { Changes } from "./editor-state";
 
 export function ChangesDialog({

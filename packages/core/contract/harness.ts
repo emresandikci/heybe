@@ -131,7 +131,7 @@ async function startOne(
   existingDir?: string,
 ): Promise<{ target: Target; stop(): Promise<void> }> {
   const dir =
-    existingDir ?? (await mkdtemp(join(tmpdir(), `heybe-contract-${name}-`)));
+    existingDir ?? (await mkdtemp(join(tmpdir(), `hb-contract-${name}-`)));
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   if (!existingDir || name === "pocketbase")
@@ -217,7 +217,7 @@ export async function startHeybe(
   const { target, stop } = await startOne(
     "heybe",
     ["bun", CLI],
-    (dir) => ["--migrationsDir", join(dir, "heybe_migrations")],
+    (dir) => ["--migrationsDir", join(dir, "hb_migrations")],
     dataDir,
   );
   return { ...target, stop };
@@ -237,7 +237,7 @@ export async function startTargets(
   try {
     hb = await startOne("heybe", ["bun", opts.heybeEntry ?? CLI], (dir) => [
       "--migrationsDir",
-      join(dir, "heybe_migrations"),
+      join(dir, "hb_migrations"),
     ]);
   } catch (err) {
     await pb.stop();

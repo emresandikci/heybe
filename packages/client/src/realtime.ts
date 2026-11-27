@@ -171,7 +171,7 @@ export function createRealtime(deps: RealtimeDeps): Realtime {
   }
 
   function onFrame(f: Frame) {
-    if (f.event === "PB_CONNECT") return onConnect(f);
+    if (f.event === "HB_CONNECT") return onConnect(f);
     for (const fn of [...(subs.get(f.event) ?? [])]) fn(parse(f.data));
   }
 
@@ -188,7 +188,7 @@ export function createRealtime(deps: RealtimeDeps): Realtime {
         restarting = false;
         env.clearTimeout(reconnectTimer);
         env.clearTimeout(connectTimer);
-        for (const key of byTopic("PB_CONNECT"))
+        for (const key of byTopic("HB_CONNECT"))
           for (const fn of [...subs.get(key)!]) fn(parse(f.data));
         if (hasUnsent()) await submit();
       })

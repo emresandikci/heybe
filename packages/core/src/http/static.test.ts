@@ -38,7 +38,7 @@ const write = (path: string, content: string) => {
 };
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), "heybe-static-"));
+  root = mkdtempSync(join(tmpdir(), "hb-static-"));
   dist = join(root, "dist");
   write(join(dist, "index.html"), "<p>dashboard</p>");
   write(join(dist, "assets/app.js"), "console.log(1)");
