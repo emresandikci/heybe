@@ -2,7 +2,7 @@
 
 # Heybe
 
-Heybe is an open source backend in a single binary, built with TypeScript on [Bun](https://bun.sh). It brings the feature set of [PocketBase](https://ganigeorgiev.com/pocketbase/pocketbase) to the JavaScript ecosystem, so you can extend and read it without leaving TypeScript.
+Heybe is an open source backend in a single binary, built with TypeScript on [Bun](https://bun.sh). It brings the feature set of [PocketBase](https://pocketbase.io) to the JavaScript ecosystem, so you can extend and read it without leaving TypeScript.
 
 > **Status:** the 1.x feature set is in place, but the packages are not published to npm yet and the API may still change.
 
