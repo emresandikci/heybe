@@ -14,8 +14,6 @@ Throughput is close to PocketBase and tail latency is lower in our [benchmarks](
 
 Documentation: https://emresandikci.github.io/heybe/
 
-> The npm packages are not published yet. Use the binaries or the Docker image.
-
 ## Quick start
 
 Download the archive for your platform from [GitHub Releases](https://github.com/emresandikci/heybe/releases), unzip it and start the server:
@@ -185,6 +183,26 @@ window.heybe.dashboard.addPage({
 ```
 
 `@heybejs/ui` has the styled components and `@heybejs/ui/primitives` the unstyled ones. Wrap the root in `ConfirmProvider` and `ToastProvider` to use `useConfirm` and `useToast`. Use `@heybejs/ui/theme.css` instead of `style.css` with Tailwind v4, and set `data-theme="dark"` on `<html>` for the dark theme.
+
+## npm packages
+
+| Package           | Use                                                                |
+| ----------------- | ------------------------------------------------------------------ |
+| `@heybejs/client` | Typed client for browsers and Node: auth, records, files, realtime |
+| `@heybejs/query`  | The query syntax, a peer dependency of the client                  |
+| `@heybejs/core`   | The server as a Bun library, and editor types for `hb_hooks` files |
+| `@heybejs/ui`     | Dashboard components for [extension](#dashboard) pages             |
+
+```bash
+npm install @heybejs/client @heybejs/query
+bun add -d @heybejs/core   # types for hb_hooks and hb_migrations in your editor
+```
+
+The binary loads `@heybejs/core` from itself, so the installed copy is only for your editor.
+
+## AI assistants
+
+[`skills/heybe`](skills/heybe/SKILL.md) is a skill that teaches AI assistants how to build on Heybe. See [AI assistants](https://emresandikci.github.io/heybe/ai-assistants) for how to install it.
 
 ## Platform notes
 

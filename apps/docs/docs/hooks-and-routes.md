@@ -4,6 +4,16 @@ Put TypeScript or JavaScript files in `hb_hooks`, next to `hb_data`. The binary 
 
 Each file must export a function as its default export. It receives the app and registers what it needs. Files that end in `.d.ts` or `.test.ts` are skipped. A file that throws, or does not export a function, stops the start with `failed to load hooks <file>`.
 
+## Editor types
+
+The binary provides `@heybejs/core` to these files itself, so nothing needs to be installed to run them. For autocompletion and type checks in your editor, add it as a dev dependency next to `hb_hooks`:
+
+```bash
+bun add -d @heybejs/core
+```
+
+The binary keeps using its own copy at runtime.
+
 ## Classes
 
 ```ts
