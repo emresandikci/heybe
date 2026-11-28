@@ -58,6 +58,7 @@ export default defineConfig({
               text: "Migrating from PocketBase",
               link: "/migrating-from-pocketbase",
             },
+            { text: "AI assistants", link: "/ai-assistants" },
           ],
         },
       ],

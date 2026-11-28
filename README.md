@@ -200,6 +200,10 @@ bun add -d @heybejs/core   # types for hb_hooks and hb_migrations in your editor
 
 The binary loads `@heybejs/core` from itself, so the installed copy is only for your editor.
 
+## AI assistants
+
+[`skills/heybe`](skills/heybe/SKILL.md) is a skill that teaches AI assistants how to build on Heybe. See [AI assistants](https://emresandikci.github.io/heybe/ai-assistants) for how to install it.
+
 ## Platform notes
 
 - The Windows binary cannot restore a backup in place, because a restore needs a process restart. Restore on Linux, macOS or in Docker.
