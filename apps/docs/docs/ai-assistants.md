@@ -6,14 +6,21 @@ The skill is a single file: [`skills/heybe/SKILL.md`](https://github.com/emresan
 
 ## Claude Code
 
-Copy the `skills/heybe` folder into your project's `.claude/skills/` folder, or into `~/.claude/skills/` to use it in every project:
+Run this in your project's root folder (the folder that holds `hb_hooks` or `package.json`). It writes `.claude/skills/heybe/SKILL.md` relative to the current folder:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/emresandikci/heybe/main/skills/heybe/SKILL.md \
   --create-dirs -o .claude/skills/heybe/SKILL.md
 ```
 
-Claude Code loads the skill when you work on Heybe code.
+To use it in every project instead, install it in your home folder:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/emresandikci/heybe/main/skills/heybe/SKILL.md \
+  --create-dirs -o ~/.claude/skills/heybe/SKILL.md
+```
+
+Claude Code loads the skill when you work on Heybe code. If you run the command from Claude Code with `!`, it runs in the session's current folder, so check that folder first with `! pwd`.
 
 ## Other assistants
 
