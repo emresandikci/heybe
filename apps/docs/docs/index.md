@@ -20,6 +20,6 @@ What is included:
 | Extending  | Hooks, routes, middleware, cron, migrations, console commands, type generation                              |
 | Operations | Dashboard, logs, backups, rate limiting, batch API, SQL API, Let's Encrypt                                  |
 
-The npm packages are not published yet. Use the release binaries or the Docker image.
+Run the server from the [release binaries](/getting-started) or the [Docker image](/docker). The npm packages are `@heybejs/client` and `@heybejs/query` for your app, `@heybejs/core` for editor types and for using the server as a Bun library, and `@heybejs/ui` for [dashboard extensions](/dashboard-extensions).
 
 Start with [Getting started](/getting-started).
